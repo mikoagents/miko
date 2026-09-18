@@ -419,6 +419,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private formatter: IMessageFormatter;
 	private agent: SDKAgent | null = null;
 	private currentRun: Run | null = null;
+	private selectedModel: ReturnType<typeof normalizeCursorModel>;
 	private pendingResultMessage: SDKResultMessage | null = null;
 	private hasInitMessage = false;
 	private lastAssistantText: string | null = null;
@@ -464,6 +465,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.messages = [];
 		this.pendingResultMessage = null;
 		this.hasInitMessage = false;
+		this.selectedModel = undefined;
 		this.lastAssistantText = null;
 		this.assistantTextBuffer = "";
 		this.tokenTotals = {
@@ -495,7 +497,33 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			}
 
 			const apiKey = this.config.cursorApiKey ?? process.env.CURSOR_API_KEY;
-			const normalizedModel = normalizeCursorModel(this.config.model);
+			let normalizedModel = normalizeCursorModel(this.config.model);
+			const { Agent, Cursor } = await import("@cursor/sdk");
+			if (
+				normalizedModel &&
+				!normalizedModel.params?.some((param) => param.id === "effort")
+			) {
+				try {
+					const models = await Cursor.models.list({ apiKey });
+					const defaults = models
+						.find((model) => model.id === normalizedModel?.id)
+						?.variants?.find((variant) => variant.isDefault)?.params;
+					if (defaults?.length) {
+						const params = new Map(
+							defaults.map((param) => [param.id, param.value]),
+						);
+						for (const param of normalizedModel.params ?? [])
+							params.set(param.id, param.value);
+						normalizedModel = {
+							...normalizedModel,
+							params: [...params].map(([id, value]) => ({ id, value })),
+						};
+					}
+				} catch {
+					// Catalog access is optional; keep the selection and leave unknown effort unset.
+				}
+			}
+			this.selectedModel = normalizedModel;
 			const mcpServers = mapCyrusMcpToSdk(this.config.mcpConfig);
 
 			const sandboxEnabled = Boolean(this.config.sandboxSettings?.enabled);
@@ -517,7 +545,6 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 				...(Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
 			};
 
-			const { Agent } = await import("@cursor/sdk");
 			let agent: SDKAgent;
 			if (this.config.resumeSessionId) {
 				console.log(
@@ -1030,14 +1057,19 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		if (this.hasInitMessage) return;
 		this.hasInitMessage = true;
 		const sessionId = this.sessionInfo?.sessionId || crypto.randomUUID();
-		const initMessage: SDKSystemInitMessage = {
+		const selection = this.agent?.model ?? this.selectedModel;
+		const reasoningEffort =
+			selection?.params?.find((param) => param.id === "effort")?.value ??
+			this.selectedModel?.params?.find((param) => param.id === "effort")?.value;
+		const initMessage: SDKSystemInitMessage & { reasoningEffort?: string } = {
 			type: "system",
 			subtype: "init",
 			cwd: this.config.workingDirectory || cwd(),
 			session_id: sessionId,
 			tools: this.config.allowedTools || [],
 			mcp_servers: [],
-			model: this.config.model || "gpt-5",
+			model: selection?.id || this.config.model || "gpt-5",
+			...(reasoningEffort ? { reasoningEffort } : {}),
 			permissionMode: "default",
 			apiKeySource: this.config.cursorApiKey ? "user" : "project",
 			claude_code_version: "cursor-agent",

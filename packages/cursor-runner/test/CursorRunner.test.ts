@@ -9,9 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const sdkMock = vi.hoisted(() => {
 	const create = vi.fn();
 	const resume = vi.fn();
+	const listModels = vi.fn();
 	return {
 		create,
 		resume,
+		listModels,
 		// Helper for tests to install a stub agent + run.
 		__install(opts: {
 			agentId?: string;
@@ -73,6 +75,7 @@ const sdkMock = vi.hoisted(() => {
 });
 
 vi.mock("@cursor/sdk", () => ({
+	Cursor: { models: { list: sdkMock.listModels } },
 	Agent: {
 		create: sdkMock.create,
 		resume: sdkMock.resume,
@@ -85,6 +88,7 @@ let tempDirs: string[];
 beforeEach(async () => {
 	sdkMock.create.mockReset();
 	sdkMock.resume.mockReset();
+	sdkMock.listModels.mockReset().mockResolvedValue([]);
 	tempDirs = [];
 	({ CursorRunner } = await import("../src/CursorRunner.js"));
 });
@@ -102,6 +106,56 @@ function tempWorkspace(): string {
 }
 
 describe("CursorRunner (SDK adapter)", () => {
+	it("records and sends the catalog default effort for a native SDK model", async () => {
+		sdkMock.__install({ events: [] });
+		const params = [
+			{ id: "effort", value: "high" },
+			{ id: "fast", value: "true" },
+		];
+		sdkMock.listModels.mockResolvedValue([
+			{ id: "grok-4.6", variants: [{ isDefault: true, params }] },
+		]);
+		const runner = new CursorRunner({
+			workingDirectory: tempWorkspace(),
+			model: "grok-4.6",
+		});
+		await runner.start("hi");
+		expect(sdkMock.create).toHaveBeenCalledWith(
+			expect.objectContaining({ model: { id: "grok-4.6", params } }),
+		);
+		expect(runner.getMessages()[0]).toMatchObject({
+			type: "system",
+			model: "grok-4.6",
+			reasoningEffort: "high",
+		});
+	});
+	it("keeps explicit CLI effort without consulting catalog defaults", async () => {
+		sdkMock.__install({ events: [] });
+		const runner = new CursorRunner({
+			workingDirectory: tempWorkspace(),
+			model: "cursor-grok-4.6-xhigh",
+		});
+		await runner.start("hi");
+		expect(sdkMock.listModels).not.toHaveBeenCalled();
+		expect(runner.getMessages()[0]).toMatchObject({
+			model: "grok-4.6",
+			reasoningEffort: "xhigh",
+		});
+	});
+	it("leaves effort unknown when the catalog is unavailable", async () => {
+		sdkMock.__install({ events: [] });
+		sdkMock.listModels.mockRejectedValue(new Error("unavailable"));
+		const runner = new CursorRunner({
+			workingDirectory: tempWorkspace(),
+			model: "grok-4.6",
+		});
+		await runner.start("hi");
+		expect(runner.getMessages()[0]).not.toHaveProperty("reasoningEffort");
+		expect(sdkMock.create).toHaveBeenCalledWith(
+			expect.objectContaining({ model: { id: "grok-4.6" } }),
+		);
+	});
+
 	it.each([
 		["cursor-grok-4.6-high", "grok-4.6", "high", "false"],
 		["cursor-grok-4.6-xhigh-fast", "grok-4.6", "xhigh", "true"],
