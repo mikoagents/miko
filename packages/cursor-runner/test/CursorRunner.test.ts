@@ -140,6 +140,11 @@ describe("CursorRunner (SDK adapter)", () => {
 		// While running we expect the artifacts to be present, but since the
 		// stream runs synchronously to completion we instead verify the cleanup.
 		await runner.start("hello");
+		expect(sdkMock.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				local: expect.objectContaining({ cwd: workspace }),
+			}),
+		);
 
 		expect(existsSync(join(workspace, ".cursor", "hooks.json"))).toBe(false);
 		expect(
