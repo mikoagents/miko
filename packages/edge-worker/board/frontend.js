@@ -68,6 +68,13 @@ function element(tag, cls, text) {
 	if (text !== undefined) el.textContent = text;
 	return el;
 }
+function fastLabel(task) {
+	return task.fastMode === true
+		? "Fast on"
+		: task.fastMode === false
+			? "Fast off"
+			: "Fast unknown";
+}
 function linearIssueLink(identifier, workspaceSlug) {
 	if (!/^[a-z0-9][a-z0-9_-]*$/i.test(workspaceSlug || "")) return null;
 	if (!/^[a-z0-9]+-\d+$/i.test(identifier || "")) return null;
@@ -177,6 +184,7 @@ function renderTasks() {
 			t.title,
 			t.model,
 			t.reasoningEffort,
+			t.fastMode,
 			t.status,
 			t.reason,
 			t.quiet,
@@ -220,6 +228,7 @@ function renderTasks() {
 			(t.quiet ? " · No activity for over 2 minutes" : "") +
 			`\nModel: ${t.model || "Unknown"}` +
 			`\nReasoning effort: ${t.reasoningEffort || "Unknown"}` +
+			`\n${fastLabel(t)}` +
 			"\nSession " +
 			t.id;
 		const top = element("div", "task-top");
@@ -249,7 +258,7 @@ function renderTasks() {
 			element(
 				"span",
 				"task-model",
-				`${t.model || "Model unknown"} · ${t.reasoningEffort || "Effort unknown"}`,
+				`${t.model || "Model unknown"} · ${t.reasoningEffort || "Effort unknown"} · ${fastLabel(t)}`,
 			),
 		);
 		meta.append(
@@ -284,6 +293,8 @@ function renderLogs() {
 			(task.model || "Unknown model") +
 			" · " +
 			(task.reasoningEffort || "Effort unknown") +
+			" · " +
+			fastLabel(task) +
 			" · " +
 			(names[task.status] || task.status) +
 			" · Last activity " +

@@ -387,6 +387,7 @@ export class StatusBoard {
 					: "This session's runner is not executing.",
 				model: bounded(session.metadata?.model ?? ""),
 				reasoningEffort: bounded(session.metadata?.reasoningEffort ?? ""),
+				fastMode: session.metadata?.fastMode,
 				createdAt: session.createdAt,
 				lastActivityAt,
 				turnStartedAt: startedAt,

@@ -1061,7 +1061,15 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		const reasoningEffort =
 			selection?.params?.find((param) => param.id === "effort")?.value ??
 			this.selectedModel?.params?.find((param) => param.id === "effort")?.value;
-		const initMessage: SDKSystemInitMessage & { reasoningEffort?: string } = {
+		const fastValue =
+			selection?.params?.find((param) => param.id === "fast")?.value ??
+			this.selectedModel?.params?.find((param) => param.id === "fast")?.value;
+		const fastMode =
+			fastValue === "true" ? true : fastValue === "false" ? false : undefined;
+		const initMessage: SDKSystemInitMessage & {
+			reasoningEffort?: string;
+			fastMode?: boolean;
+		} = {
 			type: "system",
 			subtype: "init",
 			cwd: this.config.workingDirectory || cwd(),
@@ -1070,6 +1078,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			mcp_servers: [],
 			model: selection?.id || this.config.model || "gpt-5",
 			...(reasoningEffort ? { reasoningEffort } : {}),
+			...(fastMode !== undefined ? { fastMode } : {}),
 			permissionMode: "default",
 			apiKeySource: this.config.cursorApiKey ? "user" : "project",
 			claude_code_version: "cursor-agent",

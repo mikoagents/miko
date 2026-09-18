@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Task cards show whether Fast mode is on, off, or unrecorded; Cursor sessions retain the selected setting in task history.
 - Task cards show the recorded reasoning effort beside the model, including archived sessions. Codex reports the effective model and effort when starting or resuming a thread; older records display unknown. ([#4](https://github.com/nexmoe/cyrus/pull/4))
 - Use bracketed selectors consistently in issue descriptions: `[repos=frontend,backend]` now selects multiple repositories alongside `[agent=...]` and `[model=...]`. Existing repository selectors remain compatible. ([#3](https://github.com/nexmoe/cyrus/pull/3))
 - One self-hosted Cyrus instance can now connect private Linear apps from multiple workspaces using the same domain. Each workspace keeps its own webhook signing secret and OAuth app credentials, while existing single-app setups keep working. ([#2](https://github.com/nexmoe/cyrus/pull/2))

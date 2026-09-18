@@ -127,6 +127,7 @@ describe("CursorRunner (SDK adapter)", () => {
 			type: "system",
 			model: "grok-4.6",
 			reasoningEffort: "high",
+			fastMode: true,
 		});
 	});
 	it("keeps explicit CLI effort without consulting catalog defaults", async () => {
@@ -140,6 +141,7 @@ describe("CursorRunner (SDK adapter)", () => {
 		expect(runner.getMessages()[0]).toMatchObject({
 			model: "grok-4.6",
 			reasoningEffort: "xhigh",
+			fastMode: false,
 		});
 	});
 	it("leaves effort unknown when the catalog is unavailable", async () => {
@@ -151,6 +153,7 @@ describe("CursorRunner (SDK adapter)", () => {
 		});
 		await runner.start("hi");
 		expect(runner.getMessages()[0]).not.toHaveProperty("reasoningEffort");
+		expect(runner.getMessages()[0]).not.toHaveProperty("fastMode");
 		expect(sdkMock.create).toHaveBeenCalledWith(
 			expect.objectContaining({ model: { id: "grok-4.6" } }),
 		);

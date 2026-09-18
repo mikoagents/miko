@@ -16,6 +16,7 @@ const taskSchema = z.object({
 	reason: text,
 	model: text,
 	reasoningEffort: text.optional(),
+	fastMode: z.boolean().optional(),
 	createdAt: z.number().finite(),
 	lastActivityAt: z.number().finite(),
 	turnStartedAt: z.number().finite(),
