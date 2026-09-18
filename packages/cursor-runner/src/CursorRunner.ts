@@ -83,14 +83,25 @@ function normalizeError(error: unknown): string {
 	return "Cursor execution failed";
 }
 
-function normalizeCursorModel(model?: string): string | undefined {
-	if (!model) return model;
-	// Map legacy CLI aliases to SDK model IDs. The SDK rejects `auto` and bare
-	// `gpt-5`; use `default` (server-side resolution) as a forward-compatible
-	// fallback for both. Discover real ids via `Cursor.models.list()`.
+function normalizeCursorModel(
+	model?: string,
+): { id: string; params?: Array<{ id: string; value: string }> } | undefined {
+	if (!model) return undefined;
 	const lowered = model.toLowerCase();
-	if (lowered === "gpt-5" || lowered === "auto") return "default";
-	return model;
+	// Older CLI selectors encode SDK parameters in the model name.
+	const grok = /^cursor-(grok-4\.[56])-(low|medium|high|xhigh)(-fast)?$/.exec(
+		lowered,
+	);
+	if (grok)
+		return {
+			id: grok[1]!,
+			params: [
+				{ id: "effort", value: grok[2]! },
+				{ id: "fast", value: grok[3] ? "true" : "false" },
+			],
+		};
+	if (lowered === "gpt-5" || lowered === "auto") return { id: "default" };
+	return { id: model };
 }
 
 function createAssistantToolUseMessage(
@@ -490,7 +501,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			const sandboxEnabled = Boolean(this.config.sandboxSettings?.enabled);
 			const baseAgentOptions = {
 				apiKey,
-				...(normalizedModel ? { model: { id: normalizedModel } } : {}),
+				...(normalizedModel ? { model: normalizedModel } : {}),
 				local: {
 					// The SDK requires one primary path; additional roots use `dirs`.
 					cwd: workspace,

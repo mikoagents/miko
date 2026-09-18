@@ -102,6 +102,46 @@ function tempWorkspace(): string {
 }
 
 describe("CursorRunner (SDK adapter)", () => {
+	it.each([
+		["cursor-grok-4.6-high", "grok-4.6", "high", "false"],
+		["cursor-grok-4.6-xhigh-fast", "grok-4.6", "xhigh", "true"],
+		["cursor-grok-4.5-low", "grok-4.5", "low", "false"],
+	])("maps CLI selector %s to SDK parameters on create and resume", async (model, id, effort, fast) => {
+		sdkMock.__install({ events: [] });
+		for (const resumeSessionId of [undefined, "agent-existing"]) {
+			const runner = new CursorRunner({
+				workingDirectory: tempWorkspace(),
+				model,
+				resumeSessionId,
+			});
+			await runner.start("hi");
+			const options = resumeSessionId
+				? sdkMock.resume.mock.calls.at(-1)?.[1]
+				: sdkMock.create.mock.calls.at(-1)?.[0];
+			expect(options).toMatchObject({
+				model: {
+					id,
+					params: [
+						{ id: "effort", value: effort },
+						{ id: "fast", value: fast },
+					],
+				},
+			});
+		}
+	});
+	it.each([
+		"grok-4.6",
+		"composer-2.5",
+	])("preserves native SDK model %s", async (model) => {
+		sdkMock.__install({ events: [] });
+		await new CursorRunner({ workingDirectory: tempWorkspace(), model }).start(
+			"hi",
+		);
+		expect(sdkMock.create).toHaveBeenCalledWith(
+			expect.objectContaining({ model: { id: model } }),
+		);
+	});
+
 	it("installs and uninstalls .cursor permission artifacts around a session", async () => {
 		const workspace = tempWorkspace();
 		const cyrusHome = tempWorkspace();
