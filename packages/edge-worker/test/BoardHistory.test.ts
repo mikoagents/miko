@@ -35,11 +35,21 @@ describe("task archive", () => {
 		const file = await path();
 		const archive = new BoardHistory(file);
 		await archive.ready();
-		archive.add({ ...task("new"), reasoningEffort: "xhigh" }, []);
+		archive.add(
+			{
+				...task("new"),
+				reasoningEffort: "xhigh",
+				linearWorkspaceSlug: "nexmoe",
+			},
+			[],
+		);
 		archive.add(task("old"), []);
 		await archive.flush();
 		const restored = new BoardHistory(file);
 		await restored.ready();
+		expect(
+			restored.tasks().find((t) => t.id === "new")?.linearWorkspaceSlug,
+		).toBe("nexmoe");
 		expect(restored.tasks().find((t) => t.id === "new")?.reasoningEffort).toBe(
 			"xhigh",
 		);

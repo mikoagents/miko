@@ -10,6 +10,7 @@ const text = z.string().max(4100);
 const taskSchema = z.object({
 	id: text,
 	issue: text,
+	linearWorkspaceSlug: text.optional(),
 	title: text,
 	status: z.enum(["running", "completed", "error", "idle"]),
 	reason: text,
@@ -95,6 +96,8 @@ export class BoardHistory {
 		const task = { ...parsed.task, archived: true, quiet: false };
 		for (const key of ["issue", "title", "reason", "model"] as const)
 			task[key] = this.sanitize(task[key]);
+		if (task.linearWorkspaceSlug)
+			task.linearWorkspaceSlug = this.sanitize(task.linearWorkspaceSlug);
 		if (task.reasoningEffort)
 			task.reasoningEffort = this.sanitize(task.reasoningEffort);
 		task.repositories = task.repositories.map(this.sanitize);
