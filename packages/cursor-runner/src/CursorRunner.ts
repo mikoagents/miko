@@ -40,6 +40,7 @@ import type {
 	SDKResultMessage,
 	SDKUserMessage,
 } from "cyrus-core";
+import { CursorWorkflowContext } from "./CursorWorkflowContext.js";
 import { CursorMessageFormatter } from "./formatter.js";
 import {
 	buildCyrusPermissionsConfig,
@@ -439,10 +440,13 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 	private sandboxRestoreState: CursorSandboxRestoreState | null = null;
 	private sandboxEnvRestoreState: Map<string, string | undefined> | null = null;
 	private permissionsArtifactsInstalled = false;
+	private readonly workflowContext: CursorWorkflowContext;
+	private readonly submittedPrompts = new Map<string, string>();
 
 	constructor(config: CursorRunnerConfig) {
 		super();
 		this.config = config;
+		this.workflowContext = new CursorWorkflowContext(config);
 		this.formatter = new CursorMessageFormatter();
 
 		if (config.onMessage) this.on("message", config.onMessage);
@@ -478,11 +482,13 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.startTimestampMs = Date.now();
 		this.errorMessages = [];
 		this.emittedToolUseIds.clear();
+		this.submittedPrompts.clear();
 		this.setupLogging(initialSessionId);
 
 		const workspace = resolve(this.config.workingDirectory || cwd());
 
 		try {
+			this.workflowContext.stage(workspace);
 			this.installPermissionsArtifacts(workspace);
 
 			// Test/CI fallback for environments where the SDK can't run.
@@ -570,39 +576,60 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 			let caughtError: unknown;
 			try {
-				const run = await agent.send(prompt, {
-					onDelta: ({ update }) => {
-						// `turn-ended` is the only delta carrying token totals.
-						// Each fire is a per-turn snapshot — accumulate across
-						// turns so the final result reports the run total.
-						if (
-							update &&
-							typeof update === "object" &&
-							(update as { type?: string }).type === "turn-ended"
-						) {
-							const usage = (update as { usage?: Partial<CursorTokenTotals> })
-								.usage;
-							if (usage) {
-								this.tokenTotals.inputTokens += toFiniteNumber(
-									usage.inputTokens,
-								);
-								this.tokenTotals.outputTokens += toFiniteNumber(
-									usage.outputTokens,
-								);
-								this.tokenTotals.cacheReadTokens += toFiniteNumber(
-									usage.cacheReadTokens,
-								);
-								this.tokenTotals.cacheWriteTokens += toFiniteNumber(
-									usage.cacheWriteTokens,
-								);
+				let nextPrompt = prompt;
+				// Match the shared Stop guardrail: one continuation, never an unbounded loop.
+				for (let attempt = 0; attempt < 2; attempt++) {
+					const submitted = this.workflowContext.buildPrompt(
+						workspace,
+						nextPrompt,
+					);
+					this.submittedPrompts.set(submitted, nextPrompt);
+					const run = await agent.send(submitted, {
+						onDelta: ({ update }) => {
+							// `turn-ended` is the only delta carrying token totals.
+							// Each fire is a per-turn snapshot — accumulate across
+							// turns so the final result reports the run total.
+							if (
+								update &&
+								typeof update === "object" &&
+								(update as { type?: string }).type === "turn-ended"
+							) {
+								const usage = (update as { usage?: Partial<CursorTokenTotals> })
+									.usage;
+								if (usage) {
+									this.tokenTotals.inputTokens += toFiniteNumber(
+										usage.inputTokens,
+									);
+									this.tokenTotals.outputTokens += toFiniteNumber(
+										usage.outputTokens,
+									);
+									this.tokenTotals.cacheReadTokens += toFiniteNumber(
+										usage.cacheReadTokens,
+									);
+									this.tokenTotals.cacheWriteTokens += toFiniteNumber(
+										usage.cacheWriteTokens,
+									);
+								}
 							}
-						}
-					},
-				});
-				this.currentRun = run;
-				for await (const event of run.stream()) {
-					if (this.wasStopped) break;
-					this.handleSdkEvent(event);
+						},
+					});
+					this.currentRun = run;
+					for await (const event of run.stream()) {
+						if (this.wasStopped) break;
+						await this.handleSdkEvent(event);
+					}
+					this.flushAssistantTextBuffer();
+					if (
+						attempt > 0 ||
+						this.wasStopped ||
+						(this.pendingResultMessage as SDKResultMessage | null)?.is_error ||
+						this.errorMessages.length > 0
+					)
+						break;
+					const followup = await this.getStopFollowup(workspace);
+					if (!followup || this.wasStopped) break;
+					nextPrompt = followup;
+					this.lastAssistantText = null;
 				}
 			} catch (error) {
 				caughtError = error;
@@ -614,6 +641,35 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 
 		return this.sessionInfo;
+	}
+
+	private async getStopFollowup(
+		workspace: string,
+	): Promise<string | undefined> {
+		const reasons: string[] = [];
+		for (const matcher of this.config.hooks?.Stop ?? []) {
+			for (const hook of matcher.hooks) {
+				const result = await hook(
+					{
+						hook_event_name: "Stop",
+						session_id: this.sessionInfo?.sessionId ?? "",
+						transcript_path: "",
+						cwd: workspace,
+						stop_hook_active: false,
+					},
+					undefined,
+					{ signal: new AbortController().signal },
+				);
+				if (
+					"decision" in result &&
+					result.decision === "block" &&
+					result.reason
+				) {
+					reasons.push(result.reason);
+				}
+			}
+		}
+		return reasons.length ? reasons.join("\n\n") : undefined;
 	}
 
 	async startStreaming(_initialPrompt?: string): Promise<CursorSessionInfo> {
@@ -659,7 +715,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 
 	// ---------- SDK event handling ----------
 
-	private handleSdkEvent(event: CursorSDKMessage): void {
+	private async handleSdkEvent(event: CursorSDKMessage): Promise<void> {
 		switch (event.type) {
 			case "system":
 				if (event.subtype === "init" && this.sessionInfo) {
@@ -676,7 +732,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 				return;
 			case "tool_call":
 				this.flushAssistantTextBuffer();
-				this.handleToolCallEvent(event);
+				await this.handleToolCallEvent(event);
 				return;
 			case "thinking":
 				this.flushAssistantTextBuffer();
@@ -760,7 +816,9 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			type: "user",
 			message: {
 				role: "user",
-				content: [{ type: "text", text }],
+				content: [
+					{ type: "text", text: this.submittedPrompts.get(text) ?? text },
+				],
 			},
 			parent_tool_use_id: null,
 			session_id: this.sessionInfo?.sessionId || "pending",
@@ -768,7 +826,9 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.pushMessage(message);
 	}
 
-	private handleToolCallEvent(event: CursorSDKToolUseMessage): void {
+	private async handleToolCallEvent(
+		event: CursorSDKToolUseMessage,
+	): Promise<void> {
 		this.emitInitMessage();
 		const projection = projectToolCall(event, this.config.workingDirectory);
 		if (event.status === "running") {
@@ -777,6 +837,30 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		}
 		this.emitToolUse(projection);
 		this.emitToolResult(projection);
+		if (projection.isError) return;
+		for (const matcher of this.config.hooks?.PostToolUse ?? []) {
+			if (
+				matcher.matcher &&
+				!new RegExp(matcher.matcher).test(projection.toolName)
+			)
+				continue;
+			for (const hook of matcher.hooks) {
+				await hook(
+					{
+						hook_event_name: "PostToolUse",
+						session_id: this.sessionInfo?.sessionId ?? "",
+						transcript_path: "",
+						cwd: resolve(this.config.workingDirectory || cwd()),
+						tool_name: projection.toolName,
+						tool_input: projection.toolInput,
+						tool_response: projection.result,
+						tool_use_id: projection.toolUseId,
+					},
+					projection.toolUseId,
+					{ signal: new AbortController().signal },
+				);
+			}
+		}
 	}
 
 	private handleThinkingEvent(_event: CursorSDKThinkingMessage): void {
@@ -1084,7 +1168,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 			claude_code_version: "cursor-agent",
 			slash_commands: [],
 			output_style: "default",
-			skills: [],
+			skills: this.workflowContext.getSkillNames(),
 			plugins: [],
 			uuid: crypto.randomUUID(),
 			agents: undefined,
@@ -1161,6 +1245,7 @@ export class CursorRunner extends EventEmitter implements IAgentRunner {
 		this.flushAssistantTextBuffer();
 		this.sessionInfo.isRunning = false;
 		this.uninstallPermissionsArtifacts();
+		this.workflowContext.cleanup();
 
 		let resultMessage: SDKResultMessage;
 		if (this.pendingResultMessage) {
