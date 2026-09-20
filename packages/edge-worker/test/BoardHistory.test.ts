@@ -39,14 +39,21 @@ describe("task archive", () => {
 			{
 				...task("new"),
 				reasoningEffort: "xhigh",
+				fastMode: false,
 				linearWorkspaceSlug: "nexmoe",
 			},
 			[],
 		);
 		archive.add(task("old"), []);
+		archive.add({ ...task("fast"), fastMode: true }, []);
 		await archive.flush();
 		const restored = new BoardHistory(file);
 		await restored.ready();
+		expect(restored.tasks().find((t) => t.id === "new")?.fastMode).toBe(false);
+		expect(restored.tasks().find((t) => t.id === "fast")?.fastMode).toBe(true);
+		expect(
+			restored.tasks().find((t) => t.id === "old")?.fastMode,
+		).toBeUndefined();
 		expect(
 			restored.tasks().find((t) => t.id === "new")?.linearWorkspaceSlug,
 		).toBe("nexmoe");
