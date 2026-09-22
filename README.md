@@ -42,7 +42,7 @@ Running `/atmiko-setup` starts a guided conversation with your coding agent. It 
 5. **Add your repositories.** Choose the repositories Atmiko should work on. Setup clones them and saves Atmiko's settings under `~/.atmiko`.
 6. **Start Atmiko and verify it works.** Review the setup summary, choose how to keep it running, and start the worker. The agent checks the local service and gives you the `/board` URL for tasks and logs.
 
-**Try your first task:** assign a Linear issue to Atmiko, @mention it on a configured GitHub PR or GitLab MR, or mention the bot in Slack. It creates an isolated workspace for the task, runs the coding agent, and sends progress and results back to the connected service. Keep Atmiko and your webhook tunnel running so new tasks can reach it.
+**Try your first task:** assign a Linear issue to Atmiko, @mention it on a configured GitHub PR or GitLab MR, or mention the bot in Slack. It creates an isolated workspace for the task, runs the coding agent, and sends progress and results back to the connected service. Keep Atmiko running, along with any tunnel you use, so new tasks can reach it.
 
 You can run `/atmiko-setup` again to add integrations or update your configuration.
 
