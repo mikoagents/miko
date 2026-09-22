@@ -5,7 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Changed
-- Renamed workspace packages, release metadata, MCP identifiers, setup hooks, and harness skill links for Atmiko. Exclude Markdown from Biome's unsupported-language checks while retaining code checks.
+- Renamed workspace packages, release metadata, MCP identifiers, setup hooks, and harness skill links for Atmiko. Exclude Markdown from Biome's unsupported-language checks while retaining code checks. ([#10](https://github.com/nexmoe/atmiko/pull/10))
 
 ### Changed
 - Switched builds, type checking, and development watch commands to the native TypeScript compiler, reducing measured local build time by 74% and type-check time by 68%. Prompt-assembly tests now use mock Linear trackers reliably, preventing network-dependent CI timeouts. ([CYPACK-1520](https://linear.app/ceedar/issue/CYPACK-1520), #1485)

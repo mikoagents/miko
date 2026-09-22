@@ -5,11 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Renamed the product to Atmiko, including the `atmiko` CLI, `ATMIKO_*` environment variables, `~/.atmiko` configuration, setup skills, integration names, and repository links.
-- Source installations resolve the selected ref to an exact recorded commit; use `--ref <commit>` for reproducible installs.
+- Renamed the product to Atmiko, including the `atmiko` CLI, `ATMIKO_*` environment variables, `~/.atmiko` configuration, setup skills, integration names, and repository links. ([#10](https://github.com/nexmoe/atmiko/pull/10))
+- Source installations resolve the selected ref to an exact recorded commit; use `--ref <commit>` for reproducible installs. ([#10](https://github.com/nexmoe/atmiko/pull/10))
 
 ### Removed
-- Removed Pro / Team plans, paid onboarding, billing configuration, hosted-runtime prompts, and default connections to the former hosted service. Self-hosted integrations remain available.
+- Removed Pro / Team plans, paid onboarding, billing configuration, hosted-runtime prompts, and default connections to the former hosted service. Self-hosted integrations remain available. ([#10](https://github.com/nexmoe/atmiko/pull/10))
 
 ### Added
 - Task cards show a Fast marker only when enabled; Cursor sessions retain the selected setting in task history. ([#6](https://github.com/nexmoe/atmiko/pull/6))
