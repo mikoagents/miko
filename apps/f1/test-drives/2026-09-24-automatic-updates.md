@@ -52,4 +52,16 @@ GET /status -> 200 {"status":"idle"}
 
 The Node installer/supervisor regression suite uses actual child processes and temporary release directories. It covers busy-to-idle activation, network/build failure, candidate startup failure and rollback, interrupted activation recovery, version pins, unchanged remote heads, cancellation, concurrent-install locks, and launcher argument forwarding. Skill tests cover unchanged/default updates, custom content/files/symlinks/deletions, legacy migration, and rollback.
 
-F1 validates the real task admission and shutdown boundaries. The supervisor regression tests use a controlled remote/build adapter, so they do not claim to validate a live GitHub download or pnpm build during an upgrade.
+F1 validates the real task admission and shutdown boundaries. The supervisor regression tests use a controlled remote/build adapter. The following separate live test validates GitHub fetching and pnpm builds.
+
+## Live source-install upgrade
+
+- [x] Installed published feature commit `57dd00db` from `https://github.com/mikoagents/miko.git` into a temporary install root, tracking `feat/automatic-updates`.
+- [x] Started its installed launcher with an isolated config home on port 3610 using the default update timers.
+- [x] Pushed `8712a65a` while the service was running. With no manual update request, the supervisor discovered it, fetched from GitHub, installed frozen dependencies, and built the candidate.
+- [x] The idle worker saved state and exited cleanly. The candidate started, completed its 30-second probation, and became active.
+- [x] `--installation` and `current.json` identified `8712a65a`; `previous.json` retained `57dd00db`. Update state reported `up-to-date` with no trial or error.
+- [x] `/status` returned HTTP 200 and `idle`; `/board` and `/board/api/snapshot` also returned HTTP 200.
+- [x] Stopped the isolated supervisor after verification. No production service was changed.
+
+This live upgrade ran on macOS with Node 22.22.3 and pnpm 10.33.1. Windows was not live-tested.

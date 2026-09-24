@@ -44,8 +44,15 @@ async function fixture(adapterOverrides: Partial<AutomationAdapter> = {}) {
 	return { directory, adapter, store, service };
 }
 async function dispatched(service: AutomationService, id: string) {
-	await vi.waitFor(() =>
-		expect(service.runs(id)[0]?.status).not.toBe("dispatching"),
+	// Dispatch persists multiple fsync-backed transactions; shared CI disks can
+	// exceed waitFor's one-second default while the package suite runs in parallel.
+	await vi.waitFor(
+		() => {
+			const run = service.runs(id)[0];
+			expect(run).toBeDefined();
+			expect(run.status).not.toBe("dispatching");
+		},
+		{ timeout: 10000 },
 	);
 }
 
