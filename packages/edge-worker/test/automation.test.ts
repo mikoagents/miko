@@ -106,6 +106,26 @@ describe("automation time calculations", () => {
 });
 
 describe("durable automation dispatch", () => {
+	it("keeps due schedules paused during candidate probation until activation", async () => {
+		const { service, directory, adapter, store } = await fixture();
+		const definition = await service.save(input());
+		await store.transact((state) => {
+			state.definitions[0]!.nextRunAt = Date.now() - 1;
+		});
+		await service.stop();
+		const candidate = new AutomationService(
+			new AutomationStore(directory),
+			adapter,
+		);
+		cleanups.push(() => candidate.stop());
+		await candidate.start(false, true);
+		await candidate.tick(Date.now());
+		expect(adapter.dispatch).not.toHaveBeenCalled();
+		candidate.enableScheduling();
+		await candidate.tick(Date.now());
+		await dispatched(candidate, definition.id);
+		expect(adapter.dispatch).toHaveBeenCalledTimes(1);
+	});
 	it("persists the run before dispatch and deduplicates simultaneous manual requests", async () => {
 		const { service, directory, adapter } = await fixture();
 		vi.mocked(adapter.dispatch).mockImplementation(async (run) => {
