@@ -5,7 +5,7 @@ This changelog documents internal development changes, refactors, tooling update
 ## [Unreleased]
 
 ### Added
-- Added the Atmiko website in `apps/web`, with product and setup documentation, local Slack and Linear workflow demos, responsive layouts, and bundled assets.
+- Added the Miko website in `apps/web`, with product and setup documentation, local Slack and Linear workflow demos, responsive layouts, and bundled assets. ([#14](https://github.com/nexmoe/atmiko/pull/14))
 
 ### Changed
 - Explain the guided `/atmiko-setup` flow and how to start a first task in the README's Getting Started section. ([#11](https://github.com/nexmoe/atmiko/pull/11))
