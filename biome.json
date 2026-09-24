@@ -21,6 +21,12 @@
 	},
 	"overrides": [
 		{
+			"includes": ["apps/web/public/assets/reference.css"],
+			"formatter": { "enabled": false },
+			"linter": { "enabled": false },
+			"assist": { "enabled": false }
+		},
+		{
 			"includes": ["**/*.test.ts", "**/test/**/*.ts"],
 			"linter": {
 				"rules": {
