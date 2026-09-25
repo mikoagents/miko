@@ -1,0 +1,12 @@
+{
+	"name": "miko-web",
+	"compatibility_date": "2026-09-25",
+	"build": {
+		"command": "pnpm build"
+	},
+	"assets": {
+		"directory": "./dist",
+		"html_handling": "auto-trailing-slash",
+		"not_found_handling": "404-page"
+	}
+}

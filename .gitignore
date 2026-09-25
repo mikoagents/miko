@@ -17,6 +17,8 @@ tempdocs
 
 # Environment variables
 .env
+# Account id only. Alchemy reads this during Workers Builds; real tokens stay in CI.
+!apps/web/.env
 
 # Logs
 logs

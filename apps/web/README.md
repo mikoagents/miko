@@ -28,7 +28,7 @@ Ongoing deploys use Cloudflare Workers Builds connected to `mikoagents/miko`. Co
 | Deploy command | `pnpm --filter @miko/web exec alchemy deploy --stage production --yes` |
 | Non-production branch builds | Disabled |
 
-Build variables: `NODE_VERSION=22`, `PNPM_VERSION=10.33.1`, `CLOUDFLARE_ACCOUNT_ID`, and a secret `CLOUDFLARE_API_TOKEN`. The token needs Workers Scripts write, plus Secrets Store write so Alchemy can read its Cloudflare state store. Workers Builds installs workspace dependencies before the build command. The deploy command only uploads `dist/`.
+`apps/web/.env` supplies `CLOUDFLARE_ACCOUNT_ID` for that Alchemy command. Workers Builds injects `CLOUDFLARE_API_TOKEN`. The token needs Workers Scripts write, plus Secrets Store write so Alchemy can read its Cloudflare state store. A root `wrangler.jsonc` also lets the default `npx wrangler deploy` upload `apps/web/dist`. Workers Builds installs workspace dependencies before the build command. The deploy command only uploads `dist/`.
 
 Open http://127.0.0.1:4321/. The existing `/bot` route renders the same page for compatibility. Astro may run the development server in the background; stop it with `pnpm --filter @miko/web exec astro dev stop`.
 
