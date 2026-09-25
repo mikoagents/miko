@@ -402,6 +402,7 @@ describe("EdgeWorker - PR review trigger gate (CYPACK-1273)", () => {
 			mockRepository,
 			"fix-tests",
 			42,
+			{ isPullRequest: true, title: "Fix failing tests" },
 		);
 	});
 

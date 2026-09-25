@@ -42,7 +42,7 @@ Running `/miko-setup` starts a guided conversation with your coding agent. It wa
 5. **Add your repositories.** Choose the repositories Miko should work on. Setup clones them and saves Miko's settings under `~/.miko`.
 6. **Start Miko and verify it works.** Review the setup summary, choose how to keep it running, and start the worker. The agent checks the local service and gives you the `/board` URL for tasks and logs.
 
-**Try your first task:** assign a Linear issue to Miko, @mention it on a configured GitHub PR or GitLab MR, or mention the bot in Slack. It creates an isolated workspace for the task, runs the coding agent, and sends progress and results back to the connected service. Keep Miko running, along with any tunnel you use, so new tasks can reach it.
+**Try your first task:** assign a Linear issue to Miko, @mention it on a configured GitHub Issue/PR or GitLab MR, or mention the bot in Slack. It creates an isolated workspace for the task, runs the coding agent, and sends progress and results back to the connected service. Keep Miko running, along with any tunnel you use, so new tasks can reach it.
 
 You can run `/miko-setup` again to add integrations or update your configuration.
 

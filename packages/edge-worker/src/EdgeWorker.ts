@@ -1603,21 +1603,19 @@ export class EdgeWorker extends EventEmitter {
 		};
 
 		try {
-			// Only handle comments on pull requests
-			if (!isCommentOnPullRequest(event)) {
-				this.logger.debug("Ignoring GitHub comment on non-PR issue");
-				return;
-			}
-
+			const onPullRequest = isCommentOnPullRequest(event);
 			const repoFullName = extractRepoFullName(event);
-			const prNumber = extractPRNumber(event);
+			const issueOrPrNumber = extractPRNumber(event);
 			const commentBody = extractCommentBody(event);
 			const commentAuthor = extractCommentAuthor(event);
-			const prTitle = extractPRTitle(event);
+			const issueOrPrTitle = extractPRTitle(event);
 			const sessionKey = extractSessionKey(event);
 			githubPrQueueKey = sessionKey;
 
 			const isPullRequestReview = isPullRequestReviewPayload(event.payload);
+
+			// Plain Issues are eligible when they @mention the bot; PRs keep prior behavior.
+			// Prefer info logs when skipping ineligible Issue comments.
 
 			// Skip comments from the bot itself to prevent infinite loops
 			const botUsername = process.env.GITHUB_BOT_USERNAME;
@@ -1626,7 +1624,7 @@ export class EdgeWorker extends EventEmitter {
 			const authorLogin = commentAuthor.replace(/\[bot\]$/i, "").toLowerCase();
 			if (botLogin && authorLogin === botLogin) {
 				this.logger.debug(
-					`Ignoring comment from bot user @${botUsername} on ${repoFullName}#${prNumber}`,
+					`Ignoring comment from bot user @${botUsername} on ${repoFullName}#${issueOrPrNumber}`,
 				);
 				return;
 			}
@@ -1647,7 +1645,7 @@ export class EdgeWorker extends EventEmitter {
 			// no agent session. Defaults to enabled when the flag is unset.
 			if (isPullRequestReview && this.config.prReviewTrigger === false) {
 				this.logger.debug(
-					`PR review trigger is disabled, ignoring pull_request_review on ${repoFullName}#${prNumber}`,
+					`PR review trigger is disabled, ignoring pull_request_review on ${repoFullName}#${issueOrPrNumber}`,
 				);
 				return;
 			}
@@ -1659,14 +1657,17 @@ export class EdgeWorker extends EventEmitter {
 				botUsername &&
 				!commentBody.includes(`@${botUsername}`)
 			) {
-				this.logger.debug(
-					`Ignoring comment without @${botUsername} mention on ${repoFullName}#${prNumber}`,
-				);
+				const skipMsg = `Ignoring comment without @${botUsername} mention on ${repoFullName}#${issueOrPrNumber}${onPullRequest ? "" : " (plain Issue)"}`;
+				if (onPullRequest) {
+					this.logger.debug(skipMsg);
+				} else {
+					this.logger.info(skipMsg);
+				}
 				return;
 			}
 
 			this.logger.info(
-				`Processing GitHub webhook: ${repoFullName}#${prNumber} by @${commentAuthor}${isPullRequestReview ? " (pull_request_review)" : ""}`,
+				`Processing GitHub webhook: ${repoFullName}#${issueOrPrNumber} by @${commentAuthor}${isPullRequestReview ? " (pull_request_review)" : onPullRequest ? "" : " (plain Issue)"}`,
 			);
 
 			// Add "eyes" reaction to acknowledge receipt (not for pull_request_review — we post a comment instead)
@@ -1710,7 +1711,7 @@ export class EdgeWorker extends EventEmitter {
 					!!botUsername && commentBody.includes(`@${botUsername}`);
 				const shouldReply = wasMentioned || isPullRequestReview;
 
-				if (shouldReply && reactionToken && prNumber) {
+				if (shouldReply && reactionToken && issueOrPrNumber) {
 					// Presence of MIKO_API_KEY indicates this worker is paired with the
 					// operator-owned control plane. Absence means the worker is
 					// running on the Community plan (self-managed config.json).
@@ -1762,7 +1763,7 @@ export class EdgeWorker extends EventEmitter {
 
 			if (!writeAccess.allowed) {
 				this.logger.info(
-					`Denied GitHub session for @${commentAuthor} on ${repoFullName}#${prNumber}: ${writeAccess.reason} (permission=${writeAccess.permission ?? "none"})`,
+					`Denied GitHub session for @${commentAuthor} on ${repoFullName}#${issueOrPrNumber}: ${writeAccess.reason} (permission=${writeAccess.permission ?? "none"})`,
 				);
 				await this.postGitHubReplyBody(
 					event,
@@ -1785,7 +1786,7 @@ export class EdgeWorker extends EventEmitter {
 					queued = true;
 					this.queuedGitHubPrEvents.set(sessionKey, queue);
 					this.logger.info(
-						`Queued GitHub webhook for ${repoFullName}#${prNumber}; ${queue.length} event(s) waiting`,
+						`Queued GitHub webhook for ${repoFullName}#${issueOrPrNumber}; ${queue.length} event(s) waiting`,
 					);
 
 					return;
@@ -1796,19 +1797,19 @@ export class EdgeWorker extends EventEmitter {
 			}
 
 			const reviewId = getAutomaticReviewId(event);
-			if (reviewId && reactionToken && prNumber) {
+			if (reviewId && reactionToken && issueOrPrNumber) {
 				try {
 					if (
 						await this.gitHubCommentService.isReviewFullyResolved({
 							token: reactionToken,
 							owner: extractRepoOwner(event),
 							repo: extractRepoName(event),
-							pullNumber: prNumber,
+							pullNumber: issueOrPrNumber,
 							reviewId,
 						})
 					) {
 						this.logger.info(
-							`Skipping resolved Codex review ${reviewId} on ${repoFullName}#${prNumber}`,
+							`Skipping resolved Codex review ${reviewId} on ${repoFullName}#${issueOrPrNumber}`,
 						);
 						await finishReaction(true);
 						return;
@@ -1820,21 +1821,30 @@ export class EdgeWorker extends EventEmitter {
 				}
 			}
 
-			// Determine the PR head branch and base branch
+			// Determine the working branch and base branch
 			let branchRef = extractPRBranchRef(event);
 			let baseBranchRef = extractPRBaseBranchRef(event);
 
-			// For issue_comment events, the branch refs are not in the payload
-			// We need to fetch them from the GitHub API
-			if (!branchRef && isIssueCommentPayload(event.payload)) {
-				const refs = await this.fetchPRBranchRefs(event, repository);
-				branchRef = refs?.headRef ?? null;
-				baseBranchRef = refs?.baseRef ?? null;
+			if (onPullRequest) {
+				// For PR issue_comment events, branch refs are not in the payload —
+				// fetch them from the GitHub API.
+				if (!branchRef && isIssueCommentPayload(event.payload)) {
+					const refs = await this.fetchPRBranchRefs(event, repository);
+					branchRef = refs?.headRef ?? null;
+					baseBranchRef = refs?.baseRef ?? null;
+				}
+			} else {
+				// Plain Issue: branch from the repo default/base, not a PR head.
+				baseBranchRef = repository.baseBranch;
+				branchRef = this.buildGitHubIssueBranchName(
+					issueOrPrNumber!,
+					issueOrPrTitle,
+				);
 			}
 
-			if (!branchRef || !prNumber) {
+			if (!branchRef || !issueOrPrNumber) {
 				this.logger.error(
-					`Could not determine branch or PR number for ${repoFullName}#${prNumber}`,
+					`Could not determine branch or issue/PR number for ${repoFullName}#${issueOrPrNumber}`,
 				);
 				return;
 			}
@@ -1877,24 +1887,29 @@ export class EdgeWorker extends EventEmitter {
 				workspace = await this.createGitHubWorkspace(
 					repository,
 					branchRef,
-					prNumber,
+					issueOrPrNumber,
+					{ isPullRequest: onPullRequest, title: issueOrPrTitle },
 				);
 			}
 
 			if (!workspace) {
 				this.logger.error(
-					`Failed to create workspace for ${repoFullName}#${prNumber}`,
+					`Failed to create workspace for ${repoFullName}#${issueOrPrNumber}`,
 				);
 				return;
 			}
 
 			this.logger.info(`GitHub workspace created at: ${workspace.path}`);
 
-			// Create a synthetic session for this GitHub PR comment
+			// Create a synthetic session for this GitHub Issue/PR comment
 			const issueMinimal: IssueMinimal = {
 				id: sessionKey,
-				identifier: `${extractRepoName(event)}#${prNumber}`,
-				title: prTitle || `PR #${prNumber}`,
+				identifier: `${extractRepoName(event)}#${issueOrPrNumber}`,
+				title:
+					issueOrPrTitle ||
+					(onPullRequest
+						? `PR #${issueOrPrNumber}`
+						: `Issue #${issueOrPrNumber}`),
 				branchName: branchRef,
 			};
 
@@ -1938,14 +1953,16 @@ export class EdgeWorker extends EventEmitter {
 			// Store GitHub-specific metadata for reply posting
 			session.metadata.commentId = String(extractCommentId(event));
 
-			// Build the system prompt for this GitHub PR session
+			// Build the system prompt for this GitHub Issue/PR session
 			const systemPrompt = isPullRequestReview
 				? this.buildGitHubChangeRequestSystemPrompt(
 						event,
 						branchRef,
 						taskInstructions,
 					)
-				: this.buildGitHubSystemPrompt(event, branchRef, taskInstructions);
+				: this.buildGitHubSystemPrompt(event, branchRef, taskInstructions, {
+						isPullRequest: onPullRequest,
+					});
 
 			// Build allowed tools using the GitHub platform resolver, which honors
 			// `githubAllowedTools` on the workspace config and falls back to
@@ -1996,7 +2013,7 @@ export class EdgeWorker extends EventEmitter {
 							.then(finishReaction)
 							.catch((error) => {
 								this.logger.error(
-									`Failed to post GitHub reply to ${repoFullName}#${prNumber}`,
+									`Failed to post GitHub reply to ${repoFullName}#${issueOrPrNumber}`,
 									error instanceof Error ? error : new Error(String(error)),
 								);
 							});
@@ -2025,7 +2042,7 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			this.logger.info(
-				`Starting ${runnerType} runner for GitHub PR ${repoFullName}#${prNumber}`,
+				`Starting ${runnerType} runner for GitHub ${onPullRequest ? "PR" : "Issue"} ${repoFullName}#${issueOrPrNumber}`,
 			);
 
 			// Start the session and handle completion
@@ -2045,7 +2062,7 @@ export class EdgeWorker extends EventEmitter {
 				await replyCompletion;
 			} catch (error) {
 				this.logger.error(
-					`GitHub session error for ${repoFullName}#${prNumber}`,
+					`GitHub session error for ${repoFullName}#${issueOrPrNumber}`,
 					error instanceof Error ? error : new Error(String(error)),
 				);
 				if (!githubReplyPosted) {
@@ -2282,21 +2299,43 @@ Your base branch \`${branchName}\` has received ${commitCount} new commit(s). Co
 	}
 
 	/**
-	 * Create a git worktree for a GitHub PR branch.
+	 * Build a branch name for a plain GitHub Issue wake (new branch from default base).
+	 */
+	private buildGitHubIssueBranchName(
+		issueNumber: number,
+		title: string | null,
+	): string {
+		const slug = (title || "issue")
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.substring(0, 40);
+		return `miko/github-issue-${issueNumber}${slug ? `-${slug}` : ""}`;
+	}
+
+	/**
+	 * Create a git worktree for a GitHub Issue or PR branch.
+	 * For PRs, checks out the PR head. For plain Issues, creates a new branch
+	 * from the repository default/base (branchRef is the new branch name).
 	 * If the worktree already exists for this branch, reuse it.
 	 */
 	private async createGitHubWorkspace(
 		repository: RepositoryConfig,
 		branchRef: string,
-		prNumber: number,
+		issueOrPrNumber: number,
+		options?: { isPullRequest?: boolean; title?: string | null },
 	): Promise<{ path: string; isGitWorktree: boolean } | null> {
+		const isPullRequest = options?.isPullRequest !== false;
+		const label = isPullRequest ? "PR" : "Issue";
 		try {
 			// Use the GitService to create the worktree
-			// Create a synthetic issue-like object for the git service
+			// Create a synthetic issue-like object for the git service.
+			// Plain Issues must not assume pull_request fields — branchRef is the
+			// new working branch created from repository.baseBranch.
 			const syntheticIssue = {
-				id: `github-pr-${prNumber}`,
-				identifier: `PR-${prNumber}`,
-				title: `PR #${prNumber}`,
+				id: `github-${isPullRequest ? "pr" : "issue"}-${issueOrPrNumber}`,
+				identifier: `${isPullRequest ? "PR" : "ISSUE"}-${issueOrPrNumber}`,
+				title: options?.title || `${label} #${issueOrPrNumber}`,
 				description: null,
 				url: "",
 				branchName: branchRef,
@@ -2331,7 +2370,7 @@ Your base branch \`${branchName}\` has received ${commitCount} new commit(s). Co
 			]);
 		} catch (error) {
 			this.logger.error(
-				`Failed to create GitHub workspace for PR #${prNumber}`,
+				`Failed to create GitHub workspace for ${label} #${issueOrPrNumber}`,
 				error instanceof Error ? error : new Error(String(error)),
 			);
 			return null;
@@ -2339,24 +2378,48 @@ Your base branch \`${branchName}\` has received ${commitCount} new commit(s). Co
 	}
 
 	/**
-	 * Build a system prompt for a GitHub PR comment session.
+	 * Build a system prompt for a GitHub Issue or PR comment session.
 	 */
 	private buildGitHubSystemPrompt(
 		event: GitHubCommentWebhookEvent,
 		branchRef: string,
 		taskInstructions: string,
+		options?: { isPullRequest?: boolean },
 	): string {
 		const repoFullName = extractRepoFullName(event);
-		const prNumber = extractPRNumber(event);
-		const prTitle = extractPRTitle(event);
+		const number = extractPRNumber(event);
+		const title = extractPRTitle(event);
 		const commentAuthor = extractCommentAuthor(event);
 		const commentUrl = extractCommentUrl(event);
+		const isPullRequest = options?.isPullRequest !== false;
+
+		if (!isPullRequest) {
+			return `You are working on a GitHub Issue.
+
+## Context
+- **Repository**: ${repoFullName}
+- **Issue**: #${number} - ${title || "Untitled"}
+- **Branch**: ${branchRef} (created from the repository default/base branch)
+- **Requested by**: @${commentAuthor}
+- **Comment URL**: ${commentUrl}
+
+## Task
+${taskInstructions}
+
+## Instructions
+- You are checked out on a new branch \`${branchRef}\` created from the repository default/base branch
+- Make changes on this branch; do not commit directly to the default branch
+- After making changes, commit and push them, then open a pull request if appropriate
+- Be concise in your responses as they will be posted back to the GitHub Issue
+
+${GITHUB_REPLY_INSTRUCTIONS}`;
+		}
 
 		return `You are working on a GitHub Pull Request.
 
 ## Context
 - **Repository**: ${repoFullName}
-- **PR**: #${prNumber} - ${prTitle || "Untitled"}
+- **PR**: #${number} - ${title || "Untitled"}
 - **Branch**: ${branchRef}
 - **Requested by**: @${commentAuthor}
 - **Comment URL**: ${commentUrl}
@@ -2468,7 +2531,7 @@ ${GITHUB_REPLY_INSTRUCTIONS}`;
 			const commentId = extractCommentId(event);
 
 			if (!prNumber) {
-				this.logger.warn("Cannot post GitHub reply: no PR number");
+				this.logger.warn("Cannot post GitHub reply: no issue/PR number");
 				return false;
 			}
 
