@@ -1960,12 +1960,9 @@ export class EdgeWorker extends EventEmitter {
 						branchRef,
 						taskInstructions,
 					)
-				: this.buildGitHubSystemPrompt(
-						event,
-						branchRef,
-						taskInstructions,
-						{ isPullRequest: onPullRequest },
-					);
+				: this.buildGitHubSystemPrompt(event, branchRef, taskInstructions, {
+						isPullRequest: onPullRequest,
+					});
 
 			// Build allowed tools using the GitHub platform resolver, which honors
 			// `githubAllowedTools` on the workspace config and falls back to
@@ -2338,8 +2335,7 @@ Your base branch \`${branchName}\` has received ${commitCount} new commit(s). Co
 			const syntheticIssue = {
 				id: `github-${isPullRequest ? "pr" : "issue"}-${issueOrPrNumber}`,
 				identifier: `${isPullRequest ? "PR" : "ISSUE"}-${issueOrPrNumber}`,
-				title:
-					options?.title || `${label} #${issueOrPrNumber}`,
+				title: options?.title || `${label} #${issueOrPrNumber}`,
 				description: null,
 				url: "",
 				branchName: branchRef,
