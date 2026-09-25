@@ -5,34 +5,34 @@ import Header from "../components/Header.astro";
 import { absoluteUrl, site } from "../data/site";
 
 interface Props {
-  title?: string;
-  description?: string;
-  canonicalPath?: string;
-  robots?: string;
-  jsonLd?: unknown;
+	title?: string;
+	description?: string;
+	canonicalPath?: string;
+	robots?: string;
+	jsonLd?: unknown;
 }
 
 const {
-  title,
-  description = site.description,
-  canonicalPath,
-  robots = site.robots,
-  jsonLd,
+	title,
+	description = site.description,
+	canonicalPath,
+	robots = site.robots,
+	jsonLd,
 } = Astro.props;
 
 if (!Astro.site) {
-  throw new Error("Set site in astro.config.mjs before building the website.");
+	throw new Error("Set site in astro.config.mjs before building the website.");
 }
 
 const pageTitle = title ? `${title} | ${site.name}` : site.title;
 const indexable = !robots.includes("noindex");
 const canonical = indexable
-  ? absoluteUrl(Astro.site, canonicalPath ?? Astro.url.pathname)
-  : undefined;
+	? absoluteUrl(Astro.site, canonicalPath ?? Astro.url.pathname)
+	: undefined;
 const image = absoluteUrl(Astro.site, site.image);
 const jsonLdText = jsonLd
-  ? JSON.stringify(jsonLd).replace(/</g, "\\u003c")
-  : undefined;
+	? JSON.stringify(jsonLd).replace(/</g, "\\u003c")
+	: undefined;
 ---
 
 <!doctype html>

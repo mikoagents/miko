@@ -11,12 +11,12 @@ import { homeJsonLd } from "../data/site";
 import Layout from "../layouts/Layout.astro";
 
 interface Props {
-  canonicalPath?: string;
+	canonicalPath?: string;
 }
 
 const { canonicalPath } = Astro.props;
 if (!Astro.site) {
-  throw new Error("Set site in astro.config.mjs before building the website.");
+	throw new Error("Set site in astro.config.mjs before building the website.");
 }
 ---
 
