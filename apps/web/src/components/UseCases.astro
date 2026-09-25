@@ -1,6 +1,6 @@
 ---
-import LinearDemo from "./LinearDemo.astro";
 import cases from "../data/use-cases.json";
+import LinearDemo from "./LinearDemo.astro";
 
 const exampleOrder = [
 	"bug-fixes",
@@ -12,7 +12,9 @@ const exampleOrder = [
 	"documentation",
 	"parallel-tasks",
 ];
-const examples = exampleOrder.map((id) => cases.find((item) => item.id === id)!);
+const examples = exampleOrder.map(
+	(id) => cases.find((item) => item.id === id)!,
+);
 ---
 
 <section id="use-cases">
