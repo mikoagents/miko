@@ -3,9 +3,10 @@
 node_modules
 **/node_modules
 
-# This monorepo uses pnpm — npm/yarn lockfiles should never be committed
+# This monorepo uses pnpm. Other lockfiles make Workers Builds install with the wrong tool.
 package-lock.json
 yarn.lock
+bun.lock
 
 # Build output
 dist/
