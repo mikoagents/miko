@@ -1,6 +1,6 @@
 ---
 name: miko-setup-github
-description: Configure GitHub for Miko — gh CLI login and git config for PRs, with optional webhook setup to enable @mention responses in PR comments, automated rebases and merges, and auto-fixing based on CI failures (coming soon).
+description: Configure GitHub for Miko — gh CLI login and git config for PRs, with optional webhook setup to enable @mention responses in Issue and PR comments, automated rebases and merges, and auto-fixing based on CI failures (coming soon).
 ---
 
 **CRITICAL: Never use `Read`, `Edit`, or `Write` tools on `~/.miko/.env` or any file inside `~/.miko/`. Use only `Bash` commands (`grep`, `printf >>`, etc.) to interact with env files — secrets must never be read into the conversation context.**
@@ -89,9 +89,9 @@ git config --global user.email
 
 Ask the user:
 
-> **Do you want Miko to respond to GitHub @mentions in PR comments and reviews?**
+> **Do you want Miko to respond to GitHub @mentions in Issue/PR comments and reviews?**
 >
-> - **Yes — enable @mentions**: Creates a GitHub App so Miko can receive PR comments and reviews via webhooks, respond when @mentioned, and act on "changes requested" reviews.
+> - **Yes — enable @mentions**: Creates a GitHub App so Miko can receive Issue/PR comments and reviews via webhooks, respond when @mentioned, and act on "changes requested" reviews.
 > - **No — PRs only**: Miko will create branches, commits, and PRs but won't respond to comments.
 
 If **No** → skip to Completion.
@@ -368,6 +368,6 @@ If webhooks were enabled:
 > ✓ Miko will respond to `@<GITHUB_BOT_USERNAME>` mentions in PR comments
 
 
-**Access control:** Only GitHub users with **write** (or higher: maintain/admin) permission on the repository can start a Miko session from an @mention or a changes-requested review. Read-only users and non-collaborators get a brief denial reply; no session is started.
+**Access control:** Only GitHub users with **write** (or higher: maintain/admin) permission on the repository can start a Miko session from an @mention on a plain Issue or PR, or from a changes-requested review. Read-only users and non-collaborators get a brief denial reply; no session is started.
 
 **Note:** The webhook URL will only respond successfully once Miko is running. If GitHub shows a webhook delivery failure during setup, it will retry automatically once Miko starts.

@@ -110,8 +110,8 @@ describe("github-webhook-utils", () => {
 			expect(extractPRNumber(prReviewEvent)).toBe(42);
 		});
 
-		it("returns null for issue_comment on a plain issue", () => {
-			expect(extractPRNumber(plainIssueCommentEvent)).toBeNull();
+		it("returns issue number for issue_comment on a plain issue", () => {
+			expect(extractPRNumber(plainIssueCommentEvent)).toBe(43);
 		});
 	});
 
@@ -232,6 +232,12 @@ describe("github-webhook-utils", () => {
 		it("creates session key from pull_request_review event", () => {
 			expect(extractSessionKey(prReviewEvent)).toBe(
 				"github:testorg/my-repo#42",
+			);
+		});
+
+		it("creates session key from plain issue comment event", () => {
+			expect(extractSessionKey(plainIssueCommentEvent)).toBe(
+				"github:testorg/my-repo#43",
 			);
 		});
 	});

@@ -82,15 +82,15 @@ export function extractPRBaseBranchRef(
 }
 
 /**
- * Extract the PR number from a GitHub webhook event
+ * Extract the issue or PR number from a GitHub webhook event.
+ *
+ * For issue_comment (plain Issue or PR timeline comment), returns the issue number.
+ * For pull_request_review / pull_request_review_comment, returns the PR number.
  */
 export function extractPRNumber(event: GitHubWebhookEvent): number | null {
 	if (isIssueCommentPayload(event.payload)) {
-		// For issue_comment on a PR, the issue number IS the PR number
-		if (event.payload.issue.pull_request) {
-			return event.payload.issue.number;
-		}
-		return null;
+		// issue_comment uses the shared Issues API number for both plain Issues and PRs
+		return event.payload.issue.number;
 	}
 
 	if (isPullRequestReviewPayload(event.payload)) {
@@ -180,12 +180,12 @@ export function isCommentOnPullRequest(event: GitHubWebhookEvent): boolean {
 
 /**
  * Extract a unique session identifier for the GitHub webhook event.
- * This is used to create a unique session for each PR + repository combination.
+ * Format: github:owner/repo#N (N is the Issue or PR number).
  */
 export function extractSessionKey(event: GitHubWebhookEvent): string {
 	const repoFullName = extractRepoFullName(event);
-	const prNumber = extractPRNumber(event);
-	return `github:${repoFullName}#${prNumber}`;
+	const number = extractPRNumber(event);
+	return `github:${repoFullName}#${number}`;
 }
 
 /**
