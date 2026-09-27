@@ -7,29 +7,40 @@
 
 </div>
 
-Miko is a self-hosted development agent for Linear, GitHub, GitLab, Slack, and Zulip. It works on tasks in isolated Git worktrees and sends progress and results back to your team. Choose Claude Code, Codex, Cursor, Gemini, OpenCode, or Grok as the coding engine.
+**Miko is an open-source, self-hosted AI coding agent.** It takes tasks from GitHub, GitLab, Linear, Slack and Zulip, works on them in isolated Git worktrees, and sends progress and results back to your team. Bring your own API keys or coding-agent subscriptions — choose Claude Code, Codex, Cursor, Gemini, OpenCode or Grok as the coding engine.
 
-Use your own API keys or coding-agent subscriptions.
+## Why Miko
 
----
+- **Open source, self-hosted AI coding agent** — Miko is open source (Apache 2.0) and runs on your own machine or server. Your code and API keys stay on your infrastructure.
+- **Works where your team already is** — take tasks from GitHub Issues & PRs, GitLab MRs, Linear, Slack and Zulip, and post progress and results back to the same place.
+- **Any coding engine** — run tasks with Claude Code, Codex, Cursor, Gemini, OpenCode or Grok.
+- **Bring your own keys** — use your own API keys or existing coding-agent subscriptions. No markup, no middleman.
+- **Isolated by default** — every task gets its own Git worktree, so parallel tasks never step on each other.
+- **Reports back** — progress and results land on the issue, PR, MR or channel that started the task.
+- **AI-guided setup** — one command installs Miko from source, and an interactive `/miko-setup` session handles auth, integrations and repositories. No manual runbook to follow.
+- **Local status board** — live tasks and searchable logs at `/board`, served from your own instance.
+- **Automations** — schedule recurring repository tasks and inspect run history.
+- **Self-updating** — source installations follow `main`, build updates while the current version keeps running, restart only when tasks are idle, and roll back automatically if a startup fails.
+
+## Integrations
+
+Miko works inside the tools your team already uses. Each integration runs on your own accounts — your GitHub App, your GitLab and Linear OAuth apps, your Slack App — and every task reports back to the issue, PR, MR or channel where it started.
+
+| Platform | How you use Miko | Docs |
+| --- | --- | --- |
+| **GitHub** | @mention Miko on any Issue or PR — it works in an isolated worktree and sends the result back as a pull request | [Git & GitHub Setup](./docs/GIT_GITHUB.md) |
+| **GitLab** | @mention Miko on a merge request or issue — results come back as an MR | [Git & GitLab Setup](./docs/GIT_GITLAB.md) |
+| **Linear** | Assign an issue to Miko — progress and results come back on the issue | [Self-Hosting Guide](./docs/SELF_HOSTING.md) |
+| **Slack** | Mention the bot in any channel — use Miko as a Slack integration for Claude Code, Codex, Cursor, Gemini or OpenCode | [Self-Hosting Guide](./docs/SELF_HOSTING.md) |
+| **Zulip** | Miko answers @mentions in Zulip topics and DMs | [Zulip Setup](./docs/ZULIP.md) |
+
+Miko keeps running on your own machine or server — expose it to your integrations through your own domain or a [Cloudflare Tunnel](./docs/CLOUDFLARE_TUNNEL.md).
 
 ## Getting Started
 
 ### Self-Hosted Setup
 
-Host everything yourself with your own Linear OAuth app, GitHub App, and Slack App. An AI-guided setup skill handles the entire onboarding: installing dependencies, configuring auth, creating integration apps, and connecting repositories — so you don't have to follow a manual guide.
-
-```bash
-npx skills add mikoagents/miko -g
-```
-
-Then in any AI coding agent (Claude Code, Codex, Cursor, etc.):
-
-```
-/miko-setup
-```
-
-The skills install **Miko from source**, including `/board` and task history. `skills add` itself only downloads the setup skills; `/miko-setup` runs their bundled source installer. The runtime is built with the checkout's pinned pnpm version and frozen lockfile, with no dependency on a global `miko` installation.
+Follow: https://atmiko.com/#get-started
 
 ### What to Expect
 
