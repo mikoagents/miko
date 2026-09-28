@@ -511,15 +511,6 @@ function StatusApp() {
 												<code title={repo.repositoryPath}>
 													{repo.repositoryPath}
 												</code>
-												{repo.workspaceBaseDir &&
-													repo.workspaceBaseDir !== repo.repositoryPath && (
-														<code
-															className="status-repo-worktrees"
-															title={repo.workspaceBaseDir}
-														>
-															worktrees: {repo.workspaceBaseDir}
-														</code>
-													)}
 											</div>
 										</article>
 									))}

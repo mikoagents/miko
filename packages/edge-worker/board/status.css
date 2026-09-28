@@ -428,9 +428,6 @@
 	line-height: 1.4;
 	overflow-wrap: anywhere;
 }
-.status-repo-worktrees {
-	color: #8b8b8b !important;
-}
 
 @media (max-width: 720px) {
 	.status-repo-grid {
