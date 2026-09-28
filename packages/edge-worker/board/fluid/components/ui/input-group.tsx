@@ -155,7 +155,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       ringClass = "ring-border";
     } else {
       bgClass = "bg-transparent";
-      ringClass = "ring-transparent";
+      ringClass = "ring-border";
     }
 
     return (
@@ -182,8 +182,8 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
           className={cn(
             labelHidden ? "sr-only" : "inline-grid",
             sizeClasses.text,
-            // One notch tighter than the ladder's control padding — the field
-            // ring is invisible at rest, so the roomier inset reads as a gap.
+            // One notch tighter than the ladder's control padding — keep the
+            // label inset aligned with the control's visible ring at rest.
             !labelHidden && (compact ? "pl-2" : "pl-2.5")
           )}
         >
