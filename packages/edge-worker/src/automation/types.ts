@@ -31,7 +31,7 @@ export const AUTOMATION_MODEL_SUGGESTIONS: Record<
 /**
  * Apply automation runner/model fields as leading [agent]/[model] tags so
  * RunnerSelectionService (and Linear issue dispatch) pick them up. Schema values
- * replace any existing agent/model tags in the instructions.
+ * replace the matching legacy tag; omitted fields preserve existing selectors.
  */
 export function applyAutomationRunnerModel(
 	instructions: string,
@@ -39,15 +39,14 @@ export function applyAutomationRunnerModel(
 	model?: string,
 ): string {
 	if (!runner && !model) return instructions;
-	const cleaned = instructions
-		.replace(/\[agent=[^\]]*\]\s*/gi, "")
-		.replace(/\[model=[^\]]*\]\s*/gi, "")
-		.replace(/^\s+/, "");
+	let cleaned = instructions;
+	if (runner) cleaned = cleaned.replace(/\[agent\s*=[^\]]*\]\s*/gi, "");
+	if (model) cleaned = cleaned.replace(/\[model\s*=[^\]]*\]\s*/gi, "");
 	const tags = [
 		runner ? `[agent=${runner}]` : null,
 		model ? `[model=${model}]` : null,
 	].filter(Boolean);
-	return `${tags.join("\n")}\n\n${cleaned}`;
+	return `${tags.join("\n")}\n\n${cleaned.trimStart()}`;
 }
 export const scheduleSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("once"), at: z.iso.datetime() }),
@@ -79,7 +78,16 @@ export const automationInputSchema = z.object({
 	/** Coding harness override; omit to use global/defaultRunner. */
 	runner: RunnerTypeSchema.optional(),
 	/** Model override for the selected runner; omit to use that runner's default. */
-	model: z.string().trim().min(1).max(200).optional(),
+	model: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.regex(
+			/^[^\s[\]]+$/,
+			"Model must be an identifier without whitespace or brackets",
+		)
+		.optional(),
 });
 export const definitionSchema = automationInputSchema.extend({
 	id: z.string(),

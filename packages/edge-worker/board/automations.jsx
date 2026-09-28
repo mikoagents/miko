@@ -54,7 +54,13 @@ import { ShapeProvider } from "./fluid/lib/shape-context";
 import "./fluid/theme.css";
 import "./automations.css";
 
-const emptyOptions = { repositories: [], workspaces: [], runners: [], defaultModels: {}, modelSuggestions: {} };
+const emptyOptions = {
+	repositories: [],
+	workspaces: [],
+	runners: [],
+	defaultModels: {},
+	modelSuggestions: {},
+};
 const weekdayNames = [
 	"Sunday",
 	"Monday",
@@ -390,10 +396,7 @@ function AutomationEditor({
 														: "Default",
 												],
 												...(options.runners || Object.keys(RUNNER_LABELS)).map(
-													(runner) => [
-														runner,
-														RUNNER_LABELS[runner] || runner,
-													],
+													(runner) => [runner, RUNNER_LABELS[runner] || runner],
 												),
 											]}
 										/>

@@ -10,6 +10,22 @@ const options = {
 	workspaces: [{ id: "ws" }],
 };
 describe("automation form serialization", () => {
+	it("can clear legacy runner and model selections back to defaults", () => {
+		const form = formFromDefinition(
+			{
+				name: "Legacy task",
+				instructions: "[agent=cursor]\n[model=gemini-3.8-flash]\n\nDo work",
+				target: { kind: "direct_repository" },
+				schedule: { kind: "daily", time: "09:00" },
+			},
+			options,
+		);
+		const saved = inputFromForm({ ...form, runner: "", model: "" });
+		expect(saved.instructions).toBe("Do work");
+		const reopened = formFromDefinition(saved, options);
+		expect(reopened.runner).toBe("");
+		expect(reopened.model).toBe("");
+	});
 	it("preserves existing weekly rules, target and timezone through editing", () => {
 		const input = {
 			name: "Weekly maintenance",

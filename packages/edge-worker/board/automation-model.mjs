@@ -29,8 +29,11 @@ export const RUNNER_LABELS = {
 };
 /** Pull legacy [agent]/[model] tags from instructions when schema fields are unset. */
 export function parseRunnerModelFromInstructions(instructions = "") {
-	const runner = instructions.match(/\[agent=([^\]]+)\]/i)?.[1]?.toLowerCase();
-	const model = instructions.match(/\[model=([^\]]+)\]/i)?.[1]?.trim();
+	const runner = instructions
+		.match(/\[agent\s*=([^\]]+)\]/i)?.[1]
+		?.trim()
+		?.toLowerCase();
+	const model = instructions.match(/\[model\s*=([^\]]+)\]/i)?.[1]?.trim();
 	return {
 		runner: runner && RUNNER_LABELS[runner] ? runner : "",
 		model: model || "",
@@ -64,7 +67,9 @@ export function formFromDefinition(definition, options, kind = "daily") {
 	const fromTags = parseRunnerModelFromInstructions(definition?.instructions);
 	return {
 		name: definition?.name || "",
-		instructions: definition?.instructions || "",
+		instructions: (definition?.instructions || "")
+			.replace(/\[(?:agent|model)\s*=[^\]]*\]\s*/gi, "")
+			.trim(),
 		repositoryId: repo?.id || "",
 		target: definition?.target.kind || "direct_repository",
 		workspaceId:
@@ -139,9 +144,11 @@ export function modelChoices(options, runner) {
 		(runner && options.modelSuggestions?.[runner]) ||
 		Object.values(options.modelSuggestions || {}).flat();
 	const defaults = options.defaultModels || {};
-	const preferred = runner ? defaults[runner] : options.defaultRunner
-		? defaults[options.defaultRunner]
-		: undefined;
+	const preferred = runner
+		? defaults[runner]
+		: options.defaultRunner
+			? defaults[options.defaultRunner]
+			: undefined;
 	const values = [];
 	const seen = new Set();
 	for (const value of [preferred, ...suggestions].filter(Boolean)) {

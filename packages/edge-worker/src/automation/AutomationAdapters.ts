@@ -5,17 +5,17 @@ import {
 	AUTOMATION_MODEL_SUGGESTIONS,
 	AUTOMATION_RUNNERS,
 	type AutomationAdapter,
-	applyAutomationRunnerModel,
 	AutomationError,
 	type AutomationInput,
 	type AutomationRun,
+	applyAutomationRunnerModel,
 	type RepositoryTaskRequest,
 	type RunUpdate,
 } from "./types.js";
 
 export interface AutomationRunnerOptions {
 	runners: typeof AUTOMATION_RUNNERS;
-	defaultRunner: string;
+	defaultRunner: (typeof AUTOMATION_RUNNERS)[number];
 	defaultModels: Record<string, string | undefined>;
 	modelSuggestions: typeof AUTOMATION_MODEL_SUGGESTIONS;
 }
@@ -185,9 +185,16 @@ export class AutomationAdapters implements AutomationAdapter {
 	}
 	private async dispatchTarget(run: AutomationRun): Promise<RunUpdate> {
 		const input = run.snapshot;
+		// A model-only override keeps the configured harness instead of inferring
+		// another one from the model name. Existing explicit selectors still win.
+		const runner =
+			input.runner ??
+			(input.model && !/\[agent\s*=[^\]]+\]/i.test(input.instructions)
+				? (this.deps.runnerOptions?.().defaultRunner ?? "claude")
+				: undefined);
 		const instructions = applyAutomationRunnerModel(
 			input.instructions,
-			input.runner,
+			runner,
 			input.model,
 		);
 		if (input.target.kind === "direct_repository") {
@@ -197,7 +204,7 @@ export class AutomationAdapters implements AutomationAdapter {
 				instructions,
 				repositoryId: input.repositoryId,
 				source: "automation",
-				runner: input.runner,
+				runner,
 				model: input.model,
 			});
 			return { sessionId: `automation-${run.id}`, status: "running" };

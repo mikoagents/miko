@@ -10,6 +10,11 @@ is optional. The issue is created and delegated to the connected Miko agent, the
 webhook execution flow. Selected agent/model are applied as `[agent=…]` / `[model=…]` routing tags
 on the issue. The repository must belong to that workspace.
 
+Selecting a model with Agent set to **Default** keeps the configured default agent.
+Existing `[agent=…]` and `[model=…]` selectors are moved into the form fields when editing;
+clear those fields to return to the defaults. Model IDs cannot contain whitespace or brackets,
+because they are represented as routing tags when a task is dispatched.
+
 Choose once, daily, weekly, or a five-field cron expression (minute, hour, day, month, weekday).
 Daily, weekly and cron schedules use the saved IANA timezone; the initial value comes from your browser.
 Single appointments use the browser's local date/time and save an absolute instant. The form automatically previews
