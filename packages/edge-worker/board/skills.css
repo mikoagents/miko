@@ -176,7 +176,7 @@
 	white-space: nowrap;
 }
 .skills-dialog {
-	gap: 14px;
+	gap: 12px;
 }
 .skills-dialog-title {
 	overflow-wrap: anywhere;
@@ -185,7 +185,7 @@
 .skills-dialog-section {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 4px;
 }
 .skills-dialog-label {
 	margin: 0;
@@ -209,38 +209,35 @@
 }
 .skills-dialog-meta {
 	display: grid;
-	grid-template-columns: 5.5rem minmax(0, 1fr);
-	column-gap: 16px;
-	row-gap: 12px;
-	align-items: start;
-	padding: 14px 16px;
+	grid-template-columns: max-content minmax(0, 1fr);
+	column-gap: 12px;
+	row-gap: 8px;
+	align-items: baseline;
+	padding: 12px 14px;
 	border: 1px solid #ebebeb;
 	border-radius: 12px;
 	background: #fafafa;
 }
-.skills-dialog-meta-item {
-	display: contents;
-}
-.skills-dialog-meta-item > span {
+.skills-dialog-meta-key {
 	color: #8b8b8b;
 	font-size: 11px;
 	font-weight: 500;
 	letter-spacing: 0.03em;
 	text-transform: uppercase;
-	line-height: 1.45;
-	padding-top: 2px;
+	line-height: 1.4;
+	white-space: nowrap;
 }
-.skills-dialog-meta-item > strong,
-.skills-dialog-meta-item > .skills-dialog-path {
+.skills-dialog-meta-value {
 	min-width: 0;
 	color: #222;
 	font-size: 13px;
 	font-weight: 550;
-	line-height: 1.45;
+	line-height: 1.4;
 	overflow-wrap: anywhere;
 }
 .skills-dialog-path {
 	display: block;
+	min-width: 0;
 	margin: 0;
 	padding: 0;
 	border: 0;
@@ -274,9 +271,9 @@
 		width: 100%;
 	}
 	.skills-dialog-meta {
-		grid-template-columns: 4.75rem minmax(0, 1fr);
-		column-gap: 12px;
-		row-gap: 12px;
+		grid-template-columns: max-content minmax(0, 1fr);
+		column-gap: 10px;
+		row-gap: 8px;
 	}
 }
 

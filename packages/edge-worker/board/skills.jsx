@@ -405,34 +405,26 @@ function SkillsApp() {
 							</section>
 
 							<div className="skills-dialog-meta">
-								<div className="skills-dialog-meta-item">
-									<span>Source</span>
-									<strong>
-										{sourceLabels[detail.source] || detail.source}
-									</strong>
-								</div>
-								<div className="skills-dialog-meta-item">
-									<span>Status</span>
-									<strong>
-										{detail.active ? "Active" : "Shadowed by user skill"}
-									</strong>
-								</div>
-								<div className="skills-dialog-meta-item">
-									<span>Path</span>
-									<code className="skills-dialog-path">{detail.path}</code>
-								</div>
-								<div className="skills-dialog-meta-item">
-									<span>
-										{detail.source === "repo" ? "Repository" : "Origin"}
-									</span>
-									<strong>
-										{detail.source === "repo"
-											? detail.origin
-											: detail.source === "user"
-												? "User skills directory"
-												: detail.origin}
-									</strong>
-								</div>
+								<span className="skills-dialog-meta-key">Source</span>
+								<strong className="skills-dialog-meta-value">
+									{sourceLabels[detail.source] || detail.source}
+								</strong>
+								<span className="skills-dialog-meta-key">Status</span>
+								<strong className="skills-dialog-meta-value">
+									{detail.active ? "Active" : "Shadowed by user skill"}
+								</strong>
+								<span className="skills-dialog-meta-key">Path</span>
+								<code className="skills-dialog-path">{detail.path}</code>
+								<span className="skills-dialog-meta-key">
+									{detail.source === "repo" ? "Repository" : "Origin"}
+								</span>
+								<strong className="skills-dialog-meta-value">
+									{detail.source === "repo"
+										? detail.origin
+										: detail.source === "user"
+											? "User skills directory"
+											: detail.origin}
+								</strong>
 							</div>
 
 							{!detail.active && (
