@@ -76,15 +76,41 @@ The existing `/status` response remains unchanged.
 
 ## Local access
 
-The board and its data endpoints accept direct loopback connections with a localhost/loopback Host header.
-Remote connections, forwarded/proxied requests (including Cloudflare Tunnel), and foreign browser origins are rejected.
+By default the board and its data endpoints accept only direct loopback connections with a localhost/loopback Host header.
+Remote connections, forwarded/proxied requests (including Cloudflare Tunnel), and foreign browser origins are rejected with `403` (`Local access only`).
 Webhook and OAuth endpoints keep their existing behavior. Task logs remain read-only.
 The **Automations** page manages scheduled tasks; its write endpoints require same-origin JSON requests.
 See [Scheduled tasks](./AUTOMATIONS.md) for setup, execution and recovery.
 
 Only selected session fields and visible output are sent to the browser. User/system prompts,
 reasoning blocks, runner/config objects, and workspace paths are not serialized as session metadata.
-Common credential formats are redacted from text. Logs can still contain project content, so the board stays local.
+Common credential formats are redacted from text. Logs can still contain project content; keep the token private when enabling remote access.
+
+## Remote access
+
+To reach the board through a public URL or tunnel (for example Cloudflare Tunnel), set a board access token in the environment and restart Miko:
+
+```bash
+# Generate a strong token (32+ random bytes as hex or base64url), then:
+MIKO_BOARD_TOKEN=<your-token>
+```
+
+Leave `MIKO_BOARD_TOKEN` unset (or blank) to keep the default local-only behavior.
+
+When the token is configured:
+
+- Direct loopback access still works **without** presenting the token.
+- Remote or proxied requests are allowed only when authenticated.
+- Auth (any one is enough; compared with a constant-time check):
+  - `Authorization: Bearer <token>`
+  - Cookie `miko_board_token` (HttpOnly; `Secure` on HTTPS / `x-forwarded-proto=https`; SameSite=Lax; Path=/board)
+  - First HTML visit: open `/board?token=<token>` (or `/board/?token=`). Miko validates the token, sets the cookie, and **302** redirects to the same path without the query so the token is not left in the URL or history.
+- Unauthenticated browser visits to `/board` or `/board/` show a small login form (POST `/board/login` sets the cookie and redirects to `/board/`).
+- Unauthenticated API, asset, or event requests receive `401` JSON `{ "error": "Authentication required" }` (with `WWW-Authenticate: Bearer`).
+
+Mutation endpoints continue to require same-origin JSON. Origin is derived from the real request scheme (`x-forwarded-proto` or TLS) and host (`Host` / `x-forwarded-host`), so HTTPS public hosts work behind a tunnel.
+
+Do not log the token. Forwarded headers alone never grant access.
 
 ## Development
 

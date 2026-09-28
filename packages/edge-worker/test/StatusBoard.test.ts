@@ -403,14 +403,14 @@ describe("status board snapshots", () => {
 	});
 });
 
-async function server() {
+async function server(boardOptions: BoardOptions = options()) {
 	const app = Fastify({ trustProxy: true });
 	const directory = await mkdtemp(join(tmpdir(), "miko-board-test-"));
 	await writeFile(
 		join(directory, "index.html"),
 		'<html lang="en">Board</html>',
 	);
-	registerStatusBoard(app, options(), pathToFileURL(`${directory}/`));
+	registerStatusBoard(app, boardOptions, pathToFileURL(`${directory}/`));
 	app.get("/status", async () => ({ status: "idle" }));
 	cleanups.push(() => rm(directory, { recursive: true, force: true }));
 	cleanups.push(() => app.close());
@@ -514,6 +514,142 @@ describe("status board routes", () => {
 		}
 		await app.close();
 		expect((await reader.read()).done).toBe(true);
+	});
+});
+
+describe("status board remote auth", () => {
+	const token = "test-board-token-value-32chars!!";
+	const remote = {
+		remoteAddress: "203.0.113.1",
+		headers: {
+			host: "miko.example",
+			"x-forwarded-for": "203.0.113.1",
+			"x-forwarded-proto": "https",
+			"x-forwarded-host": "miko.example",
+		},
+	};
+	const local = {
+		remoteAddress: "127.0.0.1",
+		headers: { host: "127.0.0.1:3456" },
+	};
+
+	it("keeps remote access blocked when no token is configured", async () => {
+		const app = await server();
+		const response = await app.inject({ ...remote, url: "/board/api/snapshot" });
+		expect(response.statusCode).toBe(403);
+		expect(response.json()).toEqual({ error: "Local access only" });
+	});
+
+	it("rejects unauthenticated remote requests with 401 when a token is configured", async () => {
+		const app = await server({ ...options(), accessToken: token });
+		const response = await app.inject({ ...remote, url: "/board/api/snapshot" });
+		expect(response.statusCode).toBe(401);
+		expect(response.json()).toEqual({ error: "Authentication required" });
+		expect(response.headers["www-authenticate"]).toMatch(/Bearer/i);
+		const page = await app.inject({ ...remote, url: "/board" });
+		expect(page.statusCode).toBe(200);
+		expect(page.body).toContain("Access token");
+		expect(page.body).not.toContain("Board</html>");
+	});
+
+	it("allows remote snapshot with Bearer auth", async () => {
+		const app = await server({ ...options(), accessToken: token });
+		const response = await app.inject({
+			...remote,
+			url: "/board/api/snapshot",
+			headers: {
+				...remote.headers,
+				authorization: `Bearer ${token}`,
+			},
+		});
+		expect(response.statusCode).toBe(200);
+		expect(response.json()).toMatchObject({ app: "miko-board" });
+	});
+
+	it("allows remote snapshot with the board cookie", async () => {
+		const app = await server({ ...options(), accessToken: token });
+		const response = await app.inject({
+			...remote,
+			url: "/board/api/snapshot",
+			headers: {
+				...remote.headers,
+				cookie: `miko_board_token=${encodeURIComponent(token)}`,
+			},
+		});
+		expect(response.statusCode).toBe(200);
+		expect(response.json()).toMatchObject({ app: "miko-board" });
+	});
+
+	it("sets a cookie and redirects when /board?token= is valid", async () => {
+		const app = await server({ ...options(), accessToken: token });
+		const response = await app.inject({
+			...remote,
+			url: `/board?token=${encodeURIComponent(token)}`,
+		});
+		expect(response.statusCode).toBe(302);
+		expect(response.headers.location).toBe("/board");
+		const setCookie = response.headers["set-cookie"];
+		const cookie = Array.isArray(setCookie) ? setCookie.join(";") : setCookie;
+		expect(cookie).toContain("miko_board_token=");
+		expect(cookie).toContain("HttpOnly");
+		expect(cookie).toContain("Path=/board");
+		expect(cookie).toContain("SameSite=Lax");
+		expect(cookie).toContain("Secure");
+	});
+
+	it("still allows local loopback without a token when one is configured", async () => {
+		const app = await server({ ...options(), accessToken: token });
+		const page = await app.inject({ ...local, url: "/board" });
+		expect(page.statusCode).toBe(200);
+		expect(page.body).toBe('<html lang="en">Board</html>');
+		const snapshot = await app.inject({
+			...local,
+			url: "/board/api/snapshot",
+		});
+		expect(snapshot.statusCode).toBe(200);
+	});
+
+	it("does not grant access from forwarded headers alone", async () => {
+		const app = await server({ ...options(), accessToken: token });
+		const tunneledLocal = await app.inject({
+			url: "/board/api/snapshot",
+			remoteAddress: "127.0.0.1",
+			headers: {
+				host: "127.0.0.1:3456",
+				"x-forwarded-for": "203.0.113.9",
+				"x-forwarded-proto": "https",
+			},
+		});
+		expect(tunneledLocal.statusCode).toBe(401);
+		expect(tunneledLocal.json()).toEqual({
+			error: "Authentication required",
+		});
+	});
+
+	it("accepts same-origin JSON mutations behind https forwarded hosts", async () => {
+		const home = await mkdtemp(join(tmpdir(), "miko-home-remote-"));
+		cleanups.push(() => rm(home, { recursive: true, force: true }));
+		const app = await server({
+			...options(),
+			accessToken: token,
+			mikoHome: home,
+		});
+		const rejected = await app.inject({
+			method: "POST",
+			url: "/board/api/open-directory",
+			remoteAddress: "203.0.113.1",
+			headers: {
+				host: "miko.example",
+				"x-forwarded-proto": "https",
+				"x-forwarded-host": "miko.example",
+				"x-forwarded-for": "203.0.113.1",
+				origin: "https://miko.example",
+				"content-type": "application/json",
+				authorization: `Bearer ${token}`,
+			},
+			payload: { id: "../etc" },
+		});
+		expect(rejected.statusCode).toBe(400);
 	});
 });
 
