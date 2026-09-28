@@ -14,6 +14,9 @@ import { registerAutomationRoutes } from "./automation/AutomationRoutes.js";
 import type { AutomationService } from "./automation/AutomationService.js";
 import { BoardHistory, type BoardTask } from "./BoardHistory.js";
 import {
+	type BoardDefaultsInfo,
+	type BoardRepositoryInfo,
+	type BoardWorkspaceInfo,
 	buildBoardStatus,
 	openBoardDirectory,
 	openPathInFileManager,
@@ -49,6 +52,12 @@ export interface BoardOptions {
 	getStatus(): "idle" | "busy";
 	getRepositoryName(id: string): string;
 	getLinearWorkspaceSlug?(repositoryId: string): string | undefined;
+	/** Configured repositories for Status (same set Automations uses). */
+	listRepositories?(): BoardRepositoryInfo[];
+	/** Safe install defaults (runner + models) for Status. */
+	getDefaults?(): BoardDefaultsInfo;
+	/** Linear workspaces for Status (names/slugs/flags only). */
+	listWorkspaces?(): BoardWorkspaceInfo[];
 	/** Absolute Miko home (config/data). Required for status/open-directory APIs. */
 	mikoHome?: string;
 	version?: string | null;
@@ -824,6 +833,9 @@ export function registerStatusBoard(
 								.list()
 								.definitions.filter((d) => !d.archived).length
 					: undefined,
+				repositories: options.listRepositories?.() ?? [],
+				defaults: options.getDefaults?.(),
+				workspaces: options.listWorkspaces?.(),
 			});
 		});
 		scoped.get("/board/api/skills", async (_request, reply) => {

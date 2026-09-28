@@ -1,4 +1,4 @@
-import { Activity, Check, Copy, Cpu, FolderOpen, HardDrive, MemoryStick, RefreshCw } from "lucide-react";
+import { Activity, Check, Copy, Cpu, FolderOpen, GitBranch, HardDrive, MemoryStick, RefreshCw, Settings2, Boxes } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "./fluid/components/ui/badge";
@@ -35,6 +35,26 @@ function formatBytes(bytes) {
 
 function formatLoad(loadAverage) {
 	return (loadAverage || []).map((n) => Number(n).toFixed(2)).join(" / ");
+}
+
+function repoDisplayName(repo) {
+	const url = repo.githubUrl || repo.gitlabUrl || "";
+	const match = url.match(/[/:]([^/]+)\/([^/]+?)(?:\.git)?$/);
+	if (match) return `${match[1]}/${match[2]}`;
+	return repo.name;
+}
+
+function defaultRows(defaults) {
+	if (!defaults) return [];
+	return [
+		["Default runner", defaults.defaultRunner],
+		["Claude model", defaults.claudeDefaultModel],
+		["Claude fallback", defaults.claudeDefaultFallbackModel],
+		["Cursor model", defaults.cursorDefaultModel],
+		["Cursor fallback", defaults.cursorDefaultFallbackModel],
+		["Grok model", defaults.grokDefaultModel],
+		["Grok fallback", defaults.grokDefaultFallbackModel],
+	].filter(([, value]) => value);
 }
 
 function ResourceBar({ percent, label }) {
@@ -354,6 +374,159 @@ function StatusApp() {
 									</div>
 								</article>
 							</div>
+						</section>
+
+						<section className="status-config" aria-label="Configuration">
+							<div className="status-section-title">
+								<Settings2 size={16} />
+								<span>Configuration</span>
+							</div>
+							<div className="status-config-grid">
+								<article className="status-config-card">
+									<div className="status-config-heading">
+										<strong>Defaults</strong>
+										<span>Runner & models</span>
+									</div>
+									{defaultRows(data.defaults).length ? (
+										<dl className="status-config-list">
+											{defaultRows(data.defaults).map(([label, value]) => (
+												<div key={label}>
+													<dt>{label}</dt>
+													<dd>{value}</dd>
+												</div>
+											))}
+										</dl>
+									) : (
+										<p className="status-config-empty">No defaults configured.</p>
+									)}
+								</article>
+								<article className="status-config-card">
+									<div className="status-config-heading">
+										<strong>Workspaces</strong>
+										<span>{(data.workspaces || []).length}</span>
+									</div>
+									{(data.workspaces || []).length ? (
+										<ul className="status-workspace-list">
+											{(data.workspaces || []).map((workspace) => (
+												<li key={workspace.id}>
+													<div className="status-workspace-copy">
+														<strong>
+															{workspace.name || workspace.slug || workspace.id}
+														</strong>
+														{workspace.slug && (
+															<code>{workspace.slug}</code>
+														)}
+													</div>
+													<div className="status-workspace-badges">
+														{workspace.tokenConfigured && (
+															<Badge variant="dot" color="green" size="compact">
+																Token configured
+															</Badge>
+														)}
+														{workspace.oauthConfigured && (
+															<Badge variant="dot" color="blue" size="compact">
+																OAuth configured
+															</Badge>
+														)}
+														{!workspace.tokenConfigured &&
+															!workspace.oauthConfigured && (
+																<Badge variant="dot" color="gray" size="compact">
+																	No credentials
+																</Badge>
+															)}
+													</div>
+												</li>
+											))}
+										</ul>
+									) : (
+										<p className="status-config-empty">No Linear workspaces.</p>
+									)}
+								</article>
+							</div>
+						</section>
+
+						<section className="status-repositories" aria-label="Repositories">
+							<div className="status-section-title">
+								<Boxes size={16} />
+								<span>Repositories</span>
+								<span className="status-section-count">
+									{(data.repositories || []).length}
+								</span>
+							</div>
+							{(data.repositories || []).length ? (
+								<div className="status-repo-list">
+									{(data.repositories || []).map((repo) => (
+										<article key={repo.id} className="status-repo">
+											<div className="status-repo-copy">
+												<div className="status-repo-heading">
+													<strong title={repo.name}>
+														{repoDisplayName(repo)}
+													</strong>
+													{repo.isActive ? (
+														<Badge variant="dot" color="green" size="compact">
+															Active
+														</Badge>
+													) : (
+														<Badge variant="dot" color="gray" size="compact">
+															Inactive
+														</Badge>
+													)}
+													{repo.checkoutExists ? (
+														<Badge variant="dot" color="blue" size="compact">
+															Checked out
+														</Badge>
+													) : (
+														<Badge variant="dot" color="orange" size="compact">
+															Missing checkout
+														</Badge>
+													)}
+												</div>
+												{(repo.githubUrl || repo.gitlabUrl) && (
+													<a
+														className="status-repo-link"
+														href={repo.githubUrl || repo.gitlabUrl}
+														target="_blank"
+														rel="noreferrer"
+													>
+														{repo.githubUrl || repo.gitlabUrl}
+													</a>
+												)}
+												<div className="status-repo-meta">
+													<span>
+														<GitBranch size={12} />
+														{repo.baseBranch || "—"}
+													</span>
+													{(repo.linearWorkspaceName ||
+														repo.linearWorkspaceSlug) && (
+														<span>
+															Workspace{" "}
+															{repo.linearWorkspaceName ||
+																repo.linearWorkspaceSlug}
+															{repo.linearWorkspaceSlug
+																? ` (${repo.linearWorkspaceSlug})`
+																: ""}
+														</span>
+													)}
+												</div>
+												<code title={repo.repositoryPath}>
+													{repo.repositoryPath}
+												</code>
+												{repo.workspaceBaseDir &&
+													repo.workspaceBaseDir !== repo.repositoryPath && (
+														<code
+															className="status-repo-worktrees"
+															title={repo.workspaceBaseDir}
+														>
+															worktrees: {repo.workspaceBaseDir}
+														</code>
+													)}
+											</div>
+										</article>
+									))}
+								</div>
+							) : (
+								<div className="status-empty">No repositories configured.</div>
+							)}
 						</section>
 
 						<section className="status-directories" aria-label="Directories">

@@ -26,6 +26,46 @@ export interface BoardDirectory {
 	exists: boolean;
 }
 
+/** Safe repository summary for the Status board (no tokens/secrets). */
+export interface BoardRepositoryInfo {
+	id: string;
+	name: string;
+	githubUrl?: string;
+	gitlabUrl?: string;
+	repositoryPath: string;
+	workspaceBaseDir?: string;
+	baseBranch: string;
+	isActive: boolean;
+	linearWorkspaceId?: string;
+	linearWorkspaceName?: string;
+	linearWorkspaceSlug?: string;
+	/** True when repositoryPath exists on disk. */
+	checkoutExists: boolean;
+}
+
+/** Safe install defaults for the Status board. */
+export interface BoardDefaultsInfo {
+	defaultRunner?: string | null;
+	claudeDefaultModel?: string | null;
+	claudeDefaultFallbackModel?: string | null;
+	cursorDefaultModel?: string | null;
+	cursorDefaultFallbackModel?: string | null;
+	grokDefaultModel?: string | null;
+	grokDefaultFallbackModel?: string | null;
+}
+
+/**
+ * Linear workspace summary for Status.
+ * Never includes tokens, refresh tokens, or OAuth client credentials.
+ */
+export interface BoardWorkspaceInfo {
+	id: string;
+	name?: string;
+	slug?: string;
+	tokenConfigured: boolean;
+	oauthConfigured: boolean;
+}
+
 export interface BoardStatusInfo {
 	app: "miko-board";
 	version: string | null;
@@ -39,6 +79,9 @@ export interface BoardStatusInfo {
 	directories: BoardDirectory[];
 	automationCount?: number;
 	resources: BoardResourcesInfo;
+	repositories: BoardRepositoryInfo[];
+	defaults?: BoardDefaultsInfo;
+	workspaces?: BoardWorkspaceInfo[];
 }
 
 export interface BoardPathsOptions {
@@ -48,6 +91,9 @@ export interface BoardPathsOptions {
 	releaseDir?: string;
 	startedAt?: number;
 	getAutomationCount?(): number;
+	repositories?: BoardRepositoryInfo[];
+	defaults?: BoardDefaultsInfo;
+	workspaces?: BoardWorkspaceInfo[];
 }
 
 const DIRECTORY_META: Record<
@@ -152,6 +198,70 @@ export function resolveAllowedBoardDirectory(
 	return match;
 }
 
+/** Input shape for building a safe board repository row (no secrets). */
+export interface BoardRepositoryInput {
+	id: string;
+	name: string;
+	githubUrl?: string;
+	gitlabUrl?: string;
+	repositoryPath: string;
+	workspaceBaseDir?: string;
+	baseBranch: string;
+	isActive?: boolean;
+	linearWorkspaceId?: string;
+	linearWorkspaceName?: string;
+	linearWorkspaceSlug?: string;
+}
+
+/** Map configured repositories into Status-safe rows with checkout existence. */
+export function buildBoardRepositories(
+	repositories: BoardRepositoryInput[],
+): BoardRepositoryInfo[] {
+	return repositories
+		.map((repo) => ({
+			id: repo.id,
+			name: repo.name,
+			githubUrl: repo.githubUrl,
+			gitlabUrl: repo.gitlabUrl,
+			repositoryPath: repo.repositoryPath,
+			workspaceBaseDir: repo.workspaceBaseDir,
+			baseBranch: repo.baseBranch,
+			isActive: repo.isActive !== false,
+			linearWorkspaceId: repo.linearWorkspaceId,
+			linearWorkspaceName: repo.linearWorkspaceName,
+			linearWorkspaceSlug: repo.linearWorkspaceSlug,
+			checkoutExists: existsSync(resolve(repo.repositoryPath)),
+		}))
+		.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Map Linear workspaces into Status-safe rows (flags only, no credentials). */
+export function buildBoardWorkspaces(
+	workspaces: Record<
+		string,
+		{
+			linearWorkspaceName?: string;
+			linearWorkspaceSlug?: string;
+			linearToken?: string;
+			linearRefreshToken?: string;
+			linearOAuth?: unknown;
+		}
+	>,
+): BoardWorkspaceInfo[] {
+	return Object.entries(workspaces)
+		.map(([id, workspace]) => ({
+			id,
+			name: workspace.linearWorkspaceName,
+			slug: workspace.linearWorkspaceSlug,
+			tokenConfigured: Boolean(workspace.linearToken?.trim()),
+			oauthConfigured: Boolean(workspace.linearOAuth),
+		}))
+		.sort(
+			(a, b) =>
+				(a.name || a.slug || a.id).localeCompare(b.name || b.slug || b.id),
+		);
+}
+
 export async function buildBoardStatus(
 	options: BoardPathsOptions,
 ): Promise<BoardStatusInfo> {
@@ -175,6 +285,9 @@ export async function buildBoardStatus(
 		directories,
 		automationCount: options.getAutomationCount?.(),
 		resources,
+		repositories: options.repositories ?? [],
+		defaults: options.defaults,
+		workspaces: options.workspaces,
 	};
 }
 

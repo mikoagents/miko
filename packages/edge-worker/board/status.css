@@ -246,3 +246,163 @@
 	flex-direction: column;
 	gap: 6px;
 }
+
+.status-section-count {
+	margin-left: 4px;
+	color: #8b8b8b;
+	font-weight: 500;
+	font-variant-numeric: tabular-nums;
+}
+.status-config-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: 12px;
+}
+.status-config-card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 14px 16px;
+	border: 1px solid #ebebeb;
+	border-radius: 14px;
+	background: #fff;
+}
+.status-config-heading {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+}
+.status-config-heading strong {
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+.status-config-heading span {
+	color: #8b8b8b;
+	font-size: 12px;
+}
+.status-config-list {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+}
+.status-config-list > div {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+}
+.status-config-list dt {
+	margin: 0;
+	color: #8b8b8b;
+	font-size: 11px;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+.status-config-list dd {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	text-align: right;
+	overflow-wrap: anywhere;
+}
+.status-config-empty {
+	margin: 0;
+	color: #8b8b8b;
+	font-size: 13px;
+}
+.status-workspace-list {
+	display: grid;
+	gap: 10px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.status-workspace-list > li {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+.status-workspace-copy {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+.status-workspace-copy strong {
+	font-size: 13px;
+	font-weight: 600;
+}
+.status-workspace-copy code {
+	color: #6f6f6f;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 11px;
+}
+.status-workspace-badges {
+	display: flex;
+	flex-shrink: 0;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 6px;
+}
+.status-repo-list {
+	display: grid;
+	gap: 10px;
+}
+.status-repo {
+	padding: 16px;
+	border: 1px solid #ebebeb;
+	border-radius: 14px;
+	background: #fff;
+}
+.status-repo-copy {
+	display: grid;
+	gap: 6px;
+	min-width: 0;
+}
+.status-repo-heading {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.status-repo-heading strong {
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	overflow-wrap: anywhere;
+}
+.status-repo-link {
+	color: #4b5563;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+	text-decoration: none;
+}
+.status-repo-link:hover {
+	color: #111;
+	text-decoration: underline;
+}
+.status-repo-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 14px;
+	color: #6f6f6f;
+	font-size: 12px;
+}
+.status-repo-meta span {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.status-repo-copy code {
+	display: block;
+	overflow-wrap: anywhere;
+	color: #444;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+}
+.status-repo-worktrees {
+	color: #8b8b8b !important;
+}

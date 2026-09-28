@@ -153,6 +153,10 @@ import { ActivityPoster } from "./ActivityPoster.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
+import {
+	buildBoardRepositories,
+	buildBoardWorkspaces,
+} from "./BoardPaths.js";
 import { AutomationAdapters } from "./automation/AutomationAdapters.js";
 import { AutomationService } from "./automation/AutomationService.js";
 import { AutomationStore } from "./automation/AutomationStore.js";
@@ -1014,6 +1018,40 @@ export class EdgeWorker extends EventEmitter {
 					? this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceSlug
 					: undefined;
 			},
+			listRepositories: () =>
+				buildBoardRepositories(
+					Array.from(this.repositories.values()).map((repo) => {
+						const workspace = repo.linearWorkspaceId
+							? this.config.linearWorkspaces?.[repo.linearWorkspaceId]
+							: undefined;
+						return {
+							id: repo.id,
+							name: repo.name,
+							githubUrl: repo.githubUrl,
+							gitlabUrl: repo.gitlabUrl,
+							repositoryPath: repo.repositoryPath,
+							workspaceBaseDir: repo.workspaceBaseDir,
+							baseBranch: repo.baseBranch,
+							isActive: repo.isActive,
+							linearWorkspaceId: repo.linearWorkspaceId,
+							linearWorkspaceName: workspace?.linearWorkspaceName,
+							linearWorkspaceSlug: workspace?.linearWorkspaceSlug,
+						};
+					}),
+				),
+			getDefaults: () => ({
+				defaultRunner: this.config.defaultRunner ?? null,
+				claudeDefaultModel: this.config.claudeDefaultModel ?? null,
+				claudeDefaultFallbackModel:
+					this.config.claudeDefaultFallbackModel ?? null,
+				cursorDefaultModel: this.config.cursorDefaultModel ?? null,
+				cursorDefaultFallbackModel:
+					this.config.cursorDefaultFallbackModel ?? null,
+				grokDefaultModel: this.config.grokDefaultModel ?? null,
+				grokDefaultFallbackModel: this.config.grokDefaultFallbackModel ?? null,
+			}),
+			listWorkspaces: () =>
+				buildBoardWorkspaces(this.config.linearWorkspaces ?? {}),
 		});
 		this.logger.info(
 			"Status board available at /board on the application server",

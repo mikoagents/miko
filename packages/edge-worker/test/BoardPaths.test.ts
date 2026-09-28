@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	buildBoardRepositories,
 	buildBoardStatus,
+	buildBoardWorkspaces,
 	openBoardDirectory,
 	resolveAllowedBoardDirectory,
 	resolveBoardDirectories,
@@ -81,12 +83,100 @@ describe("BoardPaths", () => {
 			version: "0.2.72",
 			service: { online: true, status: "idle" },
 			automationCount: 3,
+			repositories: [],
 		});
 		expect(status.directories.length).toBeGreaterThan(5);
 		expect(status.pid).toBe(process.pid);
 		expect(status.resources.cpu.cores).toBeGreaterThan(0);
 		expect(status.resources.memory.totalBytes).toBeGreaterThan(0);
 		expect(status.resources.disks.length).toBeGreaterThan(0);
+	});
+
+	it("includes configured repositories, defaults, and workspaces", async () => {
+		const home = await tempHome();
+		const repoPath = join(home, "repos", "demo");
+		await mkdir(repoPath, { recursive: true });
+		const repositories = buildBoardRepositories([
+			{
+				id: "repo-1",
+				name: "demo",
+				githubUrl: "https://github.com/acme/demo",
+				repositoryPath: repoPath,
+				workspaceBaseDir: join(home, "worktrees"),
+				baseBranch: "main",
+				isActive: true,
+				linearWorkspaceId: "ws-1",
+				linearWorkspaceName: "Acme",
+				linearWorkspaceSlug: "acme",
+			},
+			{
+				id: "repo-2",
+				name: "missing",
+				repositoryPath: join(home, "repos", "missing"),
+				baseBranch: "develop",
+				isActive: false,
+			},
+		]);
+		const workspaces = buildBoardWorkspaces({
+			"ws-1": {
+				linearWorkspaceName: "Acme",
+				linearWorkspaceSlug: "acme",
+				linearToken: "lin_api_secret",
+				linearOAuth: { clientId: "oauth-client-id", clientSecret: "secret" },
+			},
+			"ws-2": {
+				linearWorkspaceName: "Other",
+				linearWorkspaceSlug: "other",
+			},
+		});
+		const status = await buildBoardStatus({
+			mikoHome: home,
+			version: "0.2.72",
+			getStatus: () => "busy",
+			repositories,
+			workspaces,
+			defaults: {
+				defaultRunner: "grok",
+				grokDefaultModel: "grok-4.7",
+			},
+		});
+		expect(status.repositories).toHaveLength(2);
+		expect(status.repositories[0]).toMatchObject({
+			name: "demo",
+			githubUrl: "https://github.com/acme/demo",
+			checkoutExists: true,
+			linearWorkspaceSlug: "acme",
+			isActive: true,
+		});
+		expect(status.repositories[1]).toMatchObject({
+			name: "missing",
+			checkoutExists: false,
+			isActive: false,
+		});
+		expect(status.defaults).toEqual({
+			defaultRunner: "grok",
+			grokDefaultModel: "grok-4.7",
+		});
+		expect(status.workspaces).toEqual([
+			{
+				id: "ws-1",
+				name: "Acme",
+				slug: "acme",
+				tokenConfigured: true,
+				oauthConfigured: true,
+			},
+			{
+				id: "ws-2",
+				name: "Other",
+				slug: "other",
+				tokenConfigured: false,
+				oauthConfigured: false,
+			},
+		]);
+		const serialized = JSON.stringify(status);
+		expect(serialized).not.toContain("lin_api_secret");
+		expect(serialized).not.toContain("oauth-client-id");
+		expect(serialized).not.toContain("clientSecret");
 	});
 });
 
