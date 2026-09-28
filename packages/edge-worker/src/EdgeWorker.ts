@@ -4896,12 +4896,15 @@ ${taskSection}`;
 		repos: RepositoryConfig[],
 	): Promise<void> {
 		const issueId = webhook.agentSession?.issue?.id;
+		// Only an active automation run claims the Linear session. A terminal
+		// run (succeeded/failed/skipped) on the same issue must not swallow later
+		// human mentions or delegations; that previously made Linear show
+		// "Miko failed to start." with no local session.
 		const automationRun = this.automations?.store
 			.read()
-			.runs.find((run) => run.issueId === issueId);
+			.runs.find((run) => run.issueId === issueId && activeRun(run));
 		if (automationRun) {
 			if (
-				!activeRun(automationRun) ||
 				automationRun.status === "uncertain" ||
 				automationRun.executionClaimedAt !== undefined ||
 				this.automationSessionStarts.has(automationRun.id) ||
