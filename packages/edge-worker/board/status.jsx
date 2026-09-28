@@ -119,7 +119,6 @@ function StatusApp() {
 			<div className="fluid-scope status-canvas">
 				<header className="status-header">
 					<div>
-						<p className="status-kicker">Local board</p>
 						<h1>Status</h1>
 						<p className="status-subtitle">
 							Runtime details and shortcuts into Miko directories on this

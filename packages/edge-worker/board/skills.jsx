@@ -174,7 +174,6 @@ function SkillsApp() {
 			<div className="fluid-scope skills-canvas">
 				<header className="skills-header">
 					<div>
-						<p className="skills-kicker">Local board</p>
 						<h1>Skills</h1>
 						<p className="skills-subtitle">
 							Bundled, user, and repo-local skills currently available to Miko.

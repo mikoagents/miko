@@ -17,14 +17,6 @@
 	justify-content: space-between;
 	gap: 16px;
 }
-.status-kicker,
-.skills-kicker {
-	margin: 0 0 6px;
-	color: #8b8b8b;
-	font-size: 11px;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-}
 .status-header h1,
 .skills-header h1 {
 	margin: 0;
