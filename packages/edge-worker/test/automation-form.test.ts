@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	formFromDefinition,
 	inputFromForm,
+	modelChoices,
 	scheduleFromForm,
 } from "../board/automation-model.mjs";
 
@@ -10,6 +11,21 @@ const options = {
 	workspaces: [{ id: "ws" }],
 };
 describe("automation form serialization", () => {
+	it("suggests models for the configured runner when Agent is Default", () => {
+		expect(
+			modelChoices(
+				{
+					defaultRunner: "cursor",
+					defaultModels: { cursor: "composer-2" },
+					modelSuggestions: {
+						cursor: ["composer-2", "gpt-5.5"],
+						claude: ["sonnet"],
+					},
+				},
+				"",
+			),
+		).toEqual(["composer-2", "gpt-5.5"]);
+	});
 	it("can clear legacy runner and model selections back to defaults", () => {
 		const form = formFromDefinition(
 			{

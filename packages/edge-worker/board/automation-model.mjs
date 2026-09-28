@@ -140,15 +140,12 @@ export function inputFromForm(form) {
 	return input;
 }
 export function modelChoices(options, runner) {
-	const suggestions =
-		(runner && options.modelSuggestions?.[runner]) ||
-		Object.values(options.modelSuggestions || {}).flat();
+	const selectedRunner = runner || options.defaultRunner;
+	const suggestions = selectedRunner
+		? options.modelSuggestions?.[selectedRunner] || []
+		: Object.values(options.modelSuggestions || {}).flat();
 	const defaults = options.defaultModels || {};
-	const preferred = runner
-		? defaults[runner]
-		: options.defaultRunner
-			? defaults[options.defaultRunner]
-			: undefined;
+	const preferred = selectedRunner ? defaults[selectedRunner] : undefined;
 	const values = [];
 	const seen = new Set();
 	for (const value of [preferred, ...suggestions].filter(Boolean)) {
