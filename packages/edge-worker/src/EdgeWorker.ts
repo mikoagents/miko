@@ -992,6 +992,8 @@ export class EdgeWorker extends EventEmitter {
 				service: this.automations,
 				adapters: this.automationAdapters,
 			},
+			mikoHome: this.mikoHome,
+			version: this.config.version ?? null,
 			getSessionTitle: (id) =>
 				this.automations?.store.read().runs.find((r) => r.sessionId === id)
 					?.snapshot.name,

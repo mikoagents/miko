@@ -13,6 +13,15 @@ import type { AutomationAdapters } from "./automation/AutomationAdapters.js";
 import { registerAutomationRoutes } from "./automation/AutomationRoutes.js";
 import type { AutomationService } from "./automation/AutomationService.js";
 import { BoardHistory, type BoardTask } from "./BoardHistory.js";
+import {
+	buildBoardStatus,
+	openBoardDirectory,
+	openPathInFileManager,
+} from "./BoardPaths.js";
+import {
+	listBoardSkills,
+	resolveAllowedBoardSkill,
+} from "./BoardSkills.js";
 
 const MAX_TASKS = 60;
 const MAX_LOGS = 650;
@@ -40,6 +49,10 @@ export interface BoardOptions {
 	getStatus(): "idle" | "busy";
 	getRepositoryName(id: string): string;
 	getLinearWorkspaceSlug?(repositoryId: string): string | undefined;
+	/** Absolute Miko home (config/data). Required for status/open-directory APIs. */
+	mikoHome?: string;
+	version?: string | null;
+	releaseDir?: string;
 }
 
 export function redactBoardText(value: string): string {
@@ -514,6 +527,106 @@ export function registerStatusBoard(
 			async (request) => ({
 				logs: board.historyLogs(request.params.sessionId),
 			}),
+		);
+		const requireMikoHome = (reply: {
+			code: (status: number) => { send: (body: unknown) => unknown };
+		}) => {
+			if (options.mikoHome) return options.mikoHome;
+			reply.code(503).send({ error: "Miko home is not configured" });
+			return null;
+		};
+		const requireSameOriginJson = (
+			request: FastifyRequest,
+			reply: {
+				code: (status: number) => { send: (body: unknown) => unknown };
+			},
+		) => {
+			const origin = `http://${request.headers.host}`;
+			if (
+				request.headers.origin !== origin ||
+				!request.headers["content-type"]?.startsWith("application/json")
+			) {
+				reply.code(403).send({ error: "Same-origin JSON requests required" });
+				return false;
+			}
+			return true;
+		};
+		scoped.get("/board/api/status", async (_request, reply) => {
+			const mikoHome = requireMikoHome(reply);
+			if (!mikoHome) return;
+			return buildBoardStatus({
+				mikoHome,
+				version: options.version,
+				releaseDir: options.releaseDir,
+				getStatus: options.getStatus,
+				getAutomationCount: options.automations
+					? () =>
+							options.automations!.service
+								.list()
+								.definitions.filter((d) => !d.archived).length
+					: undefined,
+			});
+		});
+		scoped.get("/board/api/skills", async (_request, reply) => {
+			const mikoHome = requireMikoHome(reply);
+			if (!mikoHome) return;
+			const skills = await listBoardSkills(mikoHome);
+			return { skills };
+		});
+		scoped.post<{ Body: { id?: string } }>(
+			"/board/api/open-directory",
+			async (request, reply) => {
+				if (!requireSameOriginJson(request, reply)) return;
+				const mikoHome = requireMikoHome(reply);
+				if (!mikoHome) return;
+				const id =
+					typeof request.body?.id === "string" ? request.body.id.trim() : "";
+				if (!id)
+					return reply.code(400).send({ error: "Directory id is required" });
+				const result = await openBoardDirectory(
+					id,
+					mikoHome,
+					options.releaseDir,
+				);
+				if (!result.ok) return reply.code(400).send({ error: result.error });
+				return result;
+			},
+		);
+		scoped.post<{
+			Body: { source?: string; name?: string; repository?: string };
+		}>(
+			"/board/api/open-skill",
+			async (request, reply) => {
+				if (!requireSameOriginJson(request, reply)) return;
+				const mikoHome = requireMikoHome(reply);
+				if (!mikoHome) return;
+				const source =
+					typeof request.body?.source === "string"
+						? request.body.source.trim()
+						: "";
+				const name =
+					typeof request.body?.name === "string"
+						? request.body.name.trim()
+						: "";
+				const repository =
+					typeof request.body?.repository === "string"
+						? request.body.repository.trim()
+						: undefined;
+				if (!source || !name)
+					return reply
+						.code(400)
+						.send({ error: "Skill source and name are required" });
+				const allowed = resolveAllowedBoardSkill(
+					mikoHome,
+					source,
+					name,
+					repository,
+				);
+				if (!allowed)
+					return reply.code(400).send({ error: "Skill path is not allowlisted" });
+				const result = await openPathInFileManager(allowed.path);
+				return { ok: true, ...result };
+			},
 		);
 		scoped.get("/board/events", (request, reply) => {
 			for (const [name, value] of Object.entries(reply.getHeaders())) {

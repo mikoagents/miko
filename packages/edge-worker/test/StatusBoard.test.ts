@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -514,5 +514,61 @@ describe("status board routes", () => {
 		}
 		await app.close();
 		expect((await reader.read()).done).toBe(true);
+	});
+});
+
+describe("status board status and skills routes", () => {
+	it("exposes status and skills when mikoHome is configured", async () => {
+		const app = Fastify({ trustProxy: true });
+		const directory = await mkdtemp(join(tmpdir(), "miko-board-status-"));
+		const home = await mkdtemp(join(tmpdir(), "miko-home-status-"));
+		await writeFile(join(directory, "index.html"), "<html>Board</html>");
+		await mkdir(join(home, "miko-skills-plugin/skills/debug"), {
+			recursive: true,
+		});
+		await writeFile(
+			join(home, "miko-skills-plugin/skills/debug/SKILL.md"),
+			"---\nname: debug\ndescription: Bundled\n---\n",
+		);
+		registerStatusBoard(
+			app,
+			{ ...options(), mikoHome: home, version: "0.2.72" },
+			pathToFileURL(`${directory}/`),
+		);
+		cleanups.push(() => rm(directory, { recursive: true, force: true }));
+		cleanups.push(() => rm(home, { recursive: true, force: true }));
+		cleanups.push(() => app.close());
+		const headers = {
+			host: "127.0.0.1:3456",
+			origin: "http://127.0.0.1:3456",
+		};
+		const status = await app.inject({
+			url: "/board/api/status",
+			headers,
+			remoteAddress: "127.0.0.1",
+		});
+		expect(status.statusCode).toBe(200);
+		expect(status.json()).toMatchObject({
+			app: "miko-board",
+			version: "0.2.72",
+		});
+		const skills = await app.inject({
+			url: "/board/api/skills",
+			headers,
+			remoteAddress: "127.0.0.1",
+		});
+		expect(skills.json().skills).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "debug", source: "internal" }),
+			]),
+		);
+		const rejected = await app.inject({
+			method: "POST",
+			url: "/board/api/open-directory",
+			headers: { ...headers, "content-type": "application/json" },
+			remoteAddress: "127.0.0.1",
+			payload: { id: "../etc" },
+		});
+		expect(rejected.statusCode).toBe(400);
 	});
 });
