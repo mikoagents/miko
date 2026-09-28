@@ -405,29 +405,33 @@ function SkillsApp() {
 							</section>
 
 							<div className="skills-dialog-meta">
-								<span>Source</span>
-								<strong>{sourceLabels[detail.source] || detail.source}</strong>
-								<span>Status</span>
-								<strong>
-									{detail.active ? "Active" : "Shadowed by user skill"}
-								</strong>
-								<span>Path</span>
-								<code className="skills-dialog-path">{detail.path}</code>
-								{detail.source === "repo" ? (
-									<>
-										<span>Repository</span>
-										<strong>{detail.origin}</strong>
-									</>
-								) : (
-									<>
-										<span>Origin</span>
-										<strong>
-											{detail.source === "user"
+								<div className="skills-dialog-meta-item">
+									<span>Source</span>
+									<strong>
+										{sourceLabels[detail.source] || detail.source}
+									</strong>
+								</div>
+								<div className="skills-dialog-meta-item">
+									<span>Status</span>
+									<strong>
+										{detail.active ? "Active" : "Shadowed by user skill"}
+									</strong>
+								</div>
+								<div className="skills-dialog-meta-item skills-dialog-meta-path">
+									<span>Path</span>
+									<code className="skills-dialog-path">{detail.path}</code>
+								</div>
+								<div className="skills-dialog-meta-item skills-dialog-meta-wide">
+									<span>{detail.source === "repo" ? "Repository" : "Origin"}</span>
+									<strong>
+										{detail.source === "repo"
+											? detail.origin
+											: detail.source === "user"
 												? "User skills directory"
 												: detail.origin}
-										</strong>
-									</>
-								)}
+									</strong>
+								</div>
+							</div>
 							</div>
 
 							{!detail.active && (

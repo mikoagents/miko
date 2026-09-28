@@ -209,33 +209,46 @@
 }
 .skills-dialog-meta {
 	display: grid;
-	grid-template-columns: 88px minmax(0, 1fr);
-	gap: 8px 12px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px 16px;
 	align-items: start;
 	padding: 12px 14px;
 	border: 1px solid #ebebeb;
 	border-radius: 12px;
 	background: #fafafa;
 }
-.skills-dialog-meta > span {
+.skills-dialog-meta-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+.skills-dialog-meta-item > span {
 	color: #8b8b8b;
 	font-size: 11px;
+	font-weight: 500;
 	letter-spacing: 0.03em;
 	text-transform: uppercase;
-	padding-top: 2px;
 }
-.skills-dialog-meta > strong {
+.skills-dialog-meta-item > strong {
+	color: #222;
 	font-size: 13px;
 	font-weight: 550;
+	line-height: 1.4;
 	overflow-wrap: anywhere;
+}
+.skills-dialog-meta-path,
+.skills-dialog-meta-wide {
+	grid-column: 1 / -1;
 }
 .skills-dialog-path {
 	display: block;
 	min-width: 0;
+	width: 100%;
 	color: #444;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	font-size: 12px;
-	line-height: 1.45;
+	line-height: 1.5;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 	word-break: break-all;
@@ -262,11 +275,7 @@
 	}
 	.skills-dialog-meta {
 		grid-template-columns: 1fr;
-		gap: 4px;
-	}
-	.skills-dialog-path {
-		white-space: normal;
-		overflow-wrap: anywhere;
+		gap: 12px;
 	}
 }
 
