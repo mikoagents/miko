@@ -82,6 +82,13 @@ outline: 1px solid var(--focus-ring, #6B97FF);
 outline-offset: 2px;
 border-radius: var(--shape-input-radius, 8px);
 }
+
+/* Fluid InputField draws its own ring; suppress the global focus outline so
+   rest/focus never stack as a double border. */
+.fluid-scope .fluid-input-control:focus-visible {
+outline: none;
+outline-offset: 0;
+}
 .fluid-scope a:focus-visible {
 border-radius: 2px;
 }

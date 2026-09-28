@@ -149,7 +149,8 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       ringClass = isFocused || isActive ? "ring-destructive/50" : "ring-transparent";
     } else if (isFocused) {
       bgClass = "bg-card";
-      ringClass = "ring-border";
+      // One ring only: global :focus-visible outline is suppressed on the control.
+      ringClass = "ring-[color:var(--focus-ring,#6B97FF)]";
     } else if (isActive) {
       bgClass = "bg-muted/50";
       ringClass = "ring-border";
@@ -248,7 +249,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
             onBlur={handleBlur}
             placeholder={placeholder}
             className={cn(
-              "w-full rounded-none bg-transparent text-foreground placeholder:text-muted-foreground outline-none font-[inherit]",
+              "fluid-input-control w-full rounded-none bg-transparent text-foreground placeholder:text-muted-foreground outline-none focus:outline-none focus-visible:outline-none font-[inherit]",
               sizeClasses.text
             )}
             style={{ fontVariationSettings: fontWeights.normal }}
