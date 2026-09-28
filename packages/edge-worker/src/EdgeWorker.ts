@@ -161,6 +161,8 @@ import {
 	automationCompletion,
 } from "./automation/completion.js";
 import {
+	AUTOMATION_MODEL_SUGGESTIONS,
+	AUTOMATION_RUNNERS,
 	type AutomationRun,
 	activeRun,
 	type RepositoryTaskRequest,
@@ -826,6 +828,17 @@ export class EdgeWorker extends EventEmitter {
 				this.repositoryRouter.parseRepoTagsFromDescription(text),
 			startTask: (request) => this.startDirectRepositoryTask(request),
 			localState: (run) => this.automationLocalState(run),
+			runnerOptions: () => ({
+				runners: AUTOMATION_RUNNERS,
+				defaultRunner: this.runnerSelectionService.getDefaultRunner(),
+				defaultModels: Object.fromEntries(
+					AUTOMATION_RUNNERS.map((runner) => [
+						runner,
+						this.runnerSelectionService.getDefaultModelForRunner(runner),
+					]),
+				),
+				modelSuggestions: AUTOMATION_MODEL_SUGGESTIONS,
+			}),
 		});
 		this.automations = new AutomationService(
 			new AutomationStore(join(this.mikoHome, "automations")),

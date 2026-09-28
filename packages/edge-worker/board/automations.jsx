@@ -23,6 +23,8 @@ import {
 	formatDate,
 	formFromDefinition,
 	inputFromForm,
+	modelChoices,
+	RUNNER_LABELS,
 	runLabels,
 	scheduleFromForm,
 	scheduleLabel,
@@ -52,7 +54,7 @@ import { ShapeProvider } from "./fluid/lib/shape-context";
 import "./fluid/theme.css";
 import "./automations.css";
 
-const emptyOptions = { repositories: [], workspaces: [] };
+const emptyOptions = { repositories: [], workspaces: [], runners: [], defaultModels: {}, modelSuggestions: {} };
 const weekdayNames = [
 	"Sunday",
 	"Monday",
@@ -369,10 +371,60 @@ function AutomationEditor({
 											]}
 										/>
 									</div>
+									<div className="automation-form-grid">
+										<FieldSelect
+											label="Agent"
+											value={form.runner || "default"}
+											onChange={(value) =>
+												setForm((current) => ({
+													...current,
+													runner: value === "default" ? "" : value,
+													// Keep model when switching agents; Cursor accepts cross-provider IDs.
+												}))
+											}
+											items={[
+												[
+													"default",
+													options.defaultRunner
+														? `Default (${RUNNER_LABELS[options.defaultRunner] || options.defaultRunner})`
+														: "Default",
+												],
+												...(options.runners || Object.keys(RUNNER_LABELS)).map(
+													(runner) => [
+														runner,
+														RUNNER_LABELS[runner] || runner,
+													],
+												),
+											]}
+										/>
+										<div className="automation-field">
+											<label htmlFor="automation-model">Model</label>
+											<input
+												className="automation-text-input"
+												id="automation-model"
+												list="automation-model-suggestions"
+												placeholder={
+													(form.runner &&
+														options.defaultModels?.[form.runner]) ||
+													(options.defaultRunner &&
+														options.defaultModels?.[options.defaultRunner]) ||
+													"Default for agent"
+												}
+												value={form.model}
+												onChange={(event) => set("model", event.target.value)}
+												maxLength={200}
+											/>
+											<datalist id="automation-model-suggestions">
+												{modelChoices(options, form.runner).map((model) => (
+													<option key={model} value={model} />
+												))}
+											</datalist>
+										</div>
+									</div>
 									<p className="automation-field-hint">
 										{form.target === "direct_repository"
-											? "An isolated worktree, using this repository’s model and permissions."
-											: "Creates an issue and delegates it to your connected Miko agent."}
+											? "An isolated worktree. Agent and model override the install defaults for this schedule."
+											: "Creates an issue and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
 									</p>
 									{form.target === "linear_issue" && (
 										<div className="automation-linear-fields">

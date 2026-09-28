@@ -56,4 +56,40 @@ describe("automation form serialization", () => {
 		expect(inputFromForm(form).target).toEqual({ kind: "direct_repository" });
 		expect(form.workspaceId).toBe("ws");
 	});
+	it("preserves runner and model through editing", () => {
+		const input = {
+			name: "Frontier digest",
+			instructions: "Collect news",
+			repositoryId: "repo",
+			schedule: { kind: "daily", time: "09:00" },
+			timezone: "Asia/Shanghai",
+			enabled: true,
+			target: { kind: "direct_repository" },
+			runner: "cursor",
+			model: "gemini-3.8-flash",
+		};
+		expect(inputFromForm(formFromDefinition(input, options))).toEqual(input);
+	});
+	it("reads legacy agent/model tags when schema fields are unset", () => {
+		const form = formFromDefinition(
+			{
+				instructions: "[agent=cursor]\n[model=gemini-3.8-flash]\n\nDo the work",
+				target: { kind: "direct_repository" },
+				schedule: { kind: "daily", time: "09:00" },
+			},
+			options,
+		);
+		expect(form.runner).toBe("cursor");
+		expect(form.model).toBe("gemini-3.8-flash");
+	});
+	it("omits default runner and blank model from the saved input", () => {
+		const form = {
+			...formFromDefinition(undefined, options),
+			runner: "",
+			model: "  ",
+		};
+		const input = inputFromForm(form);
+		expect(input).not.toHaveProperty("runner");
+		expect(input).not.toHaveProperty("model");
+	});
 });
