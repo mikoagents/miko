@@ -112,6 +112,65 @@ describe("scheduled task lifecycle", () => {
 		).not.toHaveBeenCalled();
 		expect(update).not.toHaveBeenCalled();
 	});
+	it("still starts a human session after the issue's automation run finished", async () => {
+		const { worker, update } = fixture();
+		worker.automations.store.read = () => ({
+			runs: [
+				{
+					id: "run",
+					issueId: "issue",
+					status: "succeeded",
+					executionClaimedAt: 1,
+				},
+			],
+		});
+		worker.automationSessionStarts = new Set();
+		worker.automations.update = vi.fn(async () => {});
+		worker.repositories = [];
+		worker.repositoryRouter = {
+			getCachedRepositories: vi.fn(() => null),
+			determineRepositoryForWebhook: vi.fn(async () => ({ type: "none" })),
+		};
+		await worker.handleAgentSessionCreatedWebhook(
+			{ agentSession: { id: "human-session", issue: { id: "issue" } } },
+			[],
+		);
+		expect(
+			worker.repositoryRouter.determineRepositoryForWebhook,
+		).toHaveBeenCalled();
+		expect(worker.automations.update).not.toHaveBeenCalled();
+		expect(update).toHaveBeenCalledWith("human-session", {
+			status: "failed",
+			message: "No repository matched the scheduled issue",
+		});
+	});
+	it("still ignores terminal automation when deciding the claim path for skipped runs", async () => {
+		const { worker } = fixture();
+		worker.automations.store.read = () => ({
+			runs: [
+				{
+					id: "run",
+					issueId: "issue",
+					status: "skipped",
+				},
+			],
+		});
+		worker.automationSessionStarts = new Set();
+		worker.automations.update = vi.fn(async () => {});
+		worker.repositories = [];
+		worker.repositoryRouter = {
+			getCachedRepositories: vi.fn(() => null),
+			determineRepositoryForWebhook: vi.fn(async () => ({ type: "none" })),
+		};
+		await worker.handleAgentSessionCreatedWebhook(
+			{ agentSession: { id: "human-session", issue: { id: "issue" } } },
+			[],
+		);
+		expect(
+			worker.repositoryRouter.determineRepositoryForWebhook,
+		).toHaveBeenCalled();
+		expect(worker.automations.update).not.toHaveBeenCalled();
+	});
 });
 
 it("builds standalone runner config without Linear identity or native Linear tools", () => {
