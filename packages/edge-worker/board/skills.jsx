@@ -417,12 +417,14 @@ function SkillsApp() {
 										{detail.active ? "Active" : "Shadowed by user skill"}
 									</strong>
 								</div>
-								<div className="skills-dialog-meta-item skills-dialog-meta-path">
+								<div className="skills-dialog-meta-item">
 									<span>Path</span>
 									<code className="skills-dialog-path">{detail.path}</code>
 								</div>
-								<div className="skills-dialog-meta-item skills-dialog-meta-wide">
-									<span>{detail.source === "repo" ? "Repository" : "Origin"}</span>
+								<div className="skills-dialog-meta-item">
+									<span>
+										{detail.source === "repo" ? "Repository" : "Origin"}
+									</span>
 									<strong>
 										{detail.source === "repo"
 											? detail.origin
