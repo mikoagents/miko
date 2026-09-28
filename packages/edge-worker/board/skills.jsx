@@ -4,12 +4,19 @@ import {
 	Copy,
 	FolderOpen,
 	RefreshCw,
-	Search,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "./fluid/components/ui/badge";
 import { Button } from "./fluid/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "./fluid/components/ui/dialog";
 import { InputField, InputGroup } from "./fluid/components/ui/input-group";
 import { ShapeProvider } from "./fluid/lib/shape-context";
 import "./fluid/theme.css";
@@ -25,6 +32,12 @@ const sourceColors = {
 	user: "green",
 	repo: "gray",
 };
+const sourceFilters = [
+	{ id: "all", label: "All" },
+	{ id: "internal", label: "Bundled" },
+	{ id: "user", label: "User" },
+	{ id: "repo", label: "Repo" },
+];
 
 async function copyText(value) {
 	try {
@@ -44,11 +57,16 @@ async function copyText(value) {
 	}
 }
 
+function skillKey(skill) {
+	return `${skill.source}:${skill.origin}:${skill.name}`;
+}
+
 function SkillsApp() {
 	const [skills, setSkills] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [query, setQuery] = useState("");
+	const [sourceFilter, setSourceFilter] = useState("all");
 	const [selected, setSelected] = useState(null);
 	const [busy, setBusy] = useState("");
 	const [copied, setCopied] = useState("");
@@ -82,25 +100,33 @@ function SkillsApp() {
 		return () => controller.abort();
 	}, [reload]);
 
+	const counts = useMemo(() => {
+		const next = { all: skills.length, internal: 0, user: 0, repo: 0 };
+		for (const skill of skills) {
+			if (next[skill.source] !== undefined) next[skill.source] += 1;
+		}
+		return next;
+	}, [skills]);
+
 	const matching = useMemo(() => {
 		const needle = query.trim().toLowerCase();
-		return skills.filter(
-			(skill) =>
-				!needle ||
-				[skill.name, skill.description, skill.origin, skill.source]
-					.join(" ")
-					.toLowerCase()
-					.includes(needle),
-		);
-	}, [skills, query]);
+		return skills.filter((skill) => {
+			if (sourceFilter !== "all" && skill.source !== sourceFilter) return false;
+			if (!needle) return true;
+			return [skill.name, skill.description, skill.origin, skill.source]
+				.join(" ")
+				.toLowerCase()
+				.includes(needle);
+		});
+	}, [skills, query, sourceFilter]);
+
+	const detail = matching.find((skill) => skillKey(skill) === selected);
 
 	useEffect(() => {
 		if (!selected) return;
 		if (!matching.some((skill) => skillKey(skill) === selected))
 			setSelected(null);
 	}, [matching, selected]);
-
-	const detail = matching.find((skill) => skillKey(skill) === selected);
 
 	async function openSkill(skill) {
 		const key = skillKey(skill);
@@ -173,6 +199,7 @@ function SkillsApp() {
 						Refresh
 					</Button>
 				</header>
+
 				<div className="skills-toolbar">
 					<InputGroup className="skills-search" size="default">
 						<InputField
@@ -185,12 +212,28 @@ function SkillsApp() {
 							placeholder="Search skills…"
 						/>
 					</InputGroup>
+					<div className="skills-filters" role="tablist" aria-label="Skill source">
+						{sourceFilters.map((filter) => (
+							<button
+								key={filter.id}
+								type="button"
+								role="tab"
+								aria-selected={sourceFilter === filter.id}
+								className={`skills-filter${sourceFilter === filter.id ? " selected" : ""}`}
+								onClick={() => setSourceFilter(filter.id)}
+							>
+								{filter.label}
+								<span>{counts[filter.id] ?? 0}</span>
+							</button>
+						))}
+					</div>
 					<span className="skills-count">
 						{loading
 							? "Loading…"
 							: `${matching.length} skill${matching.length === 1 ? "" : "s"}`}
 					</span>
 				</div>
+
 				{error && (
 					<div className="skills-banner skills-banner-error" role="alert">
 						{error}
@@ -201,34 +244,29 @@ function SkillsApp() {
 						{message}
 					</div>
 				)}
-				<div className="skills-body">
-					<section className="skills-list" aria-label="Skills">
-						{loading && !skills.length ? (
-							<div className="skills-empty">Loading skills…</div>
-						) : !matching.length ? (
-							<div className="skills-empty">
-								{query ? "No matching skills." : "No skills found."}
-							</div>
-						) : (
-							matching.map((skill) => {
-								const key = skillKey(skill);
-								return (
-									<button
-										type="button"
-										key={key}
-										className={`skills-row${selected === key ? " selected" : ""}`}
-										aria-pressed={selected === key}
-										onClick={() =>
-											setSelected(selected === key ? null : key)
-										}
-									>
-										<span className="skills-row-main">
-											<strong>{skill.name}</strong>
-											<span>
-												{skill.description || "No description in SKILL.md"}
-											</span>
-										</span>
-										<span className="skills-row-meta">
+
+				{loading && !skills.length ? (
+					<div className="skills-empty">Loading skills…</div>
+				) : !matching.length ? (
+					<div className="skills-empty">
+						{query || sourceFilter !== "all"
+							? "No matching skills."
+							: "No skills found."}
+					</div>
+				) : (
+					<section className="skills-grid" aria-label="Skills">
+						{matching.map((skill) => {
+							const key = skillKey(skill);
+							return (
+								<button
+									type="button"
+									key={key}
+									className="skills-card"
+									onClick={() => setSelected(key)}
+								>
+									<div className="skills-card-top">
+										<strong className="skills-card-name">{skill.name}</strong>
+										<div className="skills-card-badges">
 											<Badge
 												variant="dot"
 												color={sourceColors[skill.source] || "gray"}
@@ -237,85 +275,129 @@ function SkillsApp() {
 												{sourceLabels[skill.source] || skill.source}
 											</Badge>
 											{!skill.active && (
-												<Badge variant="dot" color="gray" size="compact">
+												<Badge variant="dot" color="orange" size="compact">
 													Shadowed
 												</Badge>
 											)}
-											<span>{skill.origin}</span>
-										</span>
-									</button>
-								);
-							})
-						)}
-					</section>
-					<aside className="skills-detail" aria-label="Skill detail">
-						{detail ? (
-							<>
-								<div className="skills-detail-header">
-									<BookOpen size={18} />
-									<div>
-										<h2>{detail.name}</h2>
-										<p>{detail.origin}</p>
+										</div>
 									</div>
-								</div>
-								<div className="skills-detail-badges">
-									<Badge
-										variant="dot"
-										color={sourceColors[detail.source] || "gray"}
-										size="compact"
-									>
-										{sourceLabels[detail.source] || detail.source}
-									</Badge>
-									<Badge
-										variant="dot"
-										color={detail.active ? "green" : "gray"}
-										size="compact"
-									>
-										{detail.active ? "Active" : "Shadowed by user skill"}
-									</Badge>
-								</div>
-								<p className="skills-detail-description">
-									{detail.description || "No description in SKILL.md"}
-								</p>
-								<code className="skills-detail-path">{detail.path}</code>
-								<div className="skills-detail-actions">
-									<Button
-										variant="ghost"
-										size="compact"
-										leadingIcon={
-											copied === skillKey(detail) ? Check : Copy
-										}
-										onClick={() => copyPath(detail)}
-									>
-										{copied === skillKey(detail) ? "Copied" : "Copy path"}
-									</Button>
-									<Button
-										variant="secondary"
-										size="compact"
-										leadingIcon={FolderOpen}
-										loading={busy === skillKey(detail)}
-										disabled={busy === skillKey(detail)}
-										onClick={() => openSkill(detail)}
-									>
-										Open folder
-									</Button>
-								</div>
-							</>
-						) : (
-							<div className="skills-empty skills-detail-empty">
-								<Search size={18} />
-								<span>Select a skill to inspect its source and path.</span>
+									<p className="skills-card-description">
+										{skill.description || "No description in SKILL.md"}
+									</p>
+									{skill.source === "repo" && (
+										<span className="skills-card-origin" title={skill.origin}>
+											{skill.origin}
+										</span>
+									)}
+								</button>
+							);
+						})}
+					</section>
+				)}
+
+				<Dialog
+					open={!!detail}
+					onOpenChange={(open) => {
+						if (!open) setSelected(null);
+					}}
+				>
+					{detail && (
+						<DialogContent size="lg" className="fluid-scope skills-dialog">
+							<DialogHeader>
+								<DialogTitle className="skills-dialog-title">
+									<BookOpen size={18} aria-hidden="true" />
+									<span>{detail.name}</span>
+								</DialogTitle>
+								<DialogDescription>
+									{detail.source === "repo"
+										? `Repo skill from ${detail.origin}`
+										: detail.source === "user"
+											? "User skill override"
+											: "Bundled with Miko"}
+								</DialogDescription>
+							</DialogHeader>
+
+							<div className="skills-dialog-badges">
+								<Badge
+									variant="dot"
+									color={sourceColors[detail.source] || "gray"}
+									size="compact"
+								>
+									{sourceLabels[detail.source] || detail.source}
+								</Badge>
+								<Badge
+									variant="dot"
+									color={detail.active ? "green" : "orange"}
+									size="compact"
+								>
+									{detail.active ? "Active" : "Shadowed by user skill"}
+								</Badge>
 							</div>
-						)}
-					</aside>
-				</div>
+
+							<p className="skills-dialog-description">
+								{detail.description || "No description in SKILL.md"}
+							</p>
+
+							<div className="skills-dialog-meta">
+								<span>Path</span>
+								<code className="skills-dialog-path" title={detail.path}>
+									{detail.path}
+								</code>
+								{detail.source === "repo" && (
+									<>
+										<span>Repository</span>
+										<strong title={detail.origin}>{detail.origin}</strong>
+									</>
+								)}
+								{detail.source === "user" && (
+									<>
+										<span>Origin</span>
+										<strong>User skills directory</strong>
+									</>
+								)}
+								{detail.source === "internal" && (
+									<>
+										<span>Origin</span>
+										<strong title={detail.origin}>{detail.origin}</strong>
+									</>
+								)}
+							</div>
+
+							{!detail.active && (
+								<div className="skills-dialog-note" role="note">
+									This skill is shadowed by a user skill with the same name and
+									is not active.
+								</div>
+							)}
+
+							<DialogFooter className="skills-dialog-actions">
+								<Button
+									variant="ghost"
+									size="compact"
+									leadingIcon={
+										copied === skillKey(detail) ? Check : Copy
+									}
+									onClick={() => copyPath(detail)}
+								>
+									{copied === skillKey(detail) ? "Copied" : "Copy path"}
+								</Button>
+								<Button
+									variant="secondary"
+									size="compact"
+									leadingIcon={FolderOpen}
+									loading={busy === skillKey(detail)}
+									disabled={busy === skillKey(detail)}
+									onClick={() => openSkill(detail)}
+								>
+									Open folder
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					)}
+				</Dialog>
 			</div>
 		</ShapeProvider>
 	);
-}
-
-function skillKey(skill) {
-	return `${skill.source}:${skill.origin}:${skill.name}`;
 }
 
 export function initializeSkills() {

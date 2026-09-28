@@ -136,16 +136,14 @@
 	color: #6f6f6f;
 	font-size: 13px;
 }
-.status-directory-copy code,
-.skills-detail-path {
+.status-directory-copy code {
 	display: block;
 	overflow-wrap: anywhere;
 	color: #444;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	font-size: 12px;
 }
-.status-directory-actions,
-.skills-detail-actions {
+.status-directory-actions {
 	display: flex;
 	flex-shrink: 0;
 	gap: 8px;
