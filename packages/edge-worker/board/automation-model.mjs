@@ -49,13 +49,8 @@ export function formFromDefinition(definition, options, kind = "daily") {
 		instructions: definition?.instructions || "",
 		repositoryId: repo?.id || "",
 		target: definition?.target.kind || "direct_repository",
-		workspaceId:
-			definition?.target.workspaceId ||
-			repo?.workspaceId ||
-			options.workspaces[0]?.id ||
-			"",
+		workspaceId: repo?.workspaceId || "",
 		teamId: definition?.target.teamId || "",
-		projectId: definition?.target.projectId || "",
 		kind: definition?.schedule.kind || kind,
 		time: definition?.schedule.time || "09:00",
 		days: definition?.schedule.days || [1, 2, 3, 4, 5],
@@ -107,7 +102,6 @@ export function inputFromForm(form) {
 						kind: "linear_issue",
 						workspaceId: form.workspaceId,
 						teamId: form.teamId,
-						...(form.projectId ? { projectId: form.projectId } : {}),
 					},
 	};
 }
