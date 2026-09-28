@@ -2,6 +2,10 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
+import {
+	type BoardResourcesInfo,
+	collectBoardResources,
+} from "./BoardResources.js";
 
 export type BoardDirectoryId =
 	| "home"
@@ -34,6 +38,7 @@ export interface BoardStatusInfo {
 	cwd: string;
 	directories: BoardDirectory[];
 	automationCount?: number;
+	resources: BoardResourcesInfo;
 }
 
 export interface BoardPathsOptions {
@@ -147,12 +152,16 @@ export function resolveAllowedBoardDirectory(
 	return match;
 }
 
-export function buildBoardStatus(options: BoardPathsOptions): BoardStatusInfo {
+export async function buildBoardStatus(
+	options: BoardPathsOptions,
+): Promise<BoardStatusInfo> {
 	const startedAt = options.startedAt ?? Date.now() - process.uptime() * 1000;
-	const directories = resolveBoardDirectories(
-		options.mikoHome,
-		options.releaseDir ?? defaultReleaseDir(),
-	);
+	const releaseDir = options.releaseDir ?? defaultReleaseDir();
+	const directories = resolveBoardDirectories(options.mikoHome, releaseDir);
+	const resources = await collectBoardResources({
+		mikoHome: options.mikoHome,
+		releaseDir,
+	});
 	return {
 		app: "miko-board",
 		version: options.version ?? null,
@@ -165,6 +174,7 @@ export function buildBoardStatus(options: BoardPathsOptions): BoardStatusInfo {
 		cwd: process.cwd(),
 		directories,
 		automationCount: options.getAutomationCount?.(),
+		resources,
 	};
 }
 

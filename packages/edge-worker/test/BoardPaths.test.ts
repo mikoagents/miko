@@ -69,7 +69,7 @@ describe("BoardPaths", () => {
 
 	it("builds status payload with runtime fields", async () => {
 		const home = await tempHome();
-		const status = buildBoardStatus({
+		const status = await buildBoardStatus({
 			mikoHome: home,
 			version: "0.2.72",
 			getStatus: () => "idle",
@@ -84,6 +84,9 @@ describe("BoardPaths", () => {
 		});
 		expect(status.directories.length).toBeGreaterThan(5);
 		expect(status.pid).toBe(process.pid);
+		expect(status.resources.cpu.cores).toBeGreaterThan(0);
+		expect(status.resources.memory.totalBytes).toBeGreaterThan(0);
+		expect(status.resources.disks.length).toBeGreaterThan(0);
 	});
 });
 

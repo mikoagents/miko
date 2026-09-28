@@ -1,4 +1,4 @@
-import { Activity, Check, Copy, FolderOpen, RefreshCw } from "lucide-react";
+import { Activity, Check, Copy, Cpu, FolderOpen, HardDrive, MemoryStick, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "./fluid/components/ui/badge";
@@ -17,6 +17,38 @@ function formatUptime(seconds) {
 	if (hours) return `${hours}h ${minutes}m`;
 	if (minutes) return `${minutes}m ${secs}s`;
 	return `${secs}s`;
+}
+
+
+function formatBytes(bytes) {
+	const value = Math.max(0, Number(bytes) || 0);
+	const units = ["B", "KB", "MB", "GB", "TB"];
+	let size = value;
+	let unit = 0;
+	while (size >= 1024 && unit < units.length - 1) {
+		size /= 1024;
+		unit += 1;
+	}
+	const digits = size >= 100 || unit === 0 ? 0 : size >= 10 ? 1 : 2;
+	return `${size.toFixed(digits)} ${units[unit]}`;
+}
+
+function formatLoad(loadAverage) {
+	return (loadAverage || []).map((n) => Number(n).toFixed(2)).join(" / ");
+}
+
+function ResourceBar({ percent, label }) {
+	const width = Math.max(0, Math.min(100, Number(percent) || 0));
+	const tone =
+		width >= 90 ? "critical" : width >= 75 ? "warn" : "ok";
+	return (
+		<div className="status-resource-bar" aria-label={label}>
+			<div
+				className={`status-resource-bar-fill status-resource-bar-${tone}`}
+				style={{ width: `${width}%` }}
+			/>
+		</div>
+	);
 }
 
 async function copyText(value) {
@@ -72,7 +104,7 @@ function StatusApp() {
 					}
 				});
 		void refresh();
-		const timer = setInterval(refresh, 15000);
+		const timer = setInterval(refresh, 8000);
 		return () => {
 			controller.abort();
 			clearInterval(timer);
@@ -196,6 +228,134 @@ function StatusApp() {
 								<strong className="status-mono">{data.cwd}</strong>
 							</article>
 						</section>
+
+						<section className="status-resources" aria-label="System resources">
+							<div className="status-section-title">
+								<Cpu size={16} />
+								<span>System resources</span>
+							</div>
+							<div className="status-resource-grid">
+								<article className="status-resource-card">
+									<div className="status-resource-heading">
+										<Cpu size={15} />
+										<strong>CPU</strong>
+										<span>{data.resources?.cpu?.cores ?? "—"} cores</span>
+									</div>
+									<div className="status-resource-metric">
+										<span>Load (1 / 5 / 15)</span>
+										<strong>{formatLoad(data.resources?.cpu?.loadAverage)}</strong>
+									</div>
+									<div className="status-resource-metric">
+										<span>Approx. usage</span>
+										<strong>
+											{typeof data.resources?.cpu?.usagePercent === "number"
+												? `${data.resources.cpu.usagePercent}%`
+												: "—"}
+										</strong>
+									</div>
+									<ResourceBar
+										percent={data.resources?.cpu?.usagePercent}
+										label="CPU usage"
+									/>
+								</article>
+								<article className="status-resource-card">
+									<div className="status-resource-heading">
+										<MemoryStick size={15} />
+										<strong>Memory</strong>
+										<span>
+											{typeof data.resources?.memory?.usedPercent === "number"
+												? `${data.resources.memory.usedPercent}%`
+												: "—"}
+										</span>
+									</div>
+									<div className="status-resource-metric">
+										<span>Used / total</span>
+										<strong>
+											{data.resources?.memory
+												? `${formatBytes(data.resources.memory.usedBytes)} / ${formatBytes(data.resources.memory.totalBytes)}`
+												: "—"}
+										</strong>
+									</div>
+									<div className="status-resource-metric">
+										<span>Available</span>
+										<strong>
+											{data.resources?.memory
+												? formatBytes(data.resources.memory.availableBytes)
+												: "—"}
+										</strong>
+									</div>
+									<ResourceBar
+										percent={data.resources?.memory?.usedPercent}
+										label="Memory usage"
+									/>
+								</article>
+								{(data.resources?.disks || []).map((disk) => (
+									<article
+										key={`${disk.label}:${disk.mount}`}
+										className="status-resource-card"
+									>
+										<div className="status-resource-heading">
+											<HardDrive size={15} />
+											<strong>{disk.label}</strong>
+											<span>{disk.usedPercent}%</span>
+										</div>
+										<div className="status-resource-metric">
+											<span>Used / total</span>
+											<strong>
+												{formatBytes(disk.usedBytes)} / {formatBytes(disk.totalBytes)}
+											</strong>
+										</div>
+										<div className="status-resource-metric">
+											<span>Available</span>
+											<strong>{formatBytes(disk.availableBytes)}</strong>
+										</div>
+										<code className="status-resource-path">{disk.mount}</code>
+										<ResourceBar percent={disk.usedPercent} label={`${disk.label} disk`} />
+									</article>
+								))}
+								<article className="status-resource-card status-resource-card-wide">
+									<div className="status-resource-heading">
+										<Activity size={15} />
+										<strong>Host & process</strong>
+									</div>
+									<div className="status-resource-inline">
+										<div>
+											<span>Host uptime</span>
+											<strong>
+												{typeof data.resources?.hostUptimeSeconds === "number"
+													? formatUptime(data.resources.hostUptimeSeconds)
+													: "—"}
+											</strong>
+										</div>
+										<div>
+											<span>Processes</span>
+											<strong>
+												{typeof data.resources?.processCount === "number"
+													? data.resources.processCount
+													: "—"}
+											</strong>
+										</div>
+										<div>
+											<span>Miko RSS</span>
+											<strong>
+												{data.resources?.process
+													? formatBytes(data.resources.process.rssBytes)
+													: "—"}
+											</strong>
+										</div>
+										<div>
+											<span>Heap used</span>
+											<strong>
+												{data.resources?.process
+													? formatBytes(data.resources.process.heapUsedBytes)
+													: "—"}
+											</strong>
+										</div>
+									</div>
+								</article>
+							</div>
+						</section>
+
 						<section className="status-directories" aria-label="Directories">
 							<div className="status-section-title">
 								<FolderOpen size={16} />
