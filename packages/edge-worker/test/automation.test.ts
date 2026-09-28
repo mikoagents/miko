@@ -12,6 +12,7 @@ import {
 	type AutomationAdapter,
 	AutomationError,
 	type AutomationInput,
+	automationInputSchema,
 } from "../src/automation/types.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -362,5 +363,34 @@ describe("durable automation dispatch", () => {
 			statusCode: 409,
 		});
 		expect(service.runs(definition.id)[0].status).toBe("running");
+	});
+});
+
+describe("automation input schema optional repository", () => {
+	it("accepts direct_ops without repositoryId and rejects repo-backed without one", () => {
+		expect(
+			automationInputSchema.parse(
+				input({
+					target: { kind: "direct_ops" },
+					repositoryId: undefined,
+				}),
+			).target.kind,
+		).toBe("direct_ops");
+		expect(() =>
+			automationInputSchema.parse(
+				input({
+					target: { kind: "direct_ops" },
+					repositoryId: "repo",
+				}),
+			),
+		).toThrow(/Ops automations must not bind a repository/);
+		expect(() =>
+			automationInputSchema.parse(
+				input({
+					target: { kind: "direct_repository" },
+					repositoryId: undefined,
+				}),
+			),
+		).toThrow(/Repository is required/);
 	});
 });

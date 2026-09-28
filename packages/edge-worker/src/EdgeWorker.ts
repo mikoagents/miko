@@ -158,7 +158,9 @@ import { AutomationService } from "./automation/AutomationService.js";
 import { AutomationStore } from "./automation/AutomationStore.js";
 import {
 	AUTOMATION_COMPLETION_INSTRUCTIONS,
+	AUTOMATION_OPS_COMPLETION_INSTRUCTIONS,
 	automationCompletion,
+	automationOpsCompletion,
 } from "./automation/completion.js";
 import {
 	AUTOMATION_MODEL_SUGGESTIONS,
@@ -5414,6 +5416,10 @@ ${taskSection}`;
 	private async startDirectRepositoryTask(
 		request: RepositoryTaskRequest,
 	): Promise<void> {
+		if (!request.repositoryId) {
+			await this.startDirectOpsTask(request);
+			return;
+		}
 		const repository = this.repositories.get(request.repositoryId);
 		if (!repository) throw new Error("Repository is unavailable");
 		const sessionId = `automation-${request.id}`;
@@ -5478,6 +5484,146 @@ ${await this.loadSharedInstructions()}`;
 			],
 		}).catch(async (error) => {
 			this.logger.error("Scheduled repository task failed", error);
+			await this.updateAutomationSession(sessionId, {
+				status: "failed",
+				message: error instanceof Error ? error.message : String(error),
+			}).catch((storageError) =>
+				this.logger.error(
+					"Unable to save scheduled task failure",
+					storageError,
+				),
+			);
+		});
+	}
+
+
+	/**
+	 * Ops automation: home-based session with no git worktree / repository binding.
+	 * Working directory is ~/.miko/automation-workspaces/<id>. Linear MCP may be
+	 * seeded from any configured workspace token so the agent can use Linear tools;
+	 * multi-workspace GraphQL via config tokens is also available.
+	 */
+	private async startDirectOpsTask(
+		request: RepositoryTaskRequest,
+	): Promise<void> {
+		const sessionId = `automation-${request.id}`;
+		if (this.agentSessionManager.getSession(sessionId)) return;
+		const workItem = {
+			id: request.id,
+			identifier: `AUTO-${request.id}`,
+			title: request.title,
+			description: request.instructions,
+			branchName: `automation/${request.id}`,
+			parent: Promise.resolve(undefined),
+			labels: async () => ({ nodes: [] }),
+			inverseRelations: async () => ({ nodes: [] }),
+		} as unknown as Issue;
+		const workspace = await this.gitService.createGitWorktree(workItem, [], {
+			workspaceBaseDir: join(this.mikoHome, "automation-workspaces"),
+		});
+		this.agentSessionManager.createChatSession(
+			sessionId,
+			workspace,
+			"automation",
+			[],
+		);
+		this.agentSessionManager.setActivitySink(
+			sessionId,
+			this.automationActivitySink(new NoopActivitySink(sessionId)),
+		);
+		await this.automations!.update(request.id, {
+			sessionId,
+			status: "running",
+		});
+
+		const seedRepo = [...this.repositories.values()].find(
+			(r) => r.isActive !== false && r.linearWorkspaceId,
+		);
+		const linearWorkspaceId =
+			seedRepo?.linearWorkspaceId ??
+			Object.keys(this.config.linearWorkspaces ?? {})[0];
+		const plugins = await this.skillsPluginResolver.resolve();
+		const skills = await this.skillsPluginResolver.discoverSkillNames(
+			plugins,
+			{},
+		);
+		const allowedTools = this.toolPermissionResolver.buildAllowedTools([]);
+		const userPrompt = `# ${request.title}\n\n${request.instructions}`;
+		const systemPrompt = `You are running a scheduled Miko operations task with no code repository.
+Work in the plain directory ${workspace.path} under the Miko home (not a git worktree).
+Follow the task instructions and any matching user skills (for example Skill tool / linear-issue-cap).
+You may use Linear MCP tools for the seeded workspace and the Linear GraphQL API at https://api.linear.app/graphql with Bearer tokens from ~/.miko/config.json → linearWorkspaces to operate across ALL configured Linear workspaces. Prefer GraphQL mutation issueArchive (Linear SDK archiveIssue) when the MCP server has no archive tool.
+Do not create pull requests. Do not create a Linear issue as a ticket for this automation run.
+Do not modify active (non-completed) issues unless the instructions explicitly require it.
+${await this.loadSharedInstructions()}`;
+
+		const log = this.logger.withContext({ sessionId, platform: "automation" });
+		const selection = this.runnerSelectionService.determineRunnerSelection(
+			[],
+			request.instructions,
+		);
+		const runnerType = selection.runnerType;
+		const model =
+			selection.modelOverride ||
+			this.runnerSelectionService.getDefaultModelForRunner(runnerType);
+		const chatConfig = this.runnerConfigBuilder.buildChatConfig({
+			workspacePath: workspace.path,
+			workspaceName: workItem.identifier,
+			systemPrompt,
+			sessionId,
+			mikoHome: this.mikoHome,
+			platformName: "automation",
+			linearWorkspaceId,
+			repository: seedRepo,
+			repositoryPaths: [
+				this.mikoHome,
+				...(seedRepo ? [seedRepo.repositoryPath] : []),
+			],
+			plugins,
+			skills,
+			runnerType,
+			logger: log,
+			onMessage: (message: SDKMessage) => {
+				this.activeWebhookCount++;
+				void this.handleClaudeMessage(sessionId, message, "")
+					.catch((error) =>
+						this.logger.error("Message processing failed", error),
+					)
+					.finally(() => {
+						this.activeWebhookCount--;
+					});
+			},
+			onError: (error: Error) => {
+				void this.handleClaudeError(error);
+				void this.updateAutomationSession(sessionId, {
+					status: "failed",
+					message: error.message,
+				}).catch((storageError) =>
+					this.logger.error(
+						"Unable to save scheduled task failure",
+						storageError,
+					),
+				);
+			},
+		});
+		const config: AgentRunnerConfig = {
+			...chatConfig,
+			allowedTools: [...new Set([...allowedTools, ...(chatConfig.allowedTools ?? [])])],
+			model,
+			fallbackModel:
+				selection.fallbackModelOverride ||
+				this.runnerSelectionService.getDefaultFallbackModelForRunner(runnerType),
+		};
+		const runner = this.createRunnerForType(runnerType, config);
+		this.agentSessionManager.addAgentRunner(sessionId, runner);
+		await this.savePersistedState();
+		await this.updateAutomationSession(sessionId, { status: "running" });
+		const prompt = `${userPrompt}\n\n${AUTOMATION_OPS_COMPLETION_INSTRUCTIONS}`;
+		void (runner.supportsStreamingInput && runner.startStreaming
+			? runner.startStreaming(prompt)
+			: runner.start(prompt)
+		).catch(async (error) => {
+			this.logger.error("Scheduled ops task failed", error);
 			await this.updateAutomationSession(sessionId, {
 				status: "failed",
 				message: error instanceof Error ? error.message : String(error),
@@ -6171,12 +6317,16 @@ ${await this.loadSharedInstructions()}`;
 					entries
 						.filter((e) => e.type === "result" || e.type === "assistant")
 						.at(-1)?.content || "";
+				const complete =
+					run.snapshot.target.kind === "direct_ops"
+						? automationOpsCompletion
+						: automationCompletion;
 				await this.updateAutomationSession(
 					sessionId,
 					message.subtype === "success" &&
 						!message.is_error &&
 						session?.status !== "error"
-						? automationCompletion(body)
+						? complete(body)
 						: { status: "failed", message: body || "Execution failed" },
 				);
 			}

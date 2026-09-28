@@ -124,4 +124,31 @@ describe("automation form serialization", () => {
 		expect(input).not.toHaveProperty("runner");
 		expect(input).not.toHaveProperty("model");
 	});
+	it("omits repositoryId for direct_ops and preserves it for repository modes", () => {
+		const opsForm = {
+			...formFromDefinition(
+				{ target: { kind: "direct_ops" }, schedule: { kind: "daily", time: "04:00" } },
+				options,
+			),
+			name: "Linear cap",
+			instructions: "Follow linear-issue-cap",
+			target: "direct_ops",
+			repositoryId: "should-be-ignored",
+		};
+		expect(inputFromForm(opsForm)).toMatchObject({
+			name: "Linear cap",
+			target: { kind: "direct_ops" },
+		});
+		expect(inputFromForm(opsForm)).not.toHaveProperty("repositoryId");
+
+		const repoForm = {
+			...formFromDefinition(undefined, options),
+			name: "Repo task",
+			instructions: "Do work",
+			target: "direct_repository",
+			repositoryId: "repo",
+		};
+		expect(inputFromForm(repoForm).repositoryId).toBe("repo");
+	});
+
 });

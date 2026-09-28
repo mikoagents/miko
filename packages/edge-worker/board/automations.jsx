@@ -345,36 +345,50 @@ function AutomationEditor({
 								<section className="automation-form-section">
 									<h3 className="automation-section-label">Execution</h3>
 									<div className="automation-form-grid">
-										<FieldSelect
-											label="Repository"
-											value={form.repositoryId}
-											onChange={(value) => {
-												const workspaceId =
-													options.repositories.find((r) => r.id === value)
-														?.workspaceId || form.workspaceId;
-												setForm((current) => ({
-													...current,
-													repositoryId: value,
-													workspaceId,
-													teamId:
-														workspaceId === current.workspaceId
-															? current.teamId
-															: "",
-													projectId:
-														workspaceId === current.workspaceId
-															? current.projectId
-															: "",
-												}));
-											}}
-											items={options.repositories.map((r) => [r.id, r.name])}
-											placeholder="Choose a repository"
-										/>
+										{form.target !== "direct_ops" && (
+											<FieldSelect
+												label="Repository"
+												value={form.repositoryId}
+												onChange={(value) => {
+													const workspaceId =
+														options.repositories.find((r) => r.id === value)
+															?.workspaceId || form.workspaceId;
+													setForm((current) => ({
+														...current,
+														repositoryId: value,
+														workspaceId,
+														teamId:
+															workspaceId === current.workspaceId
+																? current.teamId
+																: "",
+														projectId:
+															workspaceId === current.workspaceId
+																? current.projectId
+																: "",
+													}));
+												}}
+												items={options.repositories.map((r) => [r.id, r.name])}
+												placeholder="Choose a repository"
+											/>
+										)}
 										<FieldSelect
 											label="Mode"
 											value={form.target}
-											onChange={(value) => set("target", value)}
+											onChange={(value) =>
+												setForm((current) => ({
+													...current,
+													target: value,
+													repositoryId:
+														value === "direct_ops"
+															? ""
+															: current.repositoryId ||
+																options.repositories[0]?.id ||
+																"",
+												}))
+											}
 											items={[
 												["direct_repository", "Run directly"],
+												["direct_ops", "Ops (no repository)"],
 												["linear_issue", "Create Linear issue"],
 											]}
 										/>
@@ -429,7 +443,9 @@ function AutomationEditor({
 									<p className="automation-field-hint">
 										{form.target === "direct_repository"
 											? "An isolated worktree. Agent and model override the install defaults for this schedule."
-											: "Creates an issue and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
+											: form.target === "direct_ops"
+												? "Runs in the Miko home without cloning a repository. Use for Linear ops and other non-code tasks."
+												: "Creates an issue and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
 									</p>
 									{form.target === "linear_issue" && (
 										<div className="automation-linear-fields">
@@ -634,7 +650,7 @@ function AutomationEditor({
 								loading={saving}
 								disabled={
 									definition?.archived ||
-									!form.repositoryId ||
+									(form.target !== "direct_ops" && !form.repositoryId) ||
 									!preview.times.length ||
 									preview.loading ||
 									teamsLoading ||
@@ -1067,7 +1083,7 @@ function AutomationsApp({ onSession }) {
 							aria-label="New automation"
 							title="New automation"
 							onClick={() => create()}
-							disabled={loading || !options.repositories.length}
+							disabled={loading}
 						>
 							New automation
 						</Button>
@@ -1119,8 +1135,11 @@ function AutomationsApp({ onSession }) {
 									<span className="automation-row-name">
 										<strong>{d.name}</strong>
 										<span>
-											{options.repositories.find((r) => r.id === d.repositoryId)
-												?.name || d.repositoryId}
+											{d.target?.kind === "direct_ops"
+												? "No repository"
+												: options.repositories.find(
+														(r) => r.id === d.repositoryId,
+													)?.name || d.repositoryId}
 										</span>
 									</span>
 									<span className="automation-row-schedule">
