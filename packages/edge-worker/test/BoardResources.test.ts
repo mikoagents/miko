@@ -7,7 +7,10 @@ import {
 describe("BoardResources", () => {
 	it("collects cpu, memory, disks, and process stats from injected deps", async () => {
 		const resources = await collectBoardResources(
-			{ mikoHome: "/home/box/.miko", releaseDir: "/home/box/.local/share/miko" },
+			{
+				mikoHome: "/home/box/.miko",
+				releaseDir: "/home/box/.local/share/miko",
+			},
 			{
 				loadavg: () => [1.6, 0.8, 0.4],
 				cpus: () => Array.from({ length: 4 }),
@@ -29,10 +32,20 @@ describe("BoardResources", () => {
 				readdir: async () => ["1", "2", "self", "cpuinfo", "42"],
 				statfs: async (path: string) => {
 					if (path === "/") {
-						return { bsize: 4096, blocks: 1_000_000, bfree: 400_000, bavail: 350_000 };
+						return {
+							bsize: 4096,
+							blocks: 1_000_000,
+							bfree: 400_000,
+							bavail: 350_000,
+						};
 					}
 					// Distinct filesystem for miko home
-					return { bsize: 4096, blocks: 500_000, bfree: 200_000, bavail: 180_000 };
+					return {
+						bsize: 4096,
+						blocks: 500_000,
+						bfree: 200_000,
+						bavail: 180_000,
+					};
 				},
 			},
 		);
@@ -45,9 +58,7 @@ describe("BoardResources", () => {
 		});
 		expect(resources.memory.totalBytes).toBe(8 * 1024 ** 3);
 		expect(resources.memory.availableBytes).toBe(3145728 * 1024);
-		expect(resources.memory.usedBytes).toBe(
-			8 * 1024 ** 3 - 3145728 * 1024,
-		);
+		expect(resources.memory.usedBytes).toBe(8 * 1024 ** 3 - 3145728 * 1024);
 		expect(resources.memory.usedPercent).toBeGreaterThan(0);
 		expect(resources.disks).toHaveLength(2);
 		expect(resources.disks[0]).toMatchObject({

@@ -535,14 +535,20 @@ describe("status board remote auth", () => {
 
 	it("keeps remote access blocked when no token is configured", async () => {
 		const app = await server();
-		const response = await app.inject({ ...remote, url: "/board/api/snapshot" });
+		const response = await app.inject({
+			...remote,
+			url: "/board/api/snapshot",
+		});
 		expect(response.statusCode).toBe(403);
 		expect(response.json()).toEqual({ error: "Local access only" });
 	});
 
 	it("rejects unauthenticated remote requests with 401 when a token is configured", async () => {
 		const app = await server({ ...options(), accessToken: token });
-		const response = await app.inject({ ...remote, url: "/board/api/snapshot" });
+		const response = await app.inject({
+			...remote,
+			url: "/board/api/snapshot",
+		});
 		expect(response.statusCode).toBe(401);
 		expect(response.json()).toEqual({ error: "Authentication required" });
 		expect(response.headers["www-authenticate"]).toMatch(/Bearer/i);

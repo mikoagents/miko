@@ -1,4 +1,16 @@
-import { Activity, Check, Copy, Cpu, FolderOpen, GitBranch, HardDrive, MemoryStick, RefreshCw, Settings2, Boxes } from "lucide-react";
+import {
+	Activity,
+	Boxes,
+	Check,
+	Copy,
+	Cpu,
+	FolderOpen,
+	GitBranch,
+	HardDrive,
+	MemoryStick,
+	RefreshCw,
+	Settings2,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "./fluid/components/ui/badge";
@@ -18,7 +30,6 @@ function formatUptime(seconds) {
 	if (minutes) return `${minutes}m ${secs}s`;
 	return `${secs}s`;
 }
-
 
 function formatBytes(bytes) {
 	const value = Math.max(0, Number(bytes) || 0);
@@ -59,15 +70,15 @@ function defaultRows(defaults) {
 
 function ResourceBar({ percent, label }) {
 	const width = Math.max(0, Math.min(100, Number(percent) || 0));
-	const tone =
-		width >= 90 ? "critical" : width >= 75 ? "warn" : "ok";
+	const tone = width >= 90 ? "critical" : width >= 75 ? "warn" : "ok";
 	return (
-		<div className="status-resource-bar" aria-label={label}>
-			<div
-				className={`status-resource-bar-fill status-resource-bar-${tone}`}
-				style={{ width: `${width}%` }}
-			/>
-		</div>
+		<meter
+			className={`status-resource-bar status-resource-bar-${tone}`}
+			aria-label={label}
+			min={0}
+			max={100}
+			value={width}
+		/>
 	);
 }
 
@@ -263,7 +274,9 @@ function StatusApp() {
 									</div>
 									<div className="status-resource-metric">
 										<span>Load (1 / 5 / 15)</span>
-										<strong>{formatLoad(data.resources?.cpu?.loadAverage)}</strong>
+										<strong>
+											{formatLoad(data.resources?.cpu?.loadAverage)}
+										</strong>
 									</div>
 									<div className="status-resource-metric">
 										<span>Approx. usage</span>
@@ -322,7 +335,8 @@ function StatusApp() {
 										<div className="status-resource-metric">
 											<span>Used / total</span>
 											<strong>
-												{formatBytes(disk.usedBytes)} / {formatBytes(disk.totalBytes)}
+												{formatBytes(disk.usedBytes)} /{" "}
+												{formatBytes(disk.totalBytes)}
 											</strong>
 										</div>
 										<div className="status-resource-metric">
@@ -330,7 +344,10 @@ function StatusApp() {
 											<strong>{formatBytes(disk.availableBytes)}</strong>
 										</div>
 										<code className="status-resource-path">{disk.mount}</code>
-										<ResourceBar percent={disk.usedPercent} label={`${disk.label} disk`} />
+										<ResourceBar
+											percent={disk.usedPercent}
+											label={`${disk.label} disk`}
+										/>
 									</article>
 								))}
 							</div>
@@ -398,7 +415,9 @@ function StatusApp() {
 											))}
 										</dl>
 									) : (
-										<p className="status-config-empty">No defaults configured.</p>
+										<p className="status-config-empty">
+											No defaults configured.
+										</p>
 									)}
 								</article>
 								<article className="status-config-card">
@@ -414,9 +433,7 @@ function StatusApp() {
 														<strong>
 															{workspace.name || workspace.slug || workspace.id}
 														</strong>
-														{workspace.slug && (
-															<code>{workspace.slug}</code>
-														)}
+														{workspace.slug && <code>{workspace.slug}</code>}
 													</div>
 													<div className="status-workspace-badges">
 														{workspace.tokenConfigured && (
@@ -431,7 +448,11 @@ function StatusApp() {
 														)}
 														{!workspace.tokenConfigured &&
 															!workspace.oauthConfigured && (
-																<Badge variant="dot" color="gray" size="compact">
+																<Badge
+																	variant="dot"
+																	color="gray"
+																	size="compact"
+																>
 																	No credentials
 																</Badge>
 															)}

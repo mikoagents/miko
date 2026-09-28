@@ -55,9 +55,12 @@ export interface BoardResourceDeps {
 	uptime?: () => number;
 	memoryUsage?: () => NodeJS.MemoryUsage;
 	pid?: number;
-	statfs?: (
-		path: string,
-	) => Promise<{ bsize: number; blocks: number; bfree: number; bavail: number }>;
+	statfs?: (path: string) => Promise<{
+		bsize: number;
+		blocks: number;
+		bfree: number;
+		bavail: number;
+	}>;
 	readFile?: (path: string, encoding: "utf8") => Promise<string>;
 	readdir?: (path: string) => Promise<string[]>;
 	now?: () => Date;
@@ -171,8 +174,7 @@ export async function collectBoardResources(
 
 	const totalBytes = totalmem();
 	const freeFallback = freemem();
-	const availableBytes =
-		(await readMemAvailableBytes(read)) ?? freeFallback;
+	const availableBytes = (await readMemAvailableBytes(read)) ?? freeFallback;
 	const usedBytes = Math.max(0, totalBytes - availableBytes);
 	const usedPercent =
 		totalBytes > 0 ? clampPercent((usedBytes / totalBytes) * 100) : 0;

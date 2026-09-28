@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -38,6 +38,13 @@ async function tempHome() {
 }
 
 describe("BoardPaths", () => {
+	it("rejects allowlisted directories symlinked outside the configured roots", async () => {
+		const home = await tempHome();
+		const outside = await tempHome();
+		await rm(join(home, "logs"), { recursive: true });
+		await symlink(outside, join(home, "logs"), "dir");
+		expect(resolveAllowedBoardDirectory("logs", home)).toBeNull();
+	});
 	it("resolves known directories under miko home and release root", async () => {
 		const home = await tempHome();
 		const release = join(home, "release-root");
@@ -181,6 +188,43 @@ describe("BoardPaths", () => {
 });
 
 describe("BoardSkills", () => {
+	it("rejects skill and manifest symlinks outside Miko home", async () => {
+		const home = await tempHome();
+		const outside = await tempHome();
+		await writeFile(
+			join(outside, "SKILL.md"),
+			"---\ndescription: External content\n---\n",
+		);
+		await symlink(
+			outside,
+			join(home, "user-skills-plugin/skills/external"),
+			"dir",
+		);
+		const linkedManifest = join(home, "user-skills-plugin/skills/manifest");
+		await mkdir(linkedManifest);
+		await symlink(join(outside, "SKILL.md"), join(linkedManifest, "SKILL.md"));
+		expect(resolveAllowedBoardSkill(home, "user", "external")).toBeNull();
+		expect(await listBoardSkills(home)).toEqual([]);
+	});
+
+	it("lists skill symlinks whose targets stay within Miko home", async () => {
+		const home = await tempHome();
+		const target = join(home, "shared-skill");
+		await mkdir(target);
+		await writeFile(
+			join(target, "SKILL.md"),
+			"---\ndescription: Shared skill\n---\n",
+		);
+		await symlink(
+			target,
+			join(home, "user-skills-plugin/skills/shared"),
+			"dir",
+		);
+		expect(resolveAllowedBoardSkill(home, "user", "shared")).not.toBeNull();
+		expect(await listBoardSkills(home)).toEqual([
+			expect.objectContaining({ name: "shared", description: "Shared skill" }),
+		]);
+	});
 	it("lists internal, user, and repo skills with shadowing", async () => {
 		const home = await tempHome();
 		await mkdir(join(home, "miko-skills-plugin/skills/debug"), {
@@ -245,6 +289,10 @@ describe("BoardSkills", () => {
 
 	it("only resolves allowlisted skill paths", async () => {
 		const home = await tempHome();
+		await mkdir(join(home, "user-skills-plugin/skills/debug"));
+		await mkdir(join(home, "repos/demo/.claude/skills/custom"), {
+			recursive: true,
+		});
 		expect(resolveAllowedBoardSkill(home, "user", "debug")?.path).toBe(
 			join(home, "user-skills-plugin/skills/debug"),
 		);
@@ -252,8 +300,8 @@ describe("BoardSkills", () => {
 		expect(
 			resolveAllowedBoardSkill(home, "repo", "custom", "../escape"),
 		).toBeNull();
-		expect(
-			resolveAllowedBoardSkill(home, "repo", "custom", "demo")?.path,
-		).toBe(join(home, "repos/demo/.claude/skills/custom"));
+		expect(resolveAllowedBoardSkill(home, "repo", "custom", "demo")?.path).toBe(
+			join(home, "repos/demo/.claude/skills/custom"),
+		);
 	});
 });

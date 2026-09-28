@@ -21,10 +21,7 @@ import {
 	openBoardDirectory,
 	openPathInFileManager,
 } from "./BoardPaths.js";
-import {
-	listBoardSkills,
-	resolveAllowedBoardSkill,
-} from "./BoardSkills.js";
+import { listBoardSkills, resolveAllowedBoardSkill } from "./BoardSkills.js";
 
 const MAX_TASKS = 60;
 const MAX_LOGS = 650;
@@ -467,9 +464,7 @@ export function boardTokensEqual(expected: string, provided: string): boolean {
 	return timingSafeEqual(left, right);
 }
 
-function headerValue(
-	value: string | string[] | undefined,
-): string | undefined {
+function headerValue(value: string | string[] | undefined): string | undefined {
 	if (Array.isArray(value)) return value[0];
 	return value;
 }
@@ -524,9 +519,7 @@ function requestUsesHttps(request: FastifyRequest): boolean {
 		.toLowerCase();
 	if (proto === "https") return true;
 	if (proto === "http") return false;
-	return Boolean(
-		(request.raw.socket as { encrypted?: boolean }).encrypted,
-	);
+	return Boolean((request.raw.socket as { encrypted?: boolean }).encrypted);
 }
 
 /** Public request origin using forwarded proto/host when present. */
@@ -547,7 +540,9 @@ export function resolveBoardRequestOrigin(
 }
 
 function setBoardTokenCookie(
-	reply: { header: (name: string, value: string | number | string[]) => unknown },
+	reply: {
+		header: (name: string, value: string | number | string[]) => unknown;
+	},
 	token: string,
 	secure: boolean,
 ): void {
@@ -687,10 +682,7 @@ export function registerStatusBoard(
 			{ parseAs: "string" },
 			(_request, body, done) => {
 				try {
-					done(
-						null,
-						Object.fromEntries(new URLSearchParams(String(body))),
-					);
+					done(null, Object.fromEntries(new URLSearchParams(String(body))));
 				} catch (error) {
 					done(error as Error, undefined);
 				}
@@ -749,9 +741,7 @@ export function registerStatusBoard(
 				(accessToken !== undefined &&
 					isBoardTokenAuthenticated(request, accessToken));
 			if (!allowed) {
-				return reply
-					.type("text/html; charset=utf-8")
-					.send(boardLoginPage());
+				return reply.type("text/html; charset=utf-8").send(boardLoginPage());
 			}
 			return reply
 				.type("text/html; charset=utf-8")
@@ -787,6 +777,7 @@ export function registerStatusBoard(
 				scoped,
 				options.automations.service,
 				options.automations.adapters,
+				resolveBoardRequestOrigin,
 			);
 		scoped.get("/board/api/snapshot", async () => board.snapshot());
 		scoped.get<{ Params: { sessionId: string } }>(
@@ -829,8 +820,8 @@ export function registerStatusBoard(
 				getStatus: options.getStatus,
 				getAutomationCount: options.automations
 					? () =>
-							options.automations!.service
-								.list()
+							options
+								.automations!.service.list()
 								.definitions.filter((d) => !d.archived).length
 					: undefined,
 				repositories: options.listRepositories?.() ?? [],
@@ -865,40 +856,35 @@ export function registerStatusBoard(
 		);
 		scoped.post<{
 			Body: { source?: string; name?: string; repository?: string };
-		}>(
-			"/board/api/open-skill",
-			async (request, reply) => {
-				if (!requireSameOriginJson(request, reply)) return;
-				const mikoHome = requireMikoHome(reply);
-				if (!mikoHome) return;
-				const source =
-					typeof request.body?.source === "string"
-						? request.body.source.trim()
-						: "";
-				const name =
-					typeof request.body?.name === "string"
-						? request.body.name.trim()
-						: "";
-				const repository =
-					typeof request.body?.repository === "string"
-						? request.body.repository.trim()
-						: undefined;
-				if (!source || !name)
-					return reply
-						.code(400)
-						.send({ error: "Skill source and name are required" });
-				const allowed = resolveAllowedBoardSkill(
-					mikoHome,
-					source,
-					name,
-					repository,
-				);
-				if (!allowed)
-					return reply.code(400).send({ error: "Skill path is not allowlisted" });
-				const result = await openPathInFileManager(allowed.path);
-				return { ok: true, ...result };
-			},
-		);
+		}>("/board/api/open-skill", async (request, reply) => {
+			if (!requireSameOriginJson(request, reply)) return;
+			const mikoHome = requireMikoHome(reply);
+			if (!mikoHome) return;
+			const source =
+				typeof request.body?.source === "string"
+					? request.body.source.trim()
+					: "";
+			const name =
+				typeof request.body?.name === "string" ? request.body.name.trim() : "";
+			const repository =
+				typeof request.body?.repository === "string"
+					? request.body.repository.trim()
+					: undefined;
+			if (!source || !name)
+				return reply
+					.code(400)
+					.send({ error: "Skill source and name are required" });
+			const allowed = resolveAllowedBoardSkill(
+				mikoHome,
+				source,
+				name,
+				repository,
+			);
+			if (!allowed)
+				return reply.code(400).send({ error: "Skill path is not allowlisted" });
+			const result = await openPathInFileManager(allowed.path);
+			return { ok: true, ...result };
+		});
 		scoped.get("/board/events", (request, reply) => {
 			for (const [name, value] of Object.entries(reply.getHeaders())) {
 				if (value !== undefined) reply.raw.setHeader(name, value);

@@ -1,4 +1,5 @@
-import { readdir, readFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 export type BoardSkillSource = "internal" | "user" | "repo";
@@ -38,18 +39,24 @@ async function readSkillEntries(skillsDir: string): Promise<string[]> {
 }
 
 async function describeSkill(
+	mikoHome: string,
 	skillsDir: string,
 	name: string,
-): Promise<{ description: string; path: string }> {
+): Promise<{ description: string; path: string } | null> {
 	const path = join(skillsDir, name);
 	try {
-		const content = await readFile(join(path, "SKILL.md"), "utf8");
+		const root = await realpath(mikoHome);
+		const directory = await realpath(path);
+		const manifest = await realpath(join(directory, "SKILL.md"));
+		if (!isPathInside(root, directory) || !isPathInside(root, manifest))
+			return null;
+		const content = await readFile(manifest, "utf8");
 		return {
 			description: parseFrontmatterField(content, "description") || "",
 			path,
 		};
 	} catch {
-		return { description: "", path };
+		return null;
 	}
 }
 
@@ -73,7 +80,9 @@ export async function listBoardSkills(mikoHome: string): Promise<BoardSkill[]> {
 	const userNames = new Set<string>();
 
 	for (const name of await readSkillEntries(userDir)) {
-		const { description, path } = await describeSkill(userDir, name);
+		const skill = await describeSkill(home, userDir, name);
+		if (!skill) continue;
+		const { description, path } = skill;
 		userNames.add(name);
 		skills.push({
 			name,
@@ -86,7 +95,9 @@ export async function listBoardSkills(mikoHome: string): Promise<BoardSkill[]> {
 	}
 
 	for (const name of await readSkillEntries(internalDir)) {
-		const { description, path } = await describeSkill(internalDir, name);
+		const skill = await describeSkill(home, internalDir, name);
+		if (!skill) continue;
+		const { description, path } = skill;
 		skills.push({
 			name,
 			description,
@@ -112,7 +123,9 @@ export async function listBoardSkills(mikoHome: string): Promise<BoardSkill[]> {
 		const skillsDir = join(reposRoot, repo, ".claude", "skills");
 		if (!isPathInside(reposRoot, skillsDir)) continue;
 		for (const name of await readSkillEntries(skillsDir)) {
-			const { description, path } = await describeSkill(skillsDir, name);
+			const skill = await describeSkill(home, skillsDir, name);
+			if (!skill) continue;
+			const { description, path } = skill;
 			if (!isPathInside(reposRoot, path)) continue;
 			skills.push({
 				name,
@@ -156,5 +169,10 @@ export function resolveAllowedBoardSkill(
 		return null;
 	}
 	if (!isPathInside(home, candidate)) return null;
+	try {
+		if (!isPathInside(realpathSync(home), realpathSync(candidate))) return null;
+	} catch {
+		return null;
+	}
 	return { path: candidate };
 }

@@ -153,10 +153,6 @@ import { ActivityPoster } from "./ActivityPoster.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
-import {
-	buildBoardRepositories,
-	buildBoardWorkspaces,
-} from "./BoardPaths.js";
 import { AutomationAdapters } from "./automation/AutomationAdapters.js";
 import { AutomationService } from "./automation/AutomationService.js";
 import { AutomationStore } from "./automation/AutomationStore.js";
@@ -170,6 +166,7 @@ import {
 	type RepositoryTaskRequest,
 	type RunUpdate,
 } from "./automation/types.js";
+import { buildBoardRepositories, buildBoardWorkspaces } from "./BoardPaths.js";
 import type { ChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import type { ChatSessionHandlerDeps } from "./ChatSessionHandler.js";

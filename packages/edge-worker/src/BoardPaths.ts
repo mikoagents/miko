@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import {
@@ -195,6 +195,15 @@ export function resolveAllowedBoardDirectory(
 	const release = resolve(releaseDir);
 	if (!isPathInside(home, match.path) && !isPathInside(release, match.path))
 		return null;
+	if (match.exists) {
+		try {
+			const root = match.id === "release" ? release : home;
+			if (!isPathInside(realpathSync(root), realpathSync(match.path)))
+				return null;
+		} catch {
+			return null;
+		}
+	}
 	return match;
 }
 
@@ -256,9 +265,8 @@ export function buildBoardWorkspaces(
 			tokenConfigured: Boolean(workspace.linearToken?.trim()),
 			oauthConfigured: Boolean(workspace.linearOAuth),
 		}))
-		.sort(
-			(a, b) =>
-				(a.name || a.slug || a.id).localeCompare(b.name || b.slug || b.id),
+		.sort((a, b) =>
+			(a.name || a.slug || a.id).localeCompare(b.name || b.slug || b.id),
 		);
 }
 

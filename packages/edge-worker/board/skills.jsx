@@ -224,9 +224,7 @@ function SkillsApp() {
 									setSkills(data.skills || []);
 									setError("");
 								})
-								.catch((err) =>
-									setError(err.message || "Cannot load skills"),
-								)
+								.catch((err) => setError(err.message || "Cannot load skills"))
 								.finally(() => setLoading(false));
 						}}
 					>
@@ -246,7 +244,11 @@ function SkillsApp() {
 							placeholder="Search skills…"
 						/>
 					</InputGroup>
-					<div className="skills-filters" role="tablist" aria-label="Skill source">
+					<div
+						className="skills-filters"
+						role="tablist"
+						aria-label="Skill source"
+					>
 						{sourceFilters.map((filter) => (
 							<button
 								key={filter.id}
@@ -288,7 +290,7 @@ function SkillsApp() {
 							: "No skills found."}
 					</div>
 				) : (
-					<div className="skills-sections" aria-label="Skills">
+					<section className="skills-sections" aria-label="Skills">
 						{sections.map((section) => (
 							<section
 								key={section.id}
@@ -350,7 +352,7 @@ function SkillsApp() {
 								</div>
 							</section>
 						))}
-					</div>
+					</section>
 				)}
 
 				<Dialog
@@ -404,9 +406,7 @@ function SkillsApp() {
 
 							<div className="skills-dialog-meta">
 								<span>Source</span>
-								<strong>
-									{sourceLabels[detail.source] || detail.source}
-								</strong>
+								<strong>{sourceLabels[detail.source] || detail.source}</strong>
 								<span>Status</span>
 								<strong>
 									{detail.active ? "Active" : "Shadowed by user skill"}
