@@ -1,15 +1,17 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AutomationAdapters } from "./AutomationAdapters.js";
 import { previewSchedule } from "./AutomationScheduler.js";
 import type { AutomationService } from "./AutomationService.js";
 import { AutomationError, scheduleSchema } from "./types.js";
 
-/** Registered inside the board's local-only scope. */
+/** Registered inside the board's authenticated scope. */
 export function registerAutomationRoutes(
 	app: FastifyInstance,
 	service: AutomationService,
 	adapters: AutomationAdapters,
+	requestOrigin: (request: FastifyRequest) => string | null = (request) =>
+		`http://${request.headers.host}`,
 ) {
 	app.register(async (scoped) => {
 		scoped.setErrorHandler((error, _request, reply) => {
@@ -30,8 +32,9 @@ export function registerAutomationRoutes(
 		});
 		scoped.addHook("onRequest", async (request, reply) => {
 			if (["POST", "PATCH", "DELETE"].includes(request.method)) {
-				const origin = `http://${request.headers.host}`;
+				const origin = requestOrigin(request);
 				if (
+					!origin ||
 					request.headers.origin !== origin ||
 					!request.headers["content-type"]?.startsWith("application/json")
 				)

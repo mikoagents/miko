@@ -1,4 +1,6 @@
 import { initializeAutomations } from "./automations.jsx";
+import { initializeSkills } from "./skills.jsx";
+import { initializeStatus } from "./status.jsx";
 import "./layout.css";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { createLogViewer } from "./log-viewer.jsx";
@@ -357,3 +359,5 @@ initializeAutomations((sessionId) => {
 	renderLogs();
 	void loadHistory(displayed?.tasks?.find((task) => task.id === sessionId));
 });
+initializeStatus();
+initializeSkills();

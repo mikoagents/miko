@@ -12,7 +12,7 @@ const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
 	for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
-async function fixture() {
+async function fixture(accessToken?: string) {
 	const directory = await mkdtemp(join(tmpdir(), "automation-routes-"));
 	cleanups.push(() => rm(directory, { force: true, recursive: true }));
 	const adapter = new AutomationAdapters({
@@ -31,6 +31,7 @@ async function fixture() {
 	cleanups.push(() => service.stop());
 	const app = Fastify();
 	registerStatusBoard(app, {
+		accessToken,
 		getSessions: () => [],
 		getEntries: () => [],
 		getStatus: () => "idle",
@@ -57,6 +58,36 @@ const local = {
 		"content-type": "application/json",
 	},
 };
+
+it("accepts authenticated HTTPS automation writes and rejects foreign origins", async () => {
+	const token = "board-test-token";
+	const { app } = await fixture(token);
+	const headers = {
+		host: "localhost:3600",
+		"x-forwarded-host": "miko.example",
+		"x-forwarded-proto": "https",
+		"x-forwarded-for": "203.0.113.1",
+		origin: "https://miko.example",
+		"content-type": "application/json",
+		authorization: `Bearer ${token}`,
+	};
+	const response = await app.inject({
+		remoteAddress: "127.0.0.1",
+		headers,
+		method: "POST",
+		url: "/board/api/automations",
+		payload: input,
+	});
+	expect(response.statusCode).toBe(201);
+	const foreign = await app.inject({
+		remoteAddress: "127.0.0.1",
+		headers: { ...headers, origin: "https://foreign.example" },
+		method: "POST",
+		url: "/board/api/automations",
+		payload: input,
+	});
+	expect(foreign.statusCode).toBe(403);
+});
 
 it("supports create, preview, revision conflicts, deduplicated execution and archive", async () => {
 	const { app } = await fixture();

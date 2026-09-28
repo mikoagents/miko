@@ -7,12 +7,13 @@
 ## Automated checks
 
 - Full build, workspace typecheck, and Biome CI passed.
-- All workspace test suites passed: 2,272 passing tests and two skipped tests,
-  including 1,022 edge-worker tests and 132 CLI tests.
-- Four regression tests failed before the fixes and passed afterward: clearing
+- After integrating #28 and #29, all workspace test suites passed: 2,295 passing
+  tests and two skipped tests, including 1,045 edge-worker tests and 132 CLI tests.
+- Five regression tests failed before the fixes and passed afterward: clearing
   legacy selections, retaining a legacy runner when changing only the model,
-  keeping the configured default runner with a model override, and rejecting
-  model values that inject routing tags. Linear issue dispatch is also covered.
+  keeping the configured default runner with a model override, rejecting model
+  values that inject routing tags, and scoping model suggestions to the default
+  runner. Linear issue dispatch is also covered.
 
 ## F1 protocol
 

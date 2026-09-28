@@ -43,6 +43,8 @@ describe("board frontend snapshot rendering", () => {
 			},
 			createLogViewer: () => ({ update }),
 			initializeAutomations: vi.fn(),
+			initializeStatus: vi.fn(),
+			initializeSkills: vi.fn(),
 			setInterval: vi.fn(),
 			EventSource: class {
 				constructor() {

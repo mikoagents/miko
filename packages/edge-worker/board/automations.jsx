@@ -1,7 +1,9 @@
 import { MotionConfig } from "framer-motion";
 import {
+	Activity,
 	Archive,
 	ArrowDownLeft,
+	BookOpen,
 	CalendarClock,
 	Check,
 	ChevronRight,
@@ -848,6 +850,8 @@ function AutomationsApp({ onSession }) {
 	useEffect(() => {
 		document.getElementById("tasks-page").hidden = page !== "tasks";
 		document.getElementById("automations").hidden = page !== "automations";
+		document.getElementById("status").hidden = page !== "status";
+		document.getElementById("skills").hidden = page !== "skills";
 		if (page !== "automations") return;
 		const controller = new AbortController();
 		const refresh = () =>
@@ -964,8 +968,13 @@ function AutomationsApp({ onSession }) {
 		return () => window.removeEventListener("hashchange", onRouteChange);
 	}, []);
 	useEffect(() => {
-		document.title =
-			page === "automations" ? "Miko · Automations" : "Miko · Tasks & Logs";
+		const titles = {
+			tasks: "Miko · Tasks & Logs",
+			automations: "Miko · Automations",
+			status: "Miko · Status",
+			skills: "Miko · Skills",
+		};
+		document.title = titles[page] || titles.tasks;
 	}, [page]);
 	const create = (kind = "daily") => setEditor({ kind });
 	const viewSession = (id) => {
@@ -1009,6 +1018,26 @@ function AutomationsApp({ onSession }) {
 								aria-current={page === "automations" ? "page" : undefined}
 							>
 								<a href={boardPageHref("automations")}>Automations</a>
+							</Button>
+							<Button
+								id="show-skills"
+								variant="ghost"
+								active={page === "skills"}
+								leadingIcon={BookOpen}
+								asChild
+								aria-current={page === "skills" ? "page" : undefined}
+							>
+								<a href={boardPageHref("skills")}>Skills</a>
+							</Button>
+							<Button
+								id="show-status"
+								variant="ghost"
+								active={page === "status"}
+								leadingIcon={Activity}
+								asChild
+								aria-current={page === "status" ? "page" : undefined}
+							>
+								<a href={boardPageHref("status")}>Status</a>
 							</Button>
 						</div>
 						<span className="automation-local">
