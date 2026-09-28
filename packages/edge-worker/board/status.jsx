@@ -333,45 +333,46 @@ function StatusApp() {
 										<ResourceBar percent={disk.usedPercent} label={`${disk.label} disk`} />
 									</article>
 								))}
-								<article className="status-resource-card status-resource-card-wide">
-									<div className="status-resource-heading">
-										<Activity size={15} />
-										<strong>Host & process</strong>
-									</div>
-									<div className="status-resource-inline">
-										<div>
-											<span>Host uptime</span>
-											<strong>
-												{typeof data.resources?.hostUptimeSeconds === "number"
-													? formatUptime(data.resources.hostUptimeSeconds)
-													: "—"}
-											</strong>
-										</div>
-										<div>
-											<span>Processes</span>
-											<strong>
-												{typeof data.resources?.processCount === "number"
-													? data.resources.processCount
-													: "—"}
-											</strong>
-										</div>
-										<div>
-											<span>Miko RSS</span>
-											<strong>
-												{data.resources?.process
-													? formatBytes(data.resources.process.rssBytes)
-													: "—"}
-											</strong>
-										</div>
-										<div>
-											<span>Heap used</span>
-											<strong>
-												{data.resources?.process
-													? formatBytes(data.resources.process.heapUsedBytes)
-													: "—"}
-											</strong>
-										</div>
-									</div>
+							</div>
+						</section>
+
+						<section className="status-host" aria-label="Host and process">
+							<div className="status-section-title">
+								<Activity size={16} />
+								<span>Host & process</span>
+							</div>
+							<div className="status-host-grid">
+								<article className="status-card">
+									<span>Host uptime</span>
+									<strong>
+										{typeof data.resources?.hostUptimeSeconds === "number"
+											? formatUptime(data.resources.hostUptimeSeconds)
+											: "—"}
+									</strong>
+								</article>
+								<article className="status-card">
+									<span>Processes</span>
+									<strong>
+										{typeof data.resources?.processCount === "number"
+											? data.resources.processCount
+											: "—"}
+									</strong>
+								</article>
+								<article className="status-card">
+									<span>Miko RSS</span>
+									<strong>
+										{data.resources?.process
+											? formatBytes(data.resources.process.rssBytes)
+											: "—"}
+									</strong>
+								</article>
+								<article className="status-card">
+									<span>Heap used</span>
+									<strong>
+										{data.resources?.process
+											? formatBytes(data.resources.process.heapUsedBytes)
+											: "—"}
+									</strong>
 								</article>
 							</div>
 						</section>
