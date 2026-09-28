@@ -1,10 +1,4 @@
-import {
-	BookOpen,
-	Check,
-	Copy,
-	FolderOpen,
-	RefreshCw,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "./fluid/components/ui/badge";
@@ -301,11 +295,14 @@ function SkillsApp() {
 					}}
 				>
 					{detail && (
-						<DialogContent size="lg" className="fluid-scope skills-dialog">
+						<DialogContent
+							size="lg"
+							showCloseButton={false}
+							className="fluid-scope skills-dialog"
+						>
 							<DialogHeader>
 								<DialogTitle className="skills-dialog-title">
-									<BookOpen size={18} aria-hidden="true" />
-									<span>{detail.name}</span>
+									{detail.name}
 								</DialogTitle>
 								<DialogDescription>
 									{detail.source === "repo"
@@ -333,31 +330,37 @@ function SkillsApp() {
 								</Badge>
 							</div>
 
-							<p className="skills-dialog-description">
-								{detail.description || "No description in SKILL.md"}
-							</p>
+							<section className="skills-dialog-section">
+								<h3 className="skills-dialog-label">Description</h3>
+								<p className="skills-dialog-description">
+									{detail.description || "No description in SKILL.md"}
+								</p>
+							</section>
 
 							<div className="skills-dialog-meta">
+								<span>Source</span>
+								<strong>
+									{sourceLabels[detail.source] || detail.source}
+								</strong>
+								<span>Status</span>
+								<strong>
+									{detail.active ? "Active" : "Shadowed by user skill"}
+								</strong>
 								<span>Path</span>
-								<code className="skills-dialog-path" title={detail.path}>
-									{detail.path}
-								</code>
-								{detail.source === "repo" && (
+								<code className="skills-dialog-path">{detail.path}</code>
+								{detail.source === "repo" ? (
 									<>
 										<span>Repository</span>
-										<strong title={detail.origin}>{detail.origin}</strong>
+										<strong>{detail.origin}</strong>
 									</>
-								)}
-								{detail.source === "user" && (
+								) : (
 									<>
 										<span>Origin</span>
-										<strong>User skills directory</strong>
-									</>
-								)}
-								{detail.source === "internal" && (
-									<>
-										<span>Origin</span>
-										<strong title={detail.origin}>{detail.origin}</strong>
+										<strong>
+											{detail.source === "user"
+												? "User skills directory"
+												: detail.origin}
+										</strong>
 									</>
 								)}
 							</div>
@@ -373,9 +376,13 @@ function SkillsApp() {
 								<Button
 									variant="ghost"
 									size="compact"
-									leadingIcon={
-										copied === skillKey(detail) ? Check : Copy
-									}
+									onClick={() => setSelected(null)}
+								>
+									Close
+								</Button>
+								<Button
+									variant="ghost"
+									size="compact"
 									onClick={() => copyPath(detail)}
 								>
 									{copied === skillKey(detail) ? "Copied" : "Copy path"}
@@ -383,7 +390,6 @@ function SkillsApp() {
 								<Button
 									variant="secondary"
 									size="compact"
-									leadingIcon={FolderOpen}
 									loading={busy === skillKey(detail)}
 									disabled={busy === skillKey(detail)}
 									onClick={() => openSkill(detail)}
