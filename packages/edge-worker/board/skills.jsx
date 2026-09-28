@@ -432,7 +432,6 @@ function SkillsApp() {
 									</strong>
 								</div>
 							</div>
-							</div>
 
 							{!detail.active && (
 								<div className="skills-dialog-note" role="note">
