@@ -9,7 +9,11 @@ import {
 	AUTOMATION_COMPLETION_INSTRUCTIONS,
 	automationCompletion,
 } from "../src/automation/completion.js";
-import type { AutomationRun } from "../src/automation/types.js";
+import {
+	AUTOMATION_MODEL_SUGGESTIONS,
+	AUTOMATION_RUNNERS,
+	type AutomationRun,
+} from "../src/automation/types.js";
 
 function fixture() {
 	const repository = {
@@ -66,6 +70,42 @@ function fixture() {
 }
 
 describe("automation platform adapters", () => {
+	it("keeps the configured default runner when only a model is selected", async () => {
+		const { adapter, deps, run } = fixture();
+		deps.runnerOptions = () => ({
+			runners: AUTOMATION_RUNNERS,
+			defaultRunner: "cursor",
+			defaultModels: { cursor: "composer-2" },
+			modelSuggestions: AUTOMATION_MODEL_SUGGESTIONS,
+		});
+		run.snapshot.target = { kind: "direct_repository" };
+		run.snapshot.model = "gpt-5.5";
+		await adapter.dispatch(run);
+		expect(deps.startTask).toHaveBeenCalledWith({
+			id: "run-1",
+			title: "Fix it",
+			instructions: "[agent=cursor]\n[model=gpt-5.5]\n\nImplement and verify",
+			repositoryId: "repo-1",
+			source: "automation",
+			runner: "cursor",
+			model: "gpt-5.5",
+		});
+	});
+	it("includes explicit runner and model selectors in delegated Linear issues", async () => {
+		const { adapter, client, run } = fixture();
+		run.snapshot.runner = "cursor";
+		run.snapshot.model = "gpt-5.5";
+		await adapter.dispatch(run);
+		expect(client.createIssue).toHaveBeenCalledWith({
+			id: "issue-uuid",
+			title: "Fix it",
+			description:
+				"[agent=cursor]\n[model=gpt-5.5]\n\nImplement and verify\n\n[repo=repo-1]\n\nAutomation run: run-1",
+			teamId: "team",
+			projectId: undefined,
+			delegateId: "agent",
+		});
+	});
 	it("creates with a durable issue ID, agent delegation and an unambiguous repository ID", async () => {
 		const { adapter, client, run } = fixture();
 		await adapter.validate(run.snapshot);

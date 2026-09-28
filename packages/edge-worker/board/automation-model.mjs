@@ -19,6 +19,26 @@ export const statusColors = {
 	awaiting_input: "amber",
 	missed: "amber",
 };
+export const RUNNER_LABELS = {
+	claude: "Claude Code",
+	gemini: "Gemini",
+	codex: "Codex",
+	cursor: "Cursor",
+	opencode: "OpenCode",
+	grok: "Grok",
+};
+/** Pull legacy [agent]/[model] tags from instructions when schema fields are unset. */
+export function parseRunnerModelFromInstructions(instructions = "") {
+	const runner = instructions
+		.match(/\[agent\s*=([^\]]+)\]/i)?.[1]
+		?.trim()
+		?.toLowerCase();
+	const model = instructions.match(/\[model\s*=([^\]]+)\]/i)?.[1]?.trim();
+	return {
+		runner: runner && RUNNER_LABELS[runner] ? runner : "",
+		model: model || "",
+	};
+}
 export function formatDate(value, timezone, compact = false) {
 	if (!value) return "—";
 	return new Intl.DateTimeFormat(undefined, {
@@ -44,9 +64,12 @@ export function formFromDefinition(definition, options, kind = "daily") {
 		definition?.schedule.kind === "once"
 			? new Date(definition.schedule.at)
 			: new Date(Date.now() + 3600000);
+	const fromTags = parseRunnerModelFromInstructions(definition?.instructions);
 	return {
 		name: definition?.name || "",
-		instructions: definition?.instructions || "",
+		instructions: (definition?.instructions || "")
+			.replace(/\[(?:agent|model)\s*=[^\]]*\]\s*/gi, "")
+			.trim(),
 		repositoryId: repo?.id || "",
 		target: definition?.target.kind || "direct_repository",
 		workspaceId:
@@ -68,6 +91,8 @@ export function formFromDefinition(definition, options, kind = "daily") {
 				? localZone
 				: definition?.timezone || localZone,
 		enabled: definition?.enabled ?? true,
+		runner: definition?.runner || fromTags.runner || "",
+		model: definition?.model || fromTags.model || "",
 	};
 }
 export function scheduleFromForm(form) {
@@ -90,7 +115,7 @@ export function scheduleFromForm(form) {
 	};
 }
 export function inputFromForm(form) {
-	return {
+	const input = {
 		name: form.name.trim(),
 		instructions: form.instructions.trim(),
 		repositoryId: form.repositoryId,
@@ -110,6 +135,25 @@ export function inputFromForm(form) {
 						...(form.projectId ? { projectId: form.projectId } : {}),
 					},
 	};
+	if (form.runner) input.runner = form.runner;
+	if (form.model?.trim()) input.model = form.model.trim();
+	return input;
+}
+export function modelChoices(options, runner) {
+	const selectedRunner = runner || options.defaultRunner;
+	const suggestions = selectedRunner
+		? options.modelSuggestions?.[selectedRunner] || []
+		: Object.values(options.modelSuggestions || {}).flat();
+	const defaults = options.defaultModels || {};
+	const preferred = selectedRunner ? defaults[selectedRunner] : undefined;
+	const values = [];
+	const seen = new Set();
+	for (const value of [preferred, ...suggestions].filter(Boolean)) {
+		if (seen.has(value)) continue;
+		seen.add(value);
+		values.push(value);
+	}
+	return values;
 }
 export async function automationApi(path = "", method = "GET", body, signal) {
 	const response = await fetch(`/board/api/automations${path}`, {

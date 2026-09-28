@@ -2,10 +2,18 @@
 
 Open the local [status board](./STATUS_BOARD.md) and choose **Automations → New automation**.
 Choose a configured repository, describe the work, and select **Run directly** or **Create Linear issue**.
-Direct execution creates an isolated worktree and uses the repository's runner, model, permissions,
-and development instructions. Linear execution also requires a connected agent workspace and a team;
-a project is optional. The issue is created and delegated to the connected Miko agent, then follows
-the normal webhook execution flow. The repository must belong to that workspace.
+Direct execution creates an isolated worktree and uses the repository's permissions and development
+instructions. Choose an **Agent** (coding harness: Claude Code, Cursor, Grok, …) and optional
+**Model** on the form; when unset, Miko uses the install `defaultRunner` and that runner's default
+model from config. Linear execution also requires a connected agent workspace and a team; a project
+is optional. The issue is created and delegated to the connected Miko agent, then follows the normal
+webhook execution flow. Selected agent/model are applied as `[agent=…]` / `[model=…]` routing tags
+on the issue. The repository must belong to that workspace.
+
+Selecting a model with Agent set to **Default** keeps the configured default agent.
+Existing `[agent=…]` and `[model=…]` selectors are moved into the form fields when editing;
+clear those fields to return to the defaults. Model IDs cannot contain whitespace or brackets,
+because they are represented as routing tags when a task is dispatched.
 
 Choose once, daily, weekly, or a five-field cron expression (minute, hour, day, month, weekday).
 Daily, weekly and cron schedules use the saved IANA timezone; the initial value comes from your browser.

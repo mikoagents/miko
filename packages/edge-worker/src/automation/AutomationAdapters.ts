@@ -2,13 +2,23 @@ import { LinearClient, LinearDocument, LinearError } from "@linear/sdk";
 import type { RepositoryConfig } from "miko-core";
 import { automationCompletion } from "./completion.js";
 import {
+	AUTOMATION_MODEL_SUGGESTIONS,
+	AUTOMATION_RUNNERS,
 	type AutomationAdapter,
 	AutomationError,
 	type AutomationInput,
 	type AutomationRun,
+	applyAutomationRunnerModel,
 	type RepositoryTaskRequest,
 	type RunUpdate,
 } from "./types.js";
+
+export interface AutomationRunnerOptions {
+	runners: typeof AUTOMATION_RUNNERS;
+	defaultRunner: (typeof AUTOMATION_RUNNERS)[number];
+	defaultModels: Record<string, string | undefined>;
+	modelSuggestions: typeof AUTOMATION_MODEL_SUGGESTIONS;
+}
 
 export interface AutomationAdapterDeps {
 	/** Use the existing tracker client so OAuth refresh and token hot reload remain shared. */
@@ -21,6 +31,8 @@ export interface AutomationAdapterDeps {
 	repoTags(description: string): { repo: string; branch?: string }[];
 	startTask(request: RepositoryTaskRequest): Promise<void>;
 	localState(run: AutomationRun): RunUpdate | undefined;
+	/** Safe runner/model defaults for the Automations form. */
+	runnerOptions?(): AutomationRunnerOptions;
 }
 
 export class AutomationAdapters implements AutomationAdapter {
@@ -45,6 +57,14 @@ export class AutomationAdapters implements AutomationAdapter {
 		return this.client(workspace.linearToken);
 	}
 	options() {
+		const runnerOptions = this.deps.runnerOptions?.() ?? {
+			runners: AUTOMATION_RUNNERS,
+			defaultRunner: "claude",
+			defaultModels: Object.fromEntries(
+				AUTOMATION_RUNNERS.map((runner) => [runner, undefined]),
+			),
+			modelSuggestions: AUTOMATION_MODEL_SUGGESTIONS,
+		};
 		return {
 			repositories: this.deps.repositories().map((r) => ({
 				id: r.id,
@@ -55,6 +75,7 @@ export class AutomationAdapters implements AutomationAdapter {
 				id,
 				name: w.linearWorkspaceName || id,
 			})),
+			...runnerOptions,
 		};
 	}
 	async linearOptions(workspaceId: string, teamId?: string) {
@@ -164,13 +185,27 @@ export class AutomationAdapters implements AutomationAdapter {
 	}
 	private async dispatchTarget(run: AutomationRun): Promise<RunUpdate> {
 		const input = run.snapshot;
+		// A model-only override keeps the configured harness instead of inferring
+		// another one from the model name. Existing explicit selectors still win.
+		const runner =
+			input.runner ??
+			(input.model && !/\[agent\s*=[^\]]+\]/i.test(input.instructions)
+				? (this.deps.runnerOptions?.().defaultRunner ?? "claude")
+				: undefined);
+		const instructions = applyAutomationRunnerModel(
+			input.instructions,
+			runner,
+			input.model,
+		);
 		if (input.target.kind === "direct_repository") {
 			await this.deps.startTask({
 				id: run.id,
 				title: input.name,
-				instructions: input.instructions,
+				instructions,
 				repositoryId: input.repositoryId,
 				source: "automation",
+				runner,
+				model: input.model,
 			});
 			return { sessionId: `automation-${run.id}`, status: "running" };
 		}
@@ -188,7 +223,7 @@ export class AutomationAdapters implements AutomationAdapter {
 		const result = await client.createIssue({
 			id: run.issueId,
 			title: input.name,
-			description: `${input.instructions}\n\n[repo=${repository.id}]\n\nAutomation run: ${run.id}`,
+			description: `${instructions}\n\n[repo=${repository.id}]\n\nAutomation run: ${run.id}`,
 			teamId: input.target.teamId,
 			projectId: input.target.projectId,
 			delegateId: viewer.id,

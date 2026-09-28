@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Automations can select an agent and model per schedule, with model suggestions and editable defaults for existing schedules. ([#30](https://github.com/mikoagents/miko/pull/30))
 - The board now shows runtime resources, repositories, directory shortcuts, and installed skills, with optional token-protected remote access. ([#29](https://github.com/mikoagents/miko/pull/29))
 - Self-hosted GitHub auth prefers App installation tokens for git fetch/push and `gh` when App credentials exist, falls back to local git/`gh` auth, always adds a `Co-authored-by: mikoagent` trailer, and uses the operator-defined App bot (not a hard-coded product bot) for commit authorship on the App path. Startup mints tokens into the token store; `self-add-repo` can clone private repos with those tokens.
 

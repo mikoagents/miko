@@ -1,6 +1,53 @@
+import { RunnerTypeSchema } from "miko-core";
 import { z } from "zod";
 
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+export const AUTOMATION_RUNNERS = RunnerTypeSchema.options;
+/** Suggested models per runner for the board form (free-text still allowed). */
+export const AUTOMATION_MODEL_SUGGESTIONS: Record<
+	(typeof AUTOMATION_RUNNERS)[number],
+	string[]
+> = {
+	claude: ["opus", "sonnet", "haiku"],
+	gemini: [
+		"gemini-2.5-pro",
+		"gemini-2.5-flash",
+		"gemini-3.1-pro",
+		"gemini-3.8-flash",
+	],
+	codex: ["gpt-5.5", "gpt-5.2-codex", "gpt-5-codex"],
+	cursor: [
+		"composer-2",
+		"gemini-3.8-flash",
+		"gemini-3.1-pro",
+		"gpt-5.5",
+		"claude-opus-5",
+		"grok-4.6",
+	],
+	opencode: ["openai/gpt-5.5", "anthropic/claude-sonnet-4.5"],
+	grok: ["grok-4.7", "grok-4.6", "grok-4.5"],
+};
+
+/**
+ * Apply automation runner/model fields as leading [agent]/[model] tags so
+ * RunnerSelectionService (and Linear issue dispatch) pick them up. Schema values
+ * replace the matching legacy tag; omitted fields preserve existing selectors.
+ */
+export function applyAutomationRunnerModel(
+	instructions: string,
+	runner?: string,
+	model?: string,
+): string {
+	if (!runner && !model) return instructions;
+	let cleaned = instructions;
+	if (runner) cleaned = cleaned.replace(/\[agent\s*=[^\]]*\]\s*/gi, "");
+	if (model) cleaned = cleaned.replace(/\[model\s*=[^\]]*\]\s*/gi, "");
+	const tags = [
+		runner ? `[agent=${runner}]` : null,
+		model ? `[model=${model}]` : null,
+	].filter(Boolean);
+	return `${tags.join("\n")}\n\n${cleaned.trimStart()}`;
+}
 export const scheduleSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("once"), at: z.iso.datetime() }),
 	z.object({ kind: z.literal("daily"), time }),
@@ -28,6 +75,19 @@ export const automationInputSchema = z.object({
 	schedule: scheduleSchema,
 	target: targetSchema,
 	enabled: z.boolean(),
+	/** Coding harness override; omit to use global/defaultRunner. */
+	runner: RunnerTypeSchema.optional(),
+	/** Model override for the selected runner; omit to use that runner's default. */
+	model: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.regex(
+			/^[^\s[\]]+$/,
+			"Model must be an identifier without whitespace or brackets",
+		)
+		.optional(),
 });
 export const definitionSchema = automationInputSchema.extend({
 	id: z.string(),
@@ -99,6 +159,10 @@ export interface RepositoryTaskRequest {
 	repositoryId: string;
 	source: "automation" | "linear";
 	issueContext?: { issueId: string; workspaceId: string };
+	/** Optional coding harness for direct automation runs. */
+	runner?: z.infer<typeof RunnerTypeSchema>;
+	/** Optional model for direct automation runs. */
+	model?: string;
 }
 export const activeRun = (run: AutomationRun) =>
 	!["succeeded", "failed", "skipped"].includes(run.status);
