@@ -454,7 +454,7 @@ function StatusApp() {
 								</span>
 							</div>
 							{(data.repositories || []).length ? (
-								<div className="status-repo-list">
+								<div className="status-repo-grid">
 									{(data.repositories || []).map((repo) => (
 										<article key={repo.id} className="status-repo">
 											<div className="status-repo-copy">
