@@ -166,6 +166,7 @@ import {
 	type RepositoryTaskRequest,
 	type RunUpdate,
 } from "./automation/types.js";
+import { buildBoardRepositories, buildBoardWorkspaces } from "./BoardPaths.js";
 import type { ChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import { LiveChatRepositoryProvider } from "./ChatRepositoryProvider.js";
 import type { ChatSessionHandlerDeps } from "./ChatSessionHandler.js";
@@ -992,6 +993,9 @@ export class EdgeWorker extends EventEmitter {
 				service: this.automations,
 				adapters: this.automationAdapters,
 			},
+			mikoHome: this.mikoHome,
+			version: this.config.version ?? null,
+			accessToken: process.env.MIKO_BOARD_TOKEN?.trim() || undefined,
 			getSessionTitle: (id) =>
 				this.automations?.store.read().runs.find((r) => r.sessionId === id)
 					?.snapshot.name,
@@ -1011,6 +1015,40 @@ export class EdgeWorker extends EventEmitter {
 					? this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceSlug
 					: undefined;
 			},
+			listRepositories: () =>
+				buildBoardRepositories(
+					Array.from(this.repositories.values()).map((repo) => {
+						const workspace = repo.linearWorkspaceId
+							? this.config.linearWorkspaces?.[repo.linearWorkspaceId]
+							: undefined;
+						return {
+							id: repo.id,
+							name: repo.name,
+							githubUrl: repo.githubUrl,
+							gitlabUrl: repo.gitlabUrl,
+							repositoryPath: repo.repositoryPath,
+							workspaceBaseDir: repo.workspaceBaseDir,
+							baseBranch: repo.baseBranch,
+							isActive: repo.isActive,
+							linearWorkspaceId: repo.linearWorkspaceId,
+							linearWorkspaceName: workspace?.linearWorkspaceName,
+							linearWorkspaceSlug: workspace?.linearWorkspaceSlug,
+						};
+					}),
+				),
+			getDefaults: () => ({
+				defaultRunner: this.config.defaultRunner ?? null,
+				claudeDefaultModel: this.config.claudeDefaultModel ?? null,
+				claudeDefaultFallbackModel:
+					this.config.claudeDefaultFallbackModel ?? null,
+				cursorDefaultModel: this.config.cursorDefaultModel ?? null,
+				cursorDefaultFallbackModel:
+					this.config.cursorDefaultFallbackModel ?? null,
+				grokDefaultModel: this.config.grokDefaultModel ?? null,
+				grokDefaultFallbackModel: this.config.grokDefaultFallbackModel ?? null,
+			}),
+			listWorkspaces: () =>
+				buildBoardWorkspaces(this.config.linearWorkspaces ?? {}),
 		});
 		this.logger.info(
 			"Status board available at /board on the application server",

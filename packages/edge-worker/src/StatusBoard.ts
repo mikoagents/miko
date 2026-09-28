@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -13,6 +13,15 @@ import type { AutomationAdapters } from "./automation/AutomationAdapters.js";
 import { registerAutomationRoutes } from "./automation/AutomationRoutes.js";
 import type { AutomationService } from "./automation/AutomationService.js";
 import { BoardHistory, type BoardTask } from "./BoardHistory.js";
+import {
+	type BoardDefaultsInfo,
+	type BoardRepositoryInfo,
+	type BoardWorkspaceInfo,
+	buildBoardStatus,
+	openBoardDirectory,
+	openPathInFileManager,
+} from "./BoardPaths.js";
+import { listBoardSkills, resolveAllowedBoardSkill } from "./BoardSkills.js";
 
 const MAX_TASKS = 60;
 const MAX_LOGS = 650;
@@ -40,6 +49,21 @@ export interface BoardOptions {
 	getStatus(): "idle" | "busy";
 	getRepositoryName(id: string): string;
 	getLinearWorkspaceSlug?(repositoryId: string): string | undefined;
+	/** Configured repositories for Status (same set Automations uses). */
+	listRepositories?(): BoardRepositoryInfo[];
+	/** Safe install defaults (runner + models) for Status. */
+	getDefaults?(): BoardDefaultsInfo;
+	/** Linear workspaces for Status (names/slugs/flags only). */
+	listWorkspaces?(): BoardWorkspaceInfo[];
+	/** Absolute Miko home (config/data). Required for status/open-directory APIs. */
+	mikoHome?: string;
+	version?: string | null;
+	releaseDir?: string;
+	/**
+	 * When set (non-empty), remote/proxied board access is allowed with this token.
+	 * Local loopback still works without presenting the token. Wire from MIKO_BOARD_TOKEN.
+	 */
+	accessToken?: string;
 }
 
 export function redactBoardText(value: string): string {
@@ -419,6 +443,174 @@ export class StatusBoard {
 	}
 }
 
+const BOARD_TOKEN_COOKIE = "miko_board_token";
+
+/** Trimmed non-empty access token, or undefined when remote auth is disabled. */
+export function configuredBoardToken(
+	accessToken: string | undefined,
+): string | undefined {
+	const token = accessToken?.trim();
+	return token ? token : undefined;
+}
+
+/** Constant-time string compare for board tokens (equal-length buffers only). */
+export function boardTokensEqual(expected: string, provided: string): boolean {
+	const left = Buffer.from(expected);
+	const right = Buffer.from(provided);
+	if (left.length !== right.length) {
+		timingSafeEqual(left, left);
+		return false;
+	}
+	return timingSafeEqual(left, right);
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+	if (Array.isArray(value)) return value[0];
+	return value;
+}
+
+function boardCookieToken(
+	cookieHeader: string | string[] | undefined,
+): string | undefined {
+	const raw = Array.isArray(cookieHeader)
+		? cookieHeader.join("; ")
+		: cookieHeader;
+	if (!raw) return;
+	for (const part of raw.split(";")) {
+		const idx = part.indexOf("=");
+		if (idx === -1) continue;
+		const key = part.slice(0, idx).trim();
+		if (key !== BOARD_TOKEN_COOKIE) continue;
+		const value = part.slice(idx + 1).trim();
+		try {
+			return decodeURIComponent(value);
+		} catch {
+			return value;
+		}
+	}
+	return;
+}
+
+function boardBearerToken(
+	authorization: string | string[] | undefined,
+): string | undefined {
+	const value = headerValue(authorization)?.trim();
+	if (!value) return;
+	const match = /^Bearer\s+(\S+)$/i.exec(value);
+	return match?.[1];
+}
+
+/** True when the request presents a valid Bearer or cookie board token. */
+export function isBoardTokenAuthenticated(
+	request: FastifyRequest,
+	accessToken: string,
+): boolean {
+	const bearer = boardBearerToken(request.headers.authorization);
+	if (bearer !== undefined && boardTokensEqual(accessToken, bearer))
+		return true;
+	const cookie = boardCookieToken(request.headers.cookie);
+	return cookie !== undefined && boardTokensEqual(accessToken, cookie);
+}
+
+function requestUsesHttps(request: FastifyRequest): boolean {
+	const proto = headerValue(request.headers["x-forwarded-proto"])
+		?.split(",")[0]
+		?.trim()
+		.toLowerCase();
+	if (proto === "https") return true;
+	if (proto === "http") return false;
+	return Boolean((request.raw.socket as { encrypted?: boolean }).encrypted);
+}
+
+/** Public request origin using forwarded proto/host when present. */
+export function resolveBoardRequestOrigin(
+	request: FastifyRequest,
+): string | null {
+	const forwardedHost = headerValue(request.headers["x-forwarded-host"])
+		?.split(",")[0]
+		?.trim();
+	const host = forwardedHost || headerValue(request.headers.host);
+	if (!host) return null;
+	const scheme = requestUsesHttps(request) ? "https" : "http";
+	try {
+		return new URL(`${scheme}://${host}`).origin;
+	} catch {
+		return null;
+	}
+}
+
+function setBoardTokenCookie(
+	reply: {
+		header: (name: string, value: string | number | string[]) => unknown;
+	},
+	token: string,
+	secure: boolean,
+): void {
+	const parts = [
+		`${BOARD_TOKEN_COOKIE}=${encodeURIComponent(token)}`,
+		"Path=/board",
+		"HttpOnly",
+		"SameSite=Lax",
+	];
+	if (secure) parts.push("Secure");
+	reply.header("Set-Cookie", parts.join("; "));
+}
+
+function boardLoginPage(error?: string): string {
+	const message = error
+		? `<p class="error">${error}</p>`
+		: "<p>Enter the board access token to continue.</p>";
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Miko board login</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0b0f14;color:#e8eef7;margin:0;min-height:100vh;display:grid;place-items:center}
+main{width:min(24rem,100%);padding:1.5rem;border:1px solid #243041;border-radius:12px;background:#121821}
+h1{font-size:1.1rem;margin:0 0 .75rem}
+p{margin:0 0 1rem;color:#9db0c7;font-size:.9rem}
+.error{color:#ff8e8e}
+label{display:block;font-size:.8rem;margin-bottom:.35rem;color:#9db0c7}
+input{width:100%;box-sizing:border-box;padding:.65rem .75rem;border-radius:8px;border:1px solid #314257;background:#0b0f14;color:inherit}
+button{margin-top:1rem;width:100%;padding:.7rem;border:0;border-radius:8px;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<main>
+<h1>Miko status board</h1>
+${message}
+<form method="post" action="/board/login" autocomplete="current-password">
+<label for="token">Access token</label>
+<input id="token" name="token" type="password" required autofocus/>
+<button type="submit">Continue</button>
+</form>
+</main>
+</body>
+</html>`;
+}
+
+function boardPathname(url: string): string {
+	try {
+		return new URL(url, "http://127.0.0.1").pathname;
+	} catch {
+		return url.split("?")[0] ?? url;
+	}
+}
+
+function isBoardHtmlNavigation(request: FastifyRequest): boolean {
+	if (request.method !== "GET" && request.method !== "HEAD") return false;
+	const path = boardPathname(request.url);
+	return path === "/board" || path === "/board/";
+}
+
+function isBoardLoginPost(request: FastifyRequest): boolean {
+	return (
+		request.method === "POST" && boardPathname(request.url) === "/board/login"
+	);
+}
+
 /** Check the socket, not Fastify's proxy-trusting request.ip. */
 export function isLocalBoardRequest(request: FastifyRequest): boolean {
 	const address = request.raw.socket.remoteAddress;
@@ -482,11 +674,21 @@ export function registerStatusBoard(
 			["app.js.LEGAL.txt", "text/plain; charset=utf-8"],
 		],
 	]);
+	const accessToken = configuredBoardToken(options.accessToken);
 	app.register(async (scoped) => {
 		await board.ready();
+		scoped.addContentTypeParser(
+			"application/x-www-form-urlencoded",
+			{ parseAs: "string" },
+			(_request, body, done) => {
+				try {
+					done(null, Object.fromEntries(new URLSearchParams(String(body))));
+				} catch (error) {
+					done(error as Error, undefined);
+				}
+			},
+		);
 		scoped.addHook("onRequest", async (request, reply) => {
-			if (!isLocalBoardRequest(request))
-				return reply.code(403).send({ error: "Local access only" });
 			reply
 				.header("Cache-Control", "no-store")
 				.header("X-Content-Type-Options", "nosniff")
@@ -495,9 +697,77 @@ export function registerStatusBoard(
 					"Content-Security-Policy",
 					"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'none'",
 				);
-			return undefined;
+			if (isLocalBoardRequest(request)) return undefined;
+			if (!accessToken)
+				return reply.code(403).send({ error: "Local access only" });
+			if (isBoardTokenAuthenticated(request, accessToken)) return undefined;
+			if (isBoardHtmlNavigation(request) || isBoardLoginPost(request))
+				return undefined;
+			return reply
+				.code(401)
+				.header("WWW-Authenticate", 'Bearer realm="miko-board"')
+				.send({ error: "Authentication required" });
 		});
+		const serveBoardHtml = async (
+			request: FastifyRequest<{ Querystring: { token?: string } }>,
+			reply: {
+				type: (value: string) => {
+					send: (body: unknown) => unknown;
+				};
+				header: (name: string, value: string | number | string[]) => unknown;
+				redirect: (url: string, statusCode?: number) => unknown;
+				code: (status: number) => {
+					type: (value: string) => { send: (body: unknown) => unknown };
+				};
+			},
+		) => {
+			const path = boardPathname(request.url);
+			const queryToken =
+				typeof request.query?.token === "string"
+					? request.query.token
+					: undefined;
+			if (accessToken && queryToken !== undefined) {
+				if (boardTokensEqual(accessToken, queryToken)) {
+					setBoardTokenCookie(reply, accessToken, requestUsesHttps(request));
+					return reply.redirect(path, 302);
+				}
+				return reply
+					.code(401)
+					.type("text/html; charset=utf-8")
+					.send(boardLoginPage("Invalid access token."));
+			}
+			const allowed =
+				isLocalBoardRequest(request) ||
+				(accessToken !== undefined &&
+					isBoardTokenAuthenticated(request, accessToken));
+			if (!allowed) {
+				return reply.type("text/html; charset=utf-8").send(boardLoginPage());
+			}
+			return reply
+				.type("text/html; charset=utf-8")
+				.send(await readFile(new URL("index.html", assetsDirectory)));
+		};
+		scoped.get("/board", serveBoardHtml);
+		scoped.get("/board/", serveBoardHtml);
+		scoped.post<{ Body: { token?: string } }>(
+			"/board/login",
+			async (request, reply) => {
+				if (!accessToken)
+					return reply.code(403).send({ error: "Local access only" });
+				const provided =
+					typeof request.body?.token === "string" ? request.body.token : "";
+				if (!boardTokensEqual(accessToken, provided)) {
+					return reply
+						.code(401)
+						.type("text/html; charset=utf-8")
+						.send(boardLoginPage("Invalid access token."));
+				}
+				setBoardTokenCookie(reply, accessToken, requestUsesHttps(request));
+				return reply.redirect("/board/", 302);
+			},
+		);
 		for (const [url, [file, type]] of routes) {
+			if (url === "/board" || url === "/board/") continue;
 			scoped.get(url, async (_request, reply) =>
 				reply.type(type!).send(await readFile(new URL(file!, assetsDirectory))),
 			);
@@ -507,6 +777,7 @@ export function registerStatusBoard(
 				scoped,
 				options.automations.service,
 				options.automations.adapters,
+				resolveBoardRequestOrigin,
 			);
 		scoped.get("/board/api/snapshot", async () => board.snapshot());
 		scoped.get<{ Params: { sessionId: string } }>(
@@ -515,6 +786,105 @@ export function registerStatusBoard(
 				logs: board.historyLogs(request.params.sessionId),
 			}),
 		);
+		const requireMikoHome = (reply: {
+			code: (status: number) => { send: (body: unknown) => unknown };
+		}) => {
+			if (options.mikoHome) return options.mikoHome;
+			reply.code(503).send({ error: "Miko home is not configured" });
+			return null;
+		};
+		const requireSameOriginJson = (
+			request: FastifyRequest,
+			reply: {
+				code: (status: number) => { send: (body: unknown) => unknown };
+			},
+		) => {
+			const origin = resolveBoardRequestOrigin(request);
+			if (
+				!origin ||
+				request.headers.origin !== origin ||
+				!request.headers["content-type"]?.startsWith("application/json")
+			) {
+				reply.code(403).send({ error: "Same-origin JSON requests required" });
+				return false;
+			}
+			return true;
+		};
+		scoped.get("/board/api/status", async (_request, reply) => {
+			const mikoHome = requireMikoHome(reply);
+			if (!mikoHome) return;
+			return buildBoardStatus({
+				mikoHome,
+				version: options.version,
+				releaseDir: options.releaseDir,
+				getStatus: options.getStatus,
+				getAutomationCount: options.automations
+					? () =>
+							options
+								.automations!.service.list()
+								.definitions.filter((d) => !d.archived).length
+					: undefined,
+				repositories: options.listRepositories?.() ?? [],
+				defaults: options.getDefaults?.(),
+				workspaces: options.listWorkspaces?.(),
+			});
+		});
+		scoped.get("/board/api/skills", async (_request, reply) => {
+			const mikoHome = requireMikoHome(reply);
+			if (!mikoHome) return;
+			const skills = await listBoardSkills(mikoHome);
+			return { skills };
+		});
+		scoped.post<{ Body: { id?: string } }>(
+			"/board/api/open-directory",
+			async (request, reply) => {
+				if (!requireSameOriginJson(request, reply)) return;
+				const mikoHome = requireMikoHome(reply);
+				if (!mikoHome) return;
+				const id =
+					typeof request.body?.id === "string" ? request.body.id.trim() : "";
+				if (!id)
+					return reply.code(400).send({ error: "Directory id is required" });
+				const result = await openBoardDirectory(
+					id,
+					mikoHome,
+					options.releaseDir,
+				);
+				if (!result.ok) return reply.code(400).send({ error: result.error });
+				return result;
+			},
+		);
+		scoped.post<{
+			Body: { source?: string; name?: string; repository?: string };
+		}>("/board/api/open-skill", async (request, reply) => {
+			if (!requireSameOriginJson(request, reply)) return;
+			const mikoHome = requireMikoHome(reply);
+			if (!mikoHome) return;
+			const source =
+				typeof request.body?.source === "string"
+					? request.body.source.trim()
+					: "";
+			const name =
+				typeof request.body?.name === "string" ? request.body.name.trim() : "";
+			const repository =
+				typeof request.body?.repository === "string"
+					? request.body.repository.trim()
+					: undefined;
+			if (!source || !name)
+				return reply
+					.code(400)
+					.send({ error: "Skill source and name are required" });
+			const allowed = resolveAllowedBoardSkill(
+				mikoHome,
+				source,
+				name,
+				repository,
+			);
+			if (!allowed)
+				return reply.code(400).send({ error: "Skill path is not allowlisted" });
+			const result = await openPathInFileManager(allowed.path);
+			return { ok: true, ...result };
+		});
 		scoped.get("/board/events", (request, reply) => {
 			for (const [name, value] of Object.entries(reply.getHeaders())) {
 				if (value !== undefined) reply.raw.setHeader(name, value);
