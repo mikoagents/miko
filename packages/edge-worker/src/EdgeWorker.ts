@@ -4900,12 +4900,18 @@ ${taskSection}`;
 		// run (succeeded/failed/skipped) on the same issue must not swallow later
 		// human mentions or delegations; that previously made Linear show
 		// "Miko failed to start." with no local session.
-		const automationRun = this.automations?.store
+		// Only claim a live automation run. Terminal or uncertain runs must not
+		// swallow human-triggered AgentSessionCreated (Linear Retry / re-delegate).
+		let automationRun = this.automations?.store
 			.read()
-			.runs.find((run) => run.issueId === issueId && activeRun(run));
+			.runs.find(
+				(run) =>
+					run.issueId === issueId &&
+					activeRun(run) &&
+					run.status !== "uncertain",
+			);
 		if (automationRun) {
 			if (
-				automationRun.status === "uncertain" ||
 				automationRun.executionClaimedAt !== undefined ||
 				this.automationSessionStarts.has(automationRun.id) ||
 				this.agentSessionManager.getSession(webhook.agentSession.id)
