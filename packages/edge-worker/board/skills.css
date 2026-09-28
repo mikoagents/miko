@@ -176,7 +176,13 @@
 	white-space: nowrap;
 }
 .skills-dialog {
-	gap: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.skills-dialog-header {
+	gap: 10px;
+	margin-bottom: 0;
 }
 .skills-dialog-title {
 	overflow-wrap: anywhere;
@@ -185,7 +191,7 @@
 .skills-dialog-section {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 6px;
 }
 .skills-dialog-label {
 	margin: 0;
@@ -264,6 +270,7 @@
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: 8px;
+	margin-top: 0;
 }
 @media (max-width: 720px) {
 	.skills-count {

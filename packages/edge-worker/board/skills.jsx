@@ -367,7 +367,7 @@ function SkillsApp() {
 							showCloseButton={false}
 							className="fluid-scope skills-dialog"
 						>
-							<DialogHeader>
+							<DialogHeader className="skills-dialog-header">
 								<DialogTitle className="skills-dialog-title">
 									{detail.name}
 								</DialogTitle>
@@ -378,24 +378,23 @@ function SkillsApp() {
 											? "User skill override"
 											: "Bundled with Miko"}
 								</DialogDescription>
+								<div className="skills-dialog-badges">
+									<Badge
+										variant="dot"
+										color={sourceColors[detail.source] || "gray"}
+										size="compact"
+									>
+										{sourceLabels[detail.source] || detail.source}
+									</Badge>
+									<Badge
+										variant="dot"
+										color={detail.active ? "green" : "orange"}
+										size="compact"
+									>
+										{detail.active ? "Active" : "Shadowed by user skill"}
+									</Badge>
+								</div>
 							</DialogHeader>
-
-							<div className="skills-dialog-badges">
-								<Badge
-									variant="dot"
-									color={sourceColors[detail.source] || "gray"}
-									size="compact"
-								>
-									{sourceLabels[detail.source] || detail.source}
-								</Badge>
-								<Badge
-									variant="dot"
-									color={detail.active ? "green" : "orange"}
-									size="compact"
-								>
-									{detail.active ? "Active" : "Shadowed by user skill"}
-								</Badge>
-							</div>
 
 							<section className="skills-dialog-section">
 								<h3 className="skills-dialog-label">Description</h3>
