@@ -55,6 +55,45 @@ function skillKey(skill) {
 	return `${skill.source}:${skill.origin}:${skill.name}`;
 }
 
+function groupSkills(skills) {
+	const internal = [];
+	const user = [];
+	const byRepo = new Map();
+	for (const skill of skills) {
+		if (skill.source === "internal") internal.push(skill);
+		else if (skill.source === "user") user.push(skill);
+		else if (skill.source === "repo") {
+			const origin = skill.origin || "unknown";
+			if (!byRepo.has(origin)) byRepo.set(origin, []);
+			byRepo.get(origin).push(skill);
+		}
+	}
+	const sections = [];
+	if (internal.length)
+		sections.push({
+			id: "internal",
+			title: "Bundled",
+			subtitle: "Internal",
+			skills: internal,
+		});
+	if (user.length)
+		sections.push({
+			id: "user",
+			title: "User",
+			subtitle: "Overrides",
+			skills: user,
+		});
+	for (const origin of [...byRepo.keys()].sort((a, b) => a.localeCompare(b))) {
+		sections.push({
+			id: `repo:${origin}`,
+			title: origin,
+			subtitle: "Repository",
+			skills: byRepo.get(origin),
+		});
+	}
+	return sections;
+}
+
 function SkillsApp() {
 	const [skills, setSkills] = useState([]);
 	const [loading, setLoading] = useState(true);
@@ -113,6 +152,8 @@ function SkillsApp() {
 				.includes(needle);
 		});
 	}, [skills, query, sourceFilter]);
+
+	const sections = useMemo(() => groupSkills(matching), [matching]);
 
 	const detail = matching.find((skill) => skillKey(skill) === selected);
 
@@ -247,45 +288,69 @@ function SkillsApp() {
 							: "No skills found."}
 					</div>
 				) : (
-					<section className="skills-grid" aria-label="Skills">
-						{matching.map((skill) => {
-							const key = skillKey(skill);
-							return (
-								<button
-									type="button"
-									key={key}
-									className="skills-card"
-									onClick={() => setSelected(key)}
-								>
-									<div className="skills-card-top">
-										<strong className="skills-card-name">{skill.name}</strong>
-										<div className="skills-card-badges">
-											<Badge
-												variant="dot"
-												color={sourceColors[skill.source] || "gray"}
-												size="compact"
-											>
-												{sourceLabels[skill.source] || skill.source}
-											</Badge>
-											{!skill.active && (
-												<Badge variant="dot" color="orange" size="compact">
-													Shadowed
-												</Badge>
-											)}
-										</div>
+					<div className="skills-sections" aria-label="Skills">
+						{sections.map((section) => (
+							<section
+								key={section.id}
+								className="skills-section"
+								aria-label={section.title}
+							>
+								<div className="skills-section-header">
+									<div>
+										<strong>{section.title}</strong>
+										{section.subtitle && (
+											<span className="skills-section-subtitle">
+												{section.subtitle}
+											</span>
+										)}
 									</div>
-									<p className="skills-card-description">
-										{skill.description || "No description in SKILL.md"}
-									</p>
-									{skill.source === "repo" && (
-										<span className="skills-card-origin" title={skill.origin}>
-											{skill.origin}
-										</span>
-									)}
-								</button>
-							);
-						})}
-					</section>
+									<span className="skills-section-count">
+										{section.skills.length}
+									</span>
+								</div>
+								<div className="skills-grid">
+									{section.skills.map((skill) => {
+										const key = skillKey(skill);
+										return (
+											<button
+												type="button"
+												key={key}
+												className="skills-card"
+												onClick={() => setSelected(key)}
+											>
+												<div className="skills-card-top">
+													<strong className="skills-card-name">
+														{skill.name}
+													</strong>
+													<div className="skills-card-badges">
+														<Badge
+															variant="dot"
+															color={sourceColors[skill.source] || "gray"}
+															size="compact"
+														>
+															{sourceLabels[skill.source] || skill.source}
+														</Badge>
+														{!skill.active && (
+															<Badge
+																variant="dot"
+																color="orange"
+																size="compact"
+															>
+																Shadowed
+															</Badge>
+														)}
+													</div>
+												</div>
+												<p className="skills-card-description">
+													{skill.description || "No description in SKILL.md"}
+												</p>
+											</button>
+										);
+									})}
+								</div>
+							</section>
+						))}
+					</div>
 				)}
 
 				<Dialog

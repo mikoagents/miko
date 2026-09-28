@@ -269,3 +269,36 @@
 		overflow-wrap: anywhere;
 	}
 }
+
+.skills-sections {
+	display: grid;
+	gap: 22px;
+}
+.skills-section {
+	display: grid;
+	gap: 12px;
+}
+.skills-section-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	padding-bottom: 2px;
+	border-bottom: 1px solid #f0f0f0;
+}
+.skills-section-header strong {
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+.skills-section-subtitle {
+	margin-left: 8px;
+	color: #8b8b8b;
+	font-size: 12px;
+	font-weight: 500;
+}
+.skills-section-count {
+	color: #8b8b8b;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
