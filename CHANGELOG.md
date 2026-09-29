@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Automations can run operations without a repository in a separate workspace, use connected tools and skills, and finish without opening a pull request. ([#32](https://github.com/mikoagents/miko/pull/32))
 - Automations can select an agent and model per schedule, with model suggestions and editable defaults for existing schedules. ([#30](https://github.com/mikoagents/miko/pull/30))
 - The board now shows runtime resources, repositories, directory shortcuts, and installed skills, with optional token-protected remote access. ([#29](https://github.com/mikoagents/miko/pull/29))
 - Self-hosted GitHub auth prefers App installation tokens for git fetch/push and `gh` when App credentials exist, falls back to local git/`gh` auth, always adds a `Co-authored-by: mikoagent` trailer, and uses the operator-defined App bot (not a hard-coded product bot) for commit authorship on the App path. Startup mints tokens into the token store; `self-add-repo` can clone private repos with those tokens.
@@ -15,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Cursor Grok 4.7 sessions now accept reasoning-effort and Fast selectors, avoid unsupported model parameters, and display the selected effort in task history. ([#15](https://github.com/nexmoe/atmiko/pull/15))
 
 ### Changed
+- Linear automations now derive their workspace from the selected repository and only ask for a team, while preserving existing project assignments when editing. ([#31](https://github.com/mikoagents/miko/pull/31))
 - The public homepage now describes Miko as a self-hosted AI coding agent, lists Grok with the supported agents, and publishes sitemap, robots, and social metadata. ([#22](https://github.com/mikoagents/miko/pull/22))
 - Renamed the product and CLI to Miko and moved the repository to `mikoagents/miko`. Configuration now uses `~/.miko`, `MIKO_*` variables, and `/miko-setup`; old names are no longer accepted. See the [migration guide](docs/MIKO_MIGRATION.md) before updating an existing installation. ([#16](https://github.com/mikoagents/miko/pull/16))
 - Renamed the product to Atmiko, including the `atmiko` CLI, `ATMIKO_*` environment variables, `~/.atmiko` configuration, setup skills, integration names, and repository links. ([#10](https://github.com/nexmoe/atmiko/pull/10))

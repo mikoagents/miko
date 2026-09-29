@@ -5496,13 +5496,7 @@ ${await this.loadSharedInstructions()}`;
 		});
 	}
 
-
-	/**
-	 * Ops automation: home-based session with no git worktree / repository binding.
-	 * Working directory is ~/.miko/automation-workspaces/<id>. Linear MCP may be
-	 * seeded from any configured workspace token so the agent can use Linear tools;
-	 * multi-workspace GraphQL via config tokens is also available.
-	 */
+	/** Operations run in a plain workspace without binding a code repository. */
 	private async startDirectOpsTask(
 		request: RepositoryTaskRequest,
 	): Promise<void> {
@@ -5536,12 +5530,16 @@ ${await this.loadSharedInstructions()}`;
 			status: "running",
 		});
 
-		const seedRepo = [...this.repositories.values()].find(
-			(r) => r.isActive !== false && r.linearWorkspaceId,
-		);
-		const linearWorkspaceId =
-			seedRepo?.linearWorkspaceId ??
-			Object.keys(this.config.linearWorkspaces ?? {})[0];
+		const linearWorkspaceId = Object.entries(
+			this.config.linearWorkspaces ?? {},
+		).find(([, workspace]) => workspace.linearToken)?.[0];
+		const mcpConfig = linearWorkspaceId
+			? this.mcpConfigService.buildMcpConfig(
+					sessionId,
+					linearWorkspaceId,
+					sessionId,
+				)
+			: undefined;
 		const plugins = await this.skillsPluginResolver.resolve();
 		const skills = await this.skillsPluginResolver.discoverSkillNames(
 			plugins,
@@ -5551,8 +5549,8 @@ ${await this.loadSharedInstructions()}`;
 		const userPrompt = `# ${request.title}\n\n${request.instructions}`;
 		const systemPrompt = `You are running a scheduled Miko operations task with no code repository.
 Work in the plain directory ${workspace.path} under the Miko home (not a git worktree).
-Follow the task instructions and any matching user skills (for example Skill tool / linear-issue-cap).
-You may use Linear MCP tools for the seeded workspace and the Linear GraphQL API at https://api.linear.app/graphql with Bearer tokens from ~/.miko/config.json → linearWorkspaces to operate across ALL configured Linear workspaces. Prefer GraphQL mutation issueArchive (Linear SDK archiveIssue) when the MCP server has no archive tool.
+Follow the task instructions and available user skills.
+Use connected Linear MCP tools when needed. For requested operations across workspaces, configuration is available at ${join(this.mikoHome, "config.json")}; use only the workspaces and operations requested by the task. Keep credentials out of reports and activity output.
 Do not create pull requests. Do not create a Linear issue as a ticket for this automation run.
 Do not modify active (non-completed) issues unless the instructions explicitly require it.
 ${await this.loadSharedInstructions()}`;
@@ -5573,12 +5571,13 @@ ${await this.loadSharedInstructions()}`;
 			sessionId,
 			mikoHome: this.mikoHome,
 			platformName: "automation",
-			linearWorkspaceId,
-			repository: seedRepo,
-			repositoryPaths: [
-				this.mikoHome,
-				...(seedRepo ? [seedRepo.repositoryPath] : []),
-			],
+			repositoryPaths: [this.mikoHome],
+			sandboxSettings: this.sdkSandboxSettings ?? undefined,
+			egressCaCertPath: this.egressCaCertPath ?? undefined,
+			platformMcpConfigOverrides: this.config.linearMcpConfigs,
+			strictMcpConfig: this.config.strictMcpConfig,
+			opencodeGlobalConfig: this.config.opencode?.config,
+			opencodeGlobalStateScope: this.config.opencode?.stateScope,
 			plugins,
 			skills,
 			runnerType,
@@ -5608,20 +5607,24 @@ ${await this.loadSharedInstructions()}`;
 		});
 		const config: AgentRunnerConfig = {
 			...chatConfig,
-			allowedTools: [...new Set([...allowedTools, ...(chatConfig.allowedTools ?? [])])],
+			allowedTools,
+			...(mcpConfig ? { mcpConfig } : {}),
 			model,
 			fallbackModel:
 				selection.fallbackModelOverride ||
-				this.runnerSelectionService.getDefaultFallbackModelForRunner(runnerType),
+				this.runnerSelectionService.getDefaultFallbackModelForRunner(
+					runnerType,
+				),
 		};
 		const runner = this.createRunnerForType(runnerType, config);
 		this.agentSessionManager.addAgentRunner(sessionId, runner);
 		await this.savePersistedState();
 		await this.updateAutomationSession(sessionId, { status: "running" });
 		const prompt = `${userPrompt}\n\n${AUTOMATION_OPS_COMPLETION_INSTRUCTIONS}`;
-		void (runner.supportsStreamingInput && runner.startStreaming
-			? runner.startStreaming(prompt)
-			: runner.start(prompt)
+		void (
+			runner.supportsStreamingInput && runner.startStreaming
+				? runner.startStreaming(prompt)
+				: runner.start(prompt)
 		).catch(async (error) => {
 			this.logger.error("Scheduled ops task failed", error);
 			await this.updateAutomationSession(sessionId, {

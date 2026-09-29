@@ -28,7 +28,10 @@ const schema = z.object({
 		.max(20),
 });
 
-function parseCompletion(body: string, allowSucceededWithoutPr: boolean): RunUpdate {
+function parseCompletion(
+	body: string,
+	allowSucceededWithoutPr: boolean,
+): RunUpdate {
 	const match = /<!--\s*miko-automation-result\s+(\{[\s\S]*?\})\s*-->/.exec(
 		body,
 	);
@@ -48,7 +51,7 @@ function parseCompletion(body: string, allowSucceededWithoutPr: boolean): RunUpd
 	} catch {
 		return {
 			status: "uncertain",
-			message: `The agent ended without a valid final development outcome. Review its activity before clearing this run.\n\n${body}`,
+			message: `The agent ended without a valid final ${allowSucceededWithoutPr ? "operations" : "development"} outcome. Review its activity before clearing this run.\n\n${body}`,
 		};
 	}
 }

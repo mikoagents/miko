@@ -210,32 +210,32 @@ describe("automation platform adapters", () => {
 	});
 });
 
-	it("validates and dispatches a direct_ops task without a repository", async () => {
-		const { adapter, deps, run } = fixture();
-		run.snapshot.target = { kind: "direct_ops" };
-		delete (run.snapshot as { repositoryId?: string }).repositoryId;
-		await adapter.validate(run.snapshot);
-		expect(await adapter.dispatch(run)).toEqual({
-			sessionId: "automation-run-1",
-			status: "running",
-		});
-		expect(deps.startTask).toHaveBeenCalledWith({
-			id: "run-1",
-			title: "Fix it",
-			instructions: "Implement and verify",
-			repositoryId: undefined,
-			source: "automation",
-		});
+it("validates and dispatches a direct_ops task without a repository", async () => {
+	const { adapter, deps, run } = fixture();
+	run.snapshot.target = { kind: "direct_ops" };
+	delete (run.snapshot as { repositoryId?: string }).repositoryId;
+	await adapter.validate(run.snapshot);
+	expect(await adapter.dispatch(run)).toEqual({
+		sessionId: "automation-run-1",
+		status: "running",
 	});
-	it("rejects repository selectors and repositoryId on direct_ops", async () => {
-		const { adapter, deps, run } = fixture();
-		run.snapshot.target = { kind: "direct_ops" };
-		delete (run.snapshot as { repositoryId?: string }).repositoryId;
-		deps.repoTags = () => [{ repo: "repo-1" }];
-		await expect(adapter.validate(run.snapshot)).rejects.toThrow(
-			"repository selectors",
-		);
+	expect(deps.startTask).toHaveBeenCalledWith({
+		id: "run-1",
+		title: "Fix it",
+		instructions: "Implement and verify",
+		repositoryId: undefined,
+		source: "automation",
 	});
+});
+it("rejects repository selectors and repositoryId on direct_ops", async () => {
+	const { adapter, deps, run } = fixture();
+	run.snapshot.target = { kind: "direct_ops" };
+	delete (run.snapshot as { repositoryId?: string }).repositoryId;
+	deps.repoTags = () => [{ repo: "repo-1" }];
+	await expect(adapter.validate(run.snapshot)).rejects.toThrow(
+		"repository selectors",
+	);
+});
 
 describe("development completion contract", () => {
 	it("requires a final verified outcome or a reasoned no-change result", () => {
@@ -289,6 +289,8 @@ Use outcome "no_change" with a specific reason and an empty prUrls array when no
 			message: "Done",
 			prUrls: [],
 		});
-		expect(AUTOMATION_OPS_COMPLETION_INSTRUCTIONS).toContain("no code repository");
+		expect(AUTOMATION_OPS_COMPLETION_INSTRUCTIONS).toContain(
+			"no code repository",
+		);
 	});
 });

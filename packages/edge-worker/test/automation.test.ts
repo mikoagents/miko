@@ -367,6 +367,26 @@ describe("durable automation dispatch", () => {
 });
 
 describe("automation input schema optional repository", () => {
+	it("persists operations definitions without a repository and rejects invalid stored combinations", async () => {
+		const { directory, service, store } = await fixture();
+		const definition = await service.save(
+			input({
+				target: { kind: "direct_ops" },
+				repositoryId: undefined,
+				enabled: false,
+			}),
+		);
+		await expect(
+			store.transact((state) => {
+				state.definitions[0].repositoryId = "repo";
+			}),
+		).rejects.toThrow("Ops automations must not bind a repository");
+		await service.stop();
+		const reopened = new AutomationStore(directory);
+		await reopened.open();
+		cleanups.push(() => reopened.close());
+		expect(reopened.read().definitions).toEqual([definition]);
+	});
 	it("accepts direct_ops without repositoryId and rejects repo-backed without one", () => {
 		expect(
 			automationInputSchema.parse(

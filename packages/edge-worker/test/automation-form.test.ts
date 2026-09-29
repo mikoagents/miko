@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	formFromDefinition,
+	formWithRepository,
+	formWithTarget,
+	formWithTeam,
 	inputFromForm,
 	modelChoices,
 	scheduleFromForm,
@@ -11,6 +14,27 @@ const options = {
 	workspaces: [{ id: "ws" }],
 };
 describe("automation form serialization", () => {
+	it("derives a fresh Linear target when switching from Ops back to a repository", () => {
+		const original = {
+			...formFromDefinition(undefined, options),
+			target: "linear_issue",
+			teamId: "team",
+			projectId: "project",
+		};
+		const ops = formWithTarget(original, "direct_ops", options);
+		expect(inputFromForm(ops).target).toEqual({ kind: "direct_ops" });
+		expect(inputFromForm(ops)).not.toHaveProperty("repositoryId");
+		const linear = formWithTarget(ops, "linear_issue", {
+			...options,
+			repositories: [{ id: "repo2", workspaceId: "ws2" }],
+		});
+		expect(linear.repositoryId).toBe("repo2");
+		expect(inputFromForm(linear).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws2",
+			teamId: "",
+		});
+	});
 	it("suggests models for the configured runner when Agent is Default", () => {
 		expect(
 			modelChoices(
@@ -58,6 +82,86 @@ describe("automation form serialization", () => {
 			},
 		};
 		expect(inputFromForm(formFromDefinition(input, options))).toEqual(input);
+	});
+	it("derives the workspace from the repository and clears a mismatched target", () => {
+		const form = formFromDefinition(
+			{
+				repositoryId: "repo",
+				schedule: { kind: "daily", time: "09:00" },
+				target: {
+					kind: "linear_issue",
+					workspaceId: "other-workspace",
+					teamId: "old-team",
+					projectId: "old-project",
+				},
+			},
+			options,
+		);
+		expect(inputFromForm(form).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws",
+			teamId: "",
+		});
+	});
+	it("does not silently replace an unavailable repository", () => {
+		const form = formFromDefinition(
+			{
+				repositoryId: "removed-repo",
+				schedule: { kind: "daily", time: "09:00" },
+				target: { kind: "linear_issue", workspaceId: "ws", teamId: "team" },
+			},
+			options,
+		);
+		expect(form.repositoryId).toBe("");
+		expect(inputFromForm(form).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "",
+			teamId: "",
+		});
+	});
+	it("keeps a project only while the selected workspace and team still match", () => {
+		const form = {
+			...formFromDefinition(undefined, options),
+			target: "linear_issue",
+			teamId: "team",
+			projectId: "project",
+		};
+		const sameWorkspace = formWithRepository(form, {
+			id: "repo2",
+			workspaceId: "ws",
+		});
+		expect(inputFromForm(sameWorkspace).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws",
+			teamId: "team",
+			projectId: "project",
+		});
+		expect(inputFromForm(formWithTeam(sameWorkspace, "team")).target).toEqual(
+			inputFromForm(form).target,
+		);
+		expect(
+			inputFromForm(formWithTeam(sameWorkspace, "new-team")).target,
+		).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws",
+			teamId: "new-team",
+		});
+		expect(
+			inputFromForm(
+				formWithRepository(form, { id: "repo3", workspaceId: "ws2" }),
+			).target,
+		).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws2",
+			teamId: "",
+		});
+		expect(
+			inputFromForm(formWithRepository(form, { id: "local-repo" })).target,
+		).toEqual({
+			kind: "linear_issue",
+			workspaceId: "",
+			teamId: "",
+		});
 	});
 	it("preserves the absolute instant of a one-time task in the browser's timezone", () => {
 		const definition = {
@@ -127,7 +231,10 @@ describe("automation form serialization", () => {
 	it("omits repositoryId for direct_ops and preserves it for repository modes", () => {
 		const opsForm = {
 			...formFromDefinition(
-				{ target: { kind: "direct_ops" }, schedule: { kind: "daily", time: "04:00" } },
+				{
+					target: { kind: "direct_ops" },
+					schedule: { kind: "daily", time: "04:00" },
+				},
 				options,
 			),
 			name: "Linear cap",
@@ -150,5 +257,4 @@ describe("automation form serialization", () => {
 		};
 		expect(inputFromForm(repoForm).repositoryId).toBe("repo");
 	});
-
 });
