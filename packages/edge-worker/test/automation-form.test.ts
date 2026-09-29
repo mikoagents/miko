@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	formFromDefinition,
 	formWithRepository,
+	formWithTarget,
 	formWithTeam,
 	inputFromForm,
 	modelChoices,
@@ -13,6 +14,27 @@ const options = {
 	workspaces: [{ id: "ws" }],
 };
 describe("automation form serialization", () => {
+	it("derives a fresh Linear target when switching from Ops back to a repository", () => {
+		const original = {
+			...formFromDefinition(undefined, options),
+			target: "linear_issue",
+			teamId: "team",
+			projectId: "project",
+		};
+		const ops = formWithTarget(original, "direct_ops", options);
+		expect(inputFromForm(ops).target).toEqual({ kind: "direct_ops" });
+		expect(inputFromForm(ops)).not.toHaveProperty("repositoryId");
+		const linear = formWithTarget(ops, "linear_issue", {
+			...options,
+			repositories: [{ id: "repo2", workspaceId: "ws2" }],
+		});
+		expect(linear.repositoryId).toBe("repo2");
+		expect(inputFromForm(linear).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws2",
+			teamId: "",
+		});
+	});
 	it("suggests models for the configured runner when Agent is Default", () => {
 		expect(
 			modelChoices(
@@ -205,5 +227,34 @@ describe("automation form serialization", () => {
 		const input = inputFromForm(form);
 		expect(input).not.toHaveProperty("runner");
 		expect(input).not.toHaveProperty("model");
+	});
+	it("omits repositoryId for direct_ops and preserves it for repository modes", () => {
+		const opsForm = {
+			...formFromDefinition(
+				{
+					target: { kind: "direct_ops" },
+					schedule: { kind: "daily", time: "04:00" },
+				},
+				options,
+			),
+			name: "Linear cap",
+			instructions: "Follow linear-issue-cap",
+			target: "direct_ops",
+			repositoryId: "should-be-ignored",
+		};
+		expect(inputFromForm(opsForm)).toMatchObject({
+			name: "Linear cap",
+			target: { kind: "direct_ops" },
+		});
+		expect(inputFromForm(opsForm)).not.toHaveProperty("repositoryId");
+
+		const repoForm = {
+			...formFromDefinition(undefined, options),
+			name: "Repo task",
+			instructions: "Do work",
+			target: "direct_repository",
+			repositoryId: "repo",
+		};
+		expect(inputFromForm(repoForm).repositoryId).toBe("repo");
 	});
 });

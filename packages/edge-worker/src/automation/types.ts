@@ -60,6 +60,8 @@ export const scheduleSchema = z.discriminatedUnion("kind", [
 ]);
 export const targetSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("direct_repository") }),
+	/** Home-based ops session: no git worktree / repository binding. */
+	z.object({ kind: z.literal("direct_ops") }),
 	z.object({
 		kind: z.literal("linear_issue"),
 		workspaceId: z.string().min(1),
@@ -67,28 +69,49 @@ export const targetSchema = z.discriminatedUnion("kind", [
 		projectId: z.string().min(1).optional(),
 	}),
 ]);
-export const automationInputSchema = z.object({
-	name: z.string().trim().min(1).max(200),
-	instructions: z.string().trim().min(1).max(50000),
-	repositoryId: z.string().min(1),
-	timezone: z.string().min(1).max(100),
-	schedule: scheduleSchema,
-	target: targetSchema,
-	enabled: z.boolean(),
-	/** Coding harness override; omit to use global/defaultRunner. */
-	runner: RunnerTypeSchema.optional(),
-	/** Model override for the selected runner; omit to use that runner's default. */
-	model: z
-		.string()
-		.trim()
-		.min(1)
-		.max(200)
-		.regex(
-			/^[^\s[\]]+$/,
-			"Model must be an identifier without whitespace or brackets",
-		)
-		.optional(),
-});
+export const automationInputSchema = z
+	.object({
+		name: z.string().trim().min(1).max(200),
+		instructions: z.string().trim().min(1).max(50000),
+		/** Required for repository-backed targets; omit for direct_ops. */
+		repositoryId: z.string().min(1).optional(),
+		timezone: z.string().min(1).max(100),
+		schedule: scheduleSchema,
+		target: targetSchema,
+		enabled: z.boolean(),
+		/** Coding harness override; omit to use global/defaultRunner. */
+		runner: RunnerTypeSchema.optional(),
+		/** Model override for the selected runner; omit to use that runner's default. */
+		model: z
+			.string()
+			.trim()
+			.min(1)
+			.max(200)
+			.regex(
+				/^[^\s[\]]+$/,
+				"Model must be an identifier without whitespace or brackets",
+			)
+			.optional(),
+	})
+	.superRefine((input, ctx) => {
+		if (input.target.kind === "direct_ops") {
+			if (input.repositoryId) {
+				ctx.addIssue({
+					code: "custom",
+					message: "Ops automations must not bind a repository",
+					path: ["repositoryId"],
+				});
+			}
+			return;
+		}
+		if (!input.repositoryId) {
+			ctx.addIssue({
+				code: "custom",
+				message: "Repository is required",
+				path: ["repositoryId"],
+			});
+		}
+	});
 export const definitionSchema = automationInputSchema.extend({
 	id: z.string(),
 	revision: z.number().int().positive(),
@@ -156,7 +179,8 @@ export interface RepositoryTaskRequest {
 	id: string;
 	title: string;
 	instructions: string;
-	repositoryId: string;
+	/** Absent for direct_ops (home-based) sessions. */
+	repositoryId?: string;
 	source: "automation" | "linear";
 	issueContext?: { issueId: string; workspaceId: string };
 	/** Optional coding harness for direct automation runs. */

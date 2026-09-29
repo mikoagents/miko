@@ -118,6 +118,13 @@ export class AutomationAdapters implements AutomationAdapter {
 		return error;
 	}
 	private async validateTarget(input: AutomationInput) {
+		if (input.target.kind === "direct_ops") {
+			if (this.deps.repoTags(input.instructions).length)
+				throw new AutomationError(
+					"Ops automations cannot include repository selectors",
+				);
+			return;
+		}
 		const repository = this.deps
 			.repositories()
 			.find((r) => r.id === input.repositoryId);
@@ -197,7 +204,10 @@ export class AutomationAdapters implements AutomationAdapter {
 			runner,
 			input.model,
 		);
-		if (input.target.kind === "direct_repository") {
+		if (
+			input.target.kind === "direct_repository" ||
+			input.target.kind === "direct_ops"
+		) {
 			await this.deps.startTask({
 				id: run.id,
 				title: input.name,
@@ -219,7 +229,8 @@ export class AutomationAdapters implements AutomationAdapter {
 		const viewer = await client.viewer;
 		const repository = this.deps
 			.repositories()
-			.find((r) => r.id === input.repositoryId)!;
+			.find((r) => r.id === input.repositoryId);
+		if (!repository) throw new AutomationError("Repository is unavailable");
 		const result = await client.createIssue({
 			id: run.issueId,
 			title: input.name,
@@ -236,7 +247,10 @@ export class AutomationAdapters implements AutomationAdapter {
 	async reconcile(run: AutomationRun): Promise<RunUpdate> {
 		const local = this.deps.localState(run);
 		if (local) return local;
-		if (run.snapshot.target.kind === "direct_repository")
+		if (
+			run.snapshot.target.kind === "direct_repository" ||
+			run.snapshot.target.kind === "direct_ops"
+		)
 			return {
 				status: "uncertain",
 				message:
