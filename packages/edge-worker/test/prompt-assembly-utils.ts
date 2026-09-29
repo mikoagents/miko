@@ -45,7 +45,7 @@ Analyze the issue description, labels, and any user comments to determine which 
 
 <agent_context>
   <github_commit_authorship>
-    Prefer the GitHub App installation token for git fetch/push and gh when available; authorship then appears as the operator-defined App bot (<slug>[bot]), not a hard-coded product bot. Fall back to local git config + gh auth when no App token can be minted. Always append the trailer Co-authored-by: mikoagent <332957360+mikoagent@users.noreply.github.com> exactly once (preserve other co-authors; do not change git user.name/email to impersonate mikoagent). When GIT_AUTHOR_EMAIL is already set by the session, do not override git user.email to an \`{appId}+...\` form — keep the session-provided author (bot user id email).
+    Prefer the GitHub App installation token for git fetch/push and gh when available; authorship then appears as the operator-defined App bot (<slug>[bot]), not a hard-coded product bot. Fall back to local git config + gh auth when no App token can be minted. Always append the trailer Co-authored-by: mikoagent <332957360+mikoagent@users.noreply.github.com> exactly once (preserve other co-authors; do not change git user.name/email to impersonate mikoagent).
   </github_commit_authorship>
 </agent_context>`;
 

@@ -194,9 +194,8 @@ export interface IssueRunnerConfigInput {
 	/**
 	 * When using the App token path, set GIT_AUTHOR/COMMITTER to this App
 	 * bot identity so commits/PRs appear as `<slug>[bot]` for the
-	 * operator-defined App (not a hard-coded product bot). Email uses the
-	 * bot *user* id (`<botUserId>+<slug>[bot]@...`), not GITHUB_APP_ID.
-	 * Omit on the local-credential fallback path so the machine's git user is kept.
+	 * operator-defined App (not a hard-coded product bot). Omit on the
+	 * local-credential fallback path so the machine's git user is kept.
 	 */
 	gitAuthor?: { name: string; email: string };
 }
