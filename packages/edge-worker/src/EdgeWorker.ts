@@ -77,6 +77,7 @@ import {
 	requireLinearWorkspaceId,
 	resolveGitHubAppBotIdentity,
 	resolveGitHubAppSlugFromEnv,
+	resolveGitHubBotUserIdFromEnv,
 	resolvePath,
 	WebhookIpValidator,
 } from "miko-core";
@@ -249,6 +250,8 @@ export class EdgeWorker extends EventEmitter {
 	private linearEventTransport: LinearEventTransport | null = null; // Single event transport for webhook delivery
 	private gitHubEventTransport: GitHubEventTransport | null = null; // GitHub event transport for forwarded GitHub webhooks
 	private gitHubAppTokenProvider: GitHubAppTokenProvider | null = null; // Self-hosted GitHub App token minting
+	/** Cache of bare App slug -> numeric bot user id for commit authorship email */
+	private readonly githubBotUserIdBySlug = new Map<string, string>();
 	private gitLabEventTransport: GitLabEventTransport | null = null; // GitLab event transport for forwarded GitLab webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
 	private zulipEventTransport: ZulipEventTransport | null = null;
@@ -1187,6 +1190,10 @@ export class EdgeWorker extends EventEmitter {
 					: "GitHub App token provider ready (self-hosted mode, mint from webhook installation.id)",
 			);
 		}
+		const authorshipSlug = resolveGitHubAppSlugFromEnv();
+		if (authorshipSlug) {
+			void this.prefetchGitHubBotUserId(authorshipSlug);
+		}
 
 		this.logger.info(
 			`GitHub event transport registered (${verificationMode} mode)`,
@@ -1538,11 +1545,13 @@ export class EdgeWorker extends EventEmitter {
 		if (!token) {
 			return { usingAppToken: false };
 		}
-		const appId = process.env.GITHUB_APP_ID;
 		const slug = resolveGitHubAppSlugFromEnv();
-		if (appId && slug) {
+		const botUserId =
+			resolveGitHubBotUserIdFromEnv() ||
+			(slug ? this.githubBotUserIdBySlug.get(slug) : undefined);
+		if (botUserId && slug) {
 			try {
-				const identity = resolveGitHubAppBotIdentity(appId, slug);
+				const identity = resolveGitHubAppBotIdentity(botUserId, slug);
 				return {
 					token,
 					usingAppToken: true,
@@ -1552,9 +1561,49 @@ export class EdgeWorker extends EventEmitter {
 				return { token, usingAppToken: true };
 			}
 		}
+		if (slug && !botUserId) {
+			// Need bot user id for avatar-linking email; never fall back to App id.
+			void this.prefetchGitHubBotUserId(slug);
+			return { token, usingAppToken: true };
+		}
 		// Store token present (cloud-pushed) but no local App identity —
 		// still prefer the token for gh/git; leave author to local git config.
 		return { token, usingAppToken: true };
+	}
+
+	/**
+	 * Best-effort resolve of the `{slug}[bot]` numeric user id for authorship
+	 * email (`<botUserId>+<slug>[bot]@users.noreply.github.com`). Prefers
+	 * GITHUB_BOT_USER_ID env; otherwise GET /users/{slug}[bot]. Never uses
+	 * GITHUB_APP_ID.
+	 */
+	private async prefetchGitHubBotUserId(slug: string): Promise<void> {
+		const bare = slug.replace(/\[bot\]$/i, "").trim();
+		if (!bare || this.githubBotUserIdBySlug.has(bare)) return;
+		if (resolveGitHubBotUserIdFromEnv()) {
+			this.githubBotUserIdBySlug.set(bare, resolveGitHubBotUserIdFromEnv()!);
+			return;
+		}
+		try {
+			const login = `${bare}[bot]`;
+			const res = await fetch(
+				`https://api.github.com/users/${encodeURIComponent(login)}`,
+				{
+					headers: {
+						Accept: "application/vnd.github+json",
+						"User-Agent": "miko-edge-worker",
+						"X-GitHub-Api-Version": "2022-11-28",
+					},
+				},
+			);
+			if (!res.ok) return;
+			const data = (await res.json()) as { id?: number };
+			if (data.id != null) {
+				this.githubBotUserIdBySlug.set(bare, String(data.id));
+			}
+		} catch {
+			// best-effort; next session can retry
+		}
 	}
 
 	/**
@@ -7370,7 +7419,7 @@ ${input.userComment}
 		// Always document authorship rules so verify-and-ship / commits stay consistent.
 		lines.push("  <github_commit_authorship>");
 		lines.push(
-			"    Prefer the GitHub App installation token for git fetch/push and gh when available; authorship then appears as the operator-defined App bot (<slug>[bot]), not a hard-coded product bot. Fall back to local git config + gh auth when no App token can be minted. Always append the trailer Co-authored-by: mikoagent <332957360+mikoagent@users.noreply.github.com> exactly once (preserve other co-authors; do not change git user.name/email to impersonate mikoagent).",
+			"    Prefer the GitHub App installation token for git fetch/push and gh when available; authorship then appears as the operator-defined App bot (<slug>[bot]), not a hard-coded product bot. Fall back to local git config + gh auth when no App token can be minted. Always append the trailer Co-authored-by: mikoagent <332957360+mikoagent@users.noreply.github.com> exactly once (preserve other co-authors; do not change git user.name/email to impersonate mikoagent). When GIT_AUTHOR_EMAIL is already set by the session, do not override git user.email to an `{appId}+...` form — keep the session-provided author (bot user id email).",
 		);
 		lines.push("  </github_commit_authorship>");
 		lines.push("</agent_context>");

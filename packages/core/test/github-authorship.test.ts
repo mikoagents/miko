@@ -4,6 +4,7 @@ import {
 	MIKOAGENT_COAUTHOR_TRAILER,
 	resolveGitHubAppBotIdentity,
 	resolveGitHubAppSlugFromEnv,
+	resolveGitHubBotUserIdFromEnv,
 } from "../src/github-authorship.js";
 
 describe("ensureMikoagentCoAuthorTrailer", () => {
@@ -33,7 +34,7 @@ describe("ensureMikoagentCoAuthorTrailer", () => {
 });
 
 describe("resolveGitHubAppBotIdentity", () => {
-	it("builds the GitHub App bot author form for the operator slug", () => {
+	it("builds the bot author form using botUserId (not App id)", () => {
 		expect(resolveGitHubAppBotIdentity("42", "my-custom-agent")).toEqual({
 			slug: "my-custom-agent",
 			name: "my-custom-agent[bot]",
@@ -51,6 +52,12 @@ describe("resolveGitHubAppBotIdentity", () => {
 		const identity = resolveGitHubAppBotIdentity("1", "whatever-slug");
 		expect(identity.name).not.toContain("miko-agent");
 		expect(identity.email).not.toContain("miko-agent");
+	});
+
+	it("rejects empty botUserId", () => {
+		expect(() => resolveGitHubAppBotIdentity("", "agent")).toThrow(
+			/botUserId/,
+		);
 	});
 });
 
@@ -72,5 +79,20 @@ describe("resolveGitHubAppSlugFromEnv", () => {
 
 	it("returns undefined when neither is set", () => {
 		expect(resolveGitHubAppSlugFromEnv({})).toBeUndefined();
+	});
+});
+
+describe("resolveGitHubBotUserIdFromEnv", () => {
+	it("returns trimmed GITHUB_BOT_USER_ID", () => {
+		expect(
+			resolveGitHubBotUserIdFromEnv({ GITHUB_BOT_USER_ID: "  123456  " }),
+		).toBe("123456");
+	});
+
+	it("returns undefined when unset or blank", () => {
+		expect(resolveGitHubBotUserIdFromEnv({})).toBeUndefined();
+		expect(
+			resolveGitHubBotUserIdFromEnv({ GITHUB_BOT_USER_ID: "   " }),
+		).toBeUndefined();
 	});
 });

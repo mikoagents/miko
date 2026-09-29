@@ -2,8 +2,10 @@
  * Commit authorship helpers for GitHub App vs local credential paths.
  *
  * - App token path: commits should be authored as the operator's App bot
- *   (`<slug>[bot]` / `<appId>+<slug>[bot]@users.noreply.github.com`). The
- *   App slug/id are operator-defined — never hard-code a product bot name.
+ *   (`<slug>[bot]` / `<botUserId>+<slug>[bot]@users.noreply.github.com`).
+ *   GitHub App HTTPS docs mention an appId form, but UI linking/avatars need
+ *   the bot *user* id (GET /users/{slug}[bot]). The App slug/id are
+ *   operator-defined — never hard-code a product bot name.
  * - Fallback path: keep the local `git config user.name` / `user.email`.
  * - Always append the mikoagent Co-authored-by trailer (once) so the
  *   separately registered GitHub user is attributed via trailer, not by
@@ -46,22 +48,26 @@ export interface GitHubAppBotIdentity {
 
 /**
  * Build the GitHub-recognized bot author identity for a given App.
+ * Email uses the bot *user* id (not the App id) so commit timeline avatars
+ * and UI linking resolve: `<botUserId>+<slug>[bot]@users.noreply.github.com`.
+ * GitHub App HTTPS docs mention an appId form, but that does not link to a
+ * GitHub user (author:null / broken avatars).
  * @see https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation#git-over-https
  */
 export function resolveGitHubAppBotIdentity(
-	appId: string,
+	botUserId: string,
 	slug: string,
 ): GitHubAppBotIdentity {
 	const bare = slug.replace(/\[bot\]$/i, "").trim();
-	if (!appId || !bare) {
+	if (!botUserId || !bare) {
 		throw new Error(
-			"resolveGitHubAppBotIdentity requires a non-empty appId and slug",
+			"resolveGitHubAppBotIdentity requires a non-empty botUserId and slug",
 		);
 	}
 	return {
 		slug: bare,
 		name: `${bare}[bot]`,
-		email: `${appId}+${bare}[bot]@users.noreply.github.com`,
+		email: `${botUserId}+${bare}[bot]@users.noreply.github.com`,
 	};
 }
 
@@ -76,4 +82,17 @@ export function resolveGitHubAppSlugFromEnv(
 	if (!raw) return undefined;
 	const bare = raw.replace(/\[bot\]$/i, "").trim();
 	return bare || undefined;
+}
+
+/**
+ * Resolve the numeric GitHub bot user id from env (`GITHUB_BOT_USER_ID`).
+ * This is the id of `{slug}[bot]` (not `GITHUB_APP_ID`).
+ */
+export function resolveGitHubBotUserIdFromEnv(
+	env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+	const raw = env.GITHUB_BOT_USER_ID;
+	if (!raw) return undefined;
+	const trimmed = raw.trim();
+	return trimmed || undefined;
 }
