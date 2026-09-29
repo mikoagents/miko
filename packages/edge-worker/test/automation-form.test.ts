@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	formFromDefinition,
+	formWithRepository,
+	formWithTeam,
 	inputFromForm,
 	modelChoices,
 	scheduleFromForm,
@@ -58,6 +60,86 @@ describe("automation form serialization", () => {
 			},
 		};
 		expect(inputFromForm(formFromDefinition(input, options))).toEqual(input);
+	});
+	it("derives the workspace from the repository and clears a mismatched target", () => {
+		const form = formFromDefinition(
+			{
+				repositoryId: "repo",
+				schedule: { kind: "daily", time: "09:00" },
+				target: {
+					kind: "linear_issue",
+					workspaceId: "other-workspace",
+					teamId: "old-team",
+					projectId: "old-project",
+				},
+			},
+			options,
+		);
+		expect(inputFromForm(form).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws",
+			teamId: "",
+		});
+	});
+	it("does not silently replace an unavailable repository", () => {
+		const form = formFromDefinition(
+			{
+				repositoryId: "removed-repo",
+				schedule: { kind: "daily", time: "09:00" },
+				target: { kind: "linear_issue", workspaceId: "ws", teamId: "team" },
+			},
+			options,
+		);
+		expect(form.repositoryId).toBe("");
+		expect(inputFromForm(form).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "",
+			teamId: "",
+		});
+	});
+	it("keeps a project only while the selected workspace and team still match", () => {
+		const form = {
+			...formFromDefinition(undefined, options),
+			target: "linear_issue",
+			teamId: "team",
+			projectId: "project",
+		};
+		const sameWorkspace = formWithRepository(form, {
+			id: "repo2",
+			workspaceId: "ws",
+		});
+		expect(inputFromForm(sameWorkspace).target).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws",
+			teamId: "team",
+			projectId: "project",
+		});
+		expect(inputFromForm(formWithTeam(sameWorkspace, "team")).target).toEqual(
+			inputFromForm(form).target,
+		);
+		expect(
+			inputFromForm(formWithTeam(sameWorkspace, "new-team")).target,
+		).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws",
+			teamId: "new-team",
+		});
+		expect(
+			inputFromForm(
+				formWithRepository(form, { id: "repo3", workspaceId: "ws2" }),
+			).target,
+		).toEqual({
+			kind: "linear_issue",
+			workspaceId: "ws2",
+			teamId: "",
+		});
+		expect(
+			inputFromForm(formWithRepository(form, { id: "local-repo" })).target,
+		).toEqual({
+			kind: "linear_issue",
+			workspaceId: "",
+			teamId: "",
+		});
 	});
 	it("preserves the absolute instant of a one-time task in the browser's timezone", () => {
 		const definition = {

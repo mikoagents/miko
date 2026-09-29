@@ -57,37 +57,59 @@ export function scheduleLabel(definition) {
 }
 export function formFromDefinition(definition, options, kind = "daily") {
 	const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	const repo =
-		options.repositories.find((r) => r.id === definition?.repositoryId) ||
-		options.repositories[0];
+	const repo = definition?.repositoryId
+		? options.repositories.find((r) => r.id === definition.repositoryId)
+		: options.repositories[0];
 	const at =
 		definition?.schedule.kind === "once"
 			? new Date(definition.schedule.at)
 			: new Date(Date.now() + 3600000);
 	const fromTags = parseRunnerModelFromInstructions(definition?.instructions);
+	return formWithRepository(
+		{
+			name: definition?.name || "",
+			instructions: (definition?.instructions || "")
+				.replace(/\[(?:agent|model)\s*=[^\]]*\]\s*/gi, "")
+				.trim(),
+			repositoryId: repo?.id || "",
+			target: definition?.target.kind || "direct_repository",
+			workspaceId: definition?.target.workspaceId || "",
+			teamId: definition?.target.teamId || "",
+			projectId: definition?.target.projectId || "",
+			kind: definition?.schedule.kind || kind,
+			time: definition?.schedule.time || "09:00",
+			days: definition?.schedule.days || [1, 2, 3, 4, 5],
+			at: new Date(at.getTime() - at.getTimezoneOffset() * 60000)
+				.toISOString()
+				.slice(0, 16),
+			expression: definition?.schedule.expression || "0 9 * * *",
+			timezone:
+				definition?.schedule.kind === "once"
+					? localZone
+					: definition?.timezone || localZone,
+			enabled: definition?.enabled ?? true,
+			runner: definition?.runner || fromTags.runner || "",
+			model: definition?.model || fromTags.model || "",
+		},
+		repo,
+	);
+}
+export function formWithRepository(form, repository) {
+	const workspaceId = repository?.workspaceId || "";
+	const sameWorkspace = !!workspaceId && workspaceId === form.workspaceId;
 	return {
-		name: definition?.name || "",
-		instructions: (definition?.instructions || "")
-			.replace(/\[(?:agent|model)\s*=[^\]]*\]\s*/gi, "")
-			.trim(),
-		repositoryId: repo?.id || "",
-		target: definition?.target.kind || "direct_repository",
-		workspaceId: repo?.workspaceId || "",
-		teamId: definition?.target.teamId || "",
-		kind: definition?.schedule.kind || kind,
-		time: definition?.schedule.time || "09:00",
-		days: definition?.schedule.days || [1, 2, 3, 4, 5],
-		at: new Date(at.getTime() - at.getTimezoneOffset() * 60000)
-			.toISOString()
-			.slice(0, 16),
-		expression: definition?.schedule.expression || "0 9 * * *",
-		timezone:
-			definition?.schedule.kind === "once"
-				? localZone
-				: definition?.timezone || localZone,
-		enabled: definition?.enabled ?? true,
-		runner: definition?.runner || fromTags.runner || "",
-		model: definition?.model || fromTags.model || "",
+		...form,
+		repositoryId: repository?.id || "",
+		workspaceId,
+		teamId: sameWorkspace ? form.teamId : "",
+		projectId: sameWorkspace ? form.projectId : "",
+	};
+}
+export function formWithTeam(form, teamId) {
+	return {
+		...form,
+		teamId,
+		projectId: teamId === form.teamId ? form.projectId : "",
 	};
 }
 export function scheduleFromForm(form) {
@@ -127,6 +149,7 @@ export function inputFromForm(form) {
 						kind: "linear_issue",
 						workspaceId: form.workspaceId,
 						teamId: form.teamId,
+						...(form.projectId ? { projectId: form.projectId } : {}),
 					},
 	};
 	if (form.runner) input.runner = form.runner;

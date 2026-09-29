@@ -24,6 +24,8 @@ import {
 	automationApi as api,
 	formatDate,
 	formFromDefinition,
+	formWithRepository,
+	formWithTeam,
 	inputFromForm,
 	modelChoices,
 	RUNNER_LABELS,
@@ -200,6 +202,7 @@ function AutomationEditor({
 			return;
 		}
 		const controller = new AbortController();
+		setTeams([]);
 		setTeamsLoading(true);
 		api(
 			`/linear-options?workspaceId=${encodeURIComponent(form.workspaceId)}`,
@@ -208,13 +211,16 @@ function AutomationEditor({
 			controller.signal,
 		)
 			.then((data) => {
+				if (controller.signal.aborted) return;
 				setTeams(data);
-				setForm((current) => ({
-					...current,
-					teamId: data.some((team) => team.id === current.teamId)
-						? current.teamId
-						: data[0]?.id || "",
-				}));
+				setForm((current) =>
+					formWithTeam(
+						current,
+						data.some((team) => team.id === current.teamId)
+							? current.teamId
+							: data[0]?.id || "",
+					),
+				);
 			})
 			.catch((e) => {
 				if (!controller.signal.aborted) setError(e.message);
@@ -334,20 +340,14 @@ function AutomationEditor({
 										<FieldSelect
 											label="Repository"
 											value={form.repositoryId}
-											onChange={(value) => {
-												const workspaceId =
-													options.repositories.find((r) => r.id === value)
-														?.workspaceId || "";
-												setForm((current) => ({
-													...current,
-													repositoryId: value,
-													workspaceId,
-													teamId:
-														workspaceId === current.workspaceId
-															? current.teamId
-															: "",
-												}));
-											}}
+											onChange={(value) =>
+												setForm((current) =>
+													formWithRepository(
+														current,
+														options.repositories.find((r) => r.id === value),
+													),
+												)
+											}
 											items={options.repositories.map((r) => [r.id, r.name])}
 											placeholder="Choose a repository"
 										/>
@@ -418,7 +418,9 @@ function AutomationEditor({
 											<FieldSelect
 												label="Team"
 												value={form.teamId}
-												onChange={(value) => set("teamId", value)}
+												onChange={(value) =>
+													setForm((current) => formWithTeam(current, value))
+												}
 												items={teams.map((t) => [t.id, t.name])}
 												disabled={teamsLoading || !form.workspaceId}
 												placeholder={
