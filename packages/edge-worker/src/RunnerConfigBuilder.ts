@@ -191,13 +191,6 @@ export interface IssueRunnerConfigInput {
 	 * store entry matches — local git/gh credentials are used instead.
 	 */
 	githubToken?: string;
-	/**
-	 * When using the App token path, set GIT_AUTHOR/COMMITTER to this App
-	 * bot identity so commits/PRs appear as `<slug>[bot]` for the
-	 * operator-defined App (not a hard-coded product bot). Omit on the
-	 * local-credential fallback path so the machine's git user is kept.
-	 */
-	gitAuthor?: { name: string; email: string };
 }
 
 export function resolveIssueMcpConfigPath(
@@ -556,20 +549,12 @@ export class RunnerConfigBuilder {
 		// fallback). MIKO_GH_TOKEN only — never GH_TOKEN, which customers set
 		// themselves (e.g. private npm registries on GitHub Packages); the
 		// droplet's gh wrapper maps MIKO_GH_TOKEN to GH_TOKEN inside gh.
-		// When gitAuthor is provided (App path + operator slug), also set
-		// GIT_AUTHOR/COMMITTER so commits appear as that App's bot.
-		if (input.githubToken || input.gitAuthor) {
+		// Do NOT inject GIT_AUTHOR_/GIT_COMMITTER_ env vars from the App id — match
+		// Cyrus and keep the machine's local git config for commit authorship.
+		if (input.githubToken) {
 			config.additionalEnv = {
 				...config.additionalEnv,
-				...(input.githubToken ? { MIKO_GH_TOKEN: input.githubToken } : {}),
-				...(input.gitAuthor
-					? {
-							GIT_AUTHOR_NAME: input.gitAuthor.name,
-							GIT_AUTHOR_EMAIL: input.gitAuthor.email,
-							GIT_COMMITTER_NAME: input.gitAuthor.name,
-							GIT_COMMITTER_EMAIL: input.gitAuthor.email,
-						}
-					: {}),
+				MIKO_GH_TOKEN: input.githubToken,
 			};
 		}
 
