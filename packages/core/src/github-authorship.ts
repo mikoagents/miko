@@ -1,10 +1,13 @@
 /**
- * Commit authorship helpers for GitHub App vs local credential paths.
+ * Commit authorship helpers.
  *
- * - App token path: commits should be authored as the operator's App bot
- *   (`<slug>[bot]` / `<appId>+<slug>[bot]@users.noreply.github.com`). The
- *   App slug/id are operator-defined — never hard-code a product bot name.
- * - Fallback path: keep the local `git config user.name` / `user.email`.
+ * - Commit author/committer always come from the machine's local
+ *   `git config user.name` / `user.email` (Cyrus-compatible). Do not inject
+ *   GIT_AUTHOR_/GIT_COMMITTER_ env vars from the GitHub App id.
+ * - `resolveGitHubAppBotIdentity` remains available for display/diagnostics
+ *   of the operator-defined App bot (`<slug>[bot]` /
+ *   `<appId>+<slug>[bot]@users.noreply.github.com`) — never hard-code a
+ *   product bot name.
  * - Always append the mikoagent Co-authored-by trailer (once) so the
  *   separately registered GitHub user is attributed via trailer, not by
  *   impersonating mikoagent as the commit author.

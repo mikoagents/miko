@@ -75,7 +75,6 @@ import {
 	isUserPromptMessage,
 	PersistenceManager,
 	requireLinearWorkspaceId,
-	resolveGitHubAppBotIdentity,
 	resolveGitHubAppSlugFromEnv,
 	resolvePath,
 	WebhookIpValidator,
@@ -1522,14 +1521,14 @@ export class EdgeWorker extends EventEmitter {
 	/**
 	 * Resolve git/gh credentials for a session repository.
 	 * Prefer an org-matched App installation token from the store (populated
-	 * on startup for self-hosted, or pushed by miko-hosted). When using the
-	 * App path, also return bot author identity for THAT app (operator slug).
+	 * on startup for self-hosted, or pushed by miko-hosted). Commit authorship
+	 * always stays with the machine's local git config (like Cyrus) — never
+	 * inject GIT_AUTHOR_/GIT_COMMITTER_ env vars from the App id.
 	 * Returns undefined token when callers should fall back to local git/gh.
 	 */
 	private resolveSessionGitHubAuth(repository: RepositoryConfig): {
 		token?: string;
 		usingAppToken: boolean;
-		gitAuthor?: { name: string; email: string };
 	} {
 		if (!repository.githubUrl) {
 			return { usingAppToken: false };
@@ -1540,22 +1539,6 @@ export class EdgeWorker extends EventEmitter {
 		if (!token) {
 			return { usingAppToken: false };
 		}
-		const appId = process.env.GITHUB_APP_ID;
-		const slug = resolveGitHubAppSlugFromEnv();
-		if (appId && slug) {
-			try {
-				const identity = resolveGitHubAppBotIdentity(appId, slug);
-				return {
-					token,
-					usingAppToken: true,
-					gitAuthor: { name: identity.name, email: identity.email },
-				};
-			} catch {
-				return { token, usingAppToken: true };
-			}
-		}
-		// Store token present (cloud-pushed) but no local App identity —
-		// still prefer the token for gh/git; leave author to local git config.
 		return { token, usingAppToken: true };
 	}
 
@@ -7523,7 +7506,7 @@ ${input.userComment}
 		// Always document authorship rules so verify-and-ship / commits stay consistent.
 		lines.push("  <github_commit_authorship>");
 		lines.push(
-			"    Prefer the GitHub App installation token for git fetch/push and gh when available; authorship then appears as the operator-defined App bot (<slug>[bot]), not a hard-coded product bot. Fall back to local git config + gh auth when no App token can be minted. Always append the trailer Co-authored-by: mikoagent <332957360+mikoagent@users.noreply.github.com> exactly once (preserve other co-authors; do not change git user.name/email to impersonate mikoagent).",
+			"    Prefer the GitHub App installation token for git fetch/push and gh when available (MIKO_GH_TOKEN). Commit authorship always uses the machine's local git config user.name/user.email — do not set GIT_AUTHOR_/GIT_COMMITTER_ env vars from the App id (same as Cyrus). Fall back to local gh auth when no App token can be minted. Always append the trailer Co-authored-by: mikoagent <332957360+mikoagent@users.noreply.github.com> exactly once (preserve other co-authors; do not change git user.name/email to impersonate mikoagent).",
 		);
 		lines.push("  </github_commit_authorship>");
 		lines.push("</agent_context>");
@@ -7729,14 +7712,13 @@ ${input.userComment}
 			mikoHome: this.mikoHome,
 			// Prefer org-matched GitHub App installation token (self-hosted
 			// mint on startup, or pushed by miko-hosted). Exposed as
-			// MIKO_GH_TOKEN for gh/git. When App path is used and an operator
-			// slug is configured, also set GIT_AUTHOR/COMMITTER to that App's
-			// bot identity. Undefined token → local git/gh fallback.
+			// MIKO_GH_TOKEN for gh/git push. Commit authorship stays on local
+			// git config (no GIT_AUTHOR_/GIT_COMMITTER_ env vars from App id).
+			// Undefined token → local git/gh fallback.
 			...(() => {
 				const auth = this.resolveSessionGitHubAuth(repository);
 				return {
 					githubToken: auth.token,
-					gitAuthor: auth.gitAuthor,
 				};
 			})(),
 			logger: log,
