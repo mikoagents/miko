@@ -112,6 +112,9 @@ export interface ChatRunnerConfigInput {
 	opencodeGlobalStateScope?: OpenCodeConfigOverrides["stateScope"];
 	/** Existing runner type to preserve when resuming a completed chat session */
 	runnerType?: RunnerType;
+	/** Optional sandbox policy for operations sessions. */
+	sandboxSettings?: SandboxSettings;
+	egressCaCertPath?: string;
 	logger: ILogger;
 	onMessage: (message: SDKMessage) => void | Promise<void>;
 	onError: (error: Error) => void;
@@ -305,16 +308,17 @@ export class RunnerConfigBuilder {
 			`${input.platformName}-memory`,
 		);
 
+		const allowedDirectories = [
+			input.workspacePath,
+			autoMemoryDirectory,
+			...repositoryPaths,
+		];
 		return {
 			runnerType,
 			workingDirectory: input.workspacePath,
 			allowedTools,
 			disallowedTools: [] as string[],
-			allowedDirectories: [
-				input.workspacePath,
-				autoMemoryDirectory,
-				...repositoryPaths,
-			],
+			allowedDirectories,
 			workspaceName: input.workspaceName,
 			mikoHome: input.mikoHome,
 			autoMemoryDirectory,
@@ -336,6 +340,30 @@ export class RunnerConfigBuilder {
 					input.repository?.opencode?.stateScope ??
 					input.opencodeGlobalStateScope,
 				opencodeStateKey: input.repository?.id,
+			}),
+			...(runnerType === "claude" &&
+				input.sandboxSettings &&
+				this.buildSandboxConfig({
+					session: { workspace: { path: input.workspacePath } },
+					allowedDirectories,
+					sandboxSettings: input.sandboxSettings,
+					egressCaCertPath: input.egressCaCertPath,
+				})),
+			...(runnerType === "codex" &&
+				input.sandboxSettings && {
+					sandboxSettings: {
+						allowWrite: [input.workspacePath],
+						allowRead: allowedDirectories,
+					},
+				}),
+			...(runnerType === "cursor" && {
+				cursorApiKey: process.env.CURSOR_API_KEY || undefined,
+				...(input.sandboxSettings && {
+					sandboxSettings: input.sandboxSettings,
+				}),
+				...(input.egressCaCertPath && {
+					egressCaCertPath: input.egressCaCertPath,
+				}),
 			}),
 			logger: input.logger,
 			maxTurns: 200,
@@ -613,7 +641,12 @@ export class RunnerConfigBuilder {
 	 * for MITM TLS termination via additionalEnv instead of process.env.
 	 */
 	private buildSandboxConfig(
-		input: IssueRunnerConfigInput,
+		input: Pick<
+			IssueRunnerConfigInput,
+			"allowedDirectories" | "sandboxSettings" | "egressCaCertPath"
+		> & {
+			session: { workspace: { path: string } };
+		},
 	): Record<string, unknown> {
 		const result: Record<string, unknown> = {};
 

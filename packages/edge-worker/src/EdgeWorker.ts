@@ -159,7 +159,9 @@ import { AutomationService } from "./automation/AutomationService.js";
 import { AutomationStore } from "./automation/AutomationStore.js";
 import {
 	AUTOMATION_COMPLETION_INSTRUCTIONS,
+	AUTOMATION_OPS_COMPLETION_INSTRUCTIONS,
 	automationCompletion,
+	automationOpsCompletion,
 } from "./automation/completion.js";
 import {
 	AUTOMATION_MODEL_SUGGESTIONS,
@@ -252,6 +254,7 @@ export class EdgeWorker extends EventEmitter {
 	private gitHubAppTokenProvider: GitHubAppTokenProvider | null = null; // Self-hosted GitHub App token minting
 	/** Cache of bare App slug -> numeric bot user id for commit authorship email */
 	private readonly githubBotUserIdBySlug = new Map<string, string>();
+	private readonly githubBotUserIdRequests = new Map<string, Promise<void>>();
 	private gitLabEventTransport: GitLabEventTransport | null = null; // GitLab event transport for forwarded GitLab webhooks
 	private slackEventTransport: SlackEventTransport | null = null;
 	private zulipEventTransport: ZulipEventTransport | null = null;
@@ -1531,11 +1534,13 @@ export class EdgeWorker extends EventEmitter {
 	 * App path, also return bot author identity for THAT app (operator slug).
 	 * Returns undefined token when callers should fall back to local git/gh.
 	 */
-	private resolveSessionGitHubAuth(repository: RepositoryConfig): {
+	private async resolveSessionGitHubAuth(
+		repository: RepositoryConfig,
+	): Promise<{
 		token?: string;
 		usingAppToken: boolean;
 		gitAuthor?: { name: string; email: string };
-	} {
+	}> {
 		if (!repository.githubUrl) {
 			return { usingAppToken: false };
 		}
@@ -1546,6 +1551,10 @@ export class EdgeWorker extends EventEmitter {
 			return { usingAppToken: false };
 		}
 		const slug = resolveGitHubAppSlugFromEnv();
+		if (slug && !resolveGitHubBotUserIdFromEnv()) {
+			// Await the bounded lookup so the first session also uses the bot author.
+			await this.prefetchGitHubBotUserId(slug);
+		}
 		const botUserId =
 			resolveGitHubBotUserIdFromEnv() ||
 			(slug ? this.githubBotUserIdBySlug.get(slug) : undefined);
@@ -1561,11 +1570,6 @@ export class EdgeWorker extends EventEmitter {
 				return { token, usingAppToken: true };
 			}
 		}
-		if (slug && !botUserId) {
-			// Need bot user id for avatar-linking email; never fall back to App id.
-			void this.prefetchGitHubBotUserId(slug);
-			return { token, usingAppToken: true };
-		}
 		// Store token present (cloud-pushed) but no local App identity —
 		// still prefer the token for gh/git; leave author to local git config.
 		return { token, usingAppToken: true };
@@ -1578,31 +1582,44 @@ export class EdgeWorker extends EventEmitter {
 	 * GITHUB_APP_ID.
 	 */
 	private async prefetchGitHubBotUserId(slug: string): Promise<void> {
-		const bare = slug.replace(/\[bot\]$/i, "").trim();
+		const bare = slug.trim().replace(/\[bot\]$/i, "");
 		if (!bare || this.githubBotUserIdBySlug.has(bare)) return;
-		if (resolveGitHubBotUserIdFromEnv()) {
-			this.githubBotUserIdBySlug.set(bare, resolveGitHubBotUserIdFromEnv()!);
+		const configuredUserId = resolveGitHubBotUserIdFromEnv();
+		if (configuredUserId) {
+			this.githubBotUserIdBySlug.set(bare, configuredUserId);
 			return;
 		}
-		try {
-			const login = `${bare}[bot]`;
-			const res = await fetch(
-				`https://api.github.com/users/${encodeURIComponent(login)}`,
-				{
-					headers: {
-						Accept: "application/vnd.github+json",
-						"User-Agent": "miko-edge-worker",
-						"X-GitHub-Api-Version": "2022-11-28",
+		const pending = this.githubBotUserIdRequests.get(bare);
+		if (pending) return pending;
+		const request = (async () => {
+			try {
+				const login = `${bare}[bot]`;
+				const res = await fetch(
+					`https://api.github.com/users/${encodeURIComponent(login)}`,
+					{
+						signal: AbortSignal.timeout(5000),
+						headers: {
+							Accept: "application/vnd.github+json",
+							"User-Agent": "miko-edge-worker",
+							"X-GitHub-Api-Version": "2022-11-28",
+						},
 					},
-				},
-			);
-			if (!res.ok) return;
-			const data = (await res.json()) as { id?: number };
-			if (data.id != null) {
-				this.githubBotUserIdBySlug.set(bare, String(data.id));
+				);
+				if (!res.ok) return;
+				const data = (await res.json()) as { id?: unknown } | null;
+				const id = data?.id;
+				if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
+					this.githubBotUserIdBySlug.set(bare, String(id));
+				}
+			} catch {
+				// Best-effort: preserve local authorship and retry next session.
 			}
-		} catch {
-			// best-effort; next session can retry
+		})();
+		this.githubBotUserIdRequests.set(bare, request);
+		try {
+			await request;
+		} finally {
+			this.githubBotUserIdRequests.delete(bare);
 		}
 	}
 
@@ -5463,6 +5480,10 @@ ${taskSection}`;
 	private async startDirectRepositoryTask(
 		request: RepositoryTaskRequest,
 	): Promise<void> {
+		if (!request.repositoryId) {
+			await this.startDirectOpsTask(request);
+			return;
+		}
 		const repository = this.repositories.get(request.repositoryId);
 		if (!repository) throw new Error("Repository is unavailable");
 		const sessionId = `automation-${request.id}`;
@@ -5527,6 +5548,149 @@ ${await this.loadSharedInstructions()}`;
 			],
 		}).catch(async (error) => {
 			this.logger.error("Scheduled repository task failed", error);
+			await this.updateAutomationSession(sessionId, {
+				status: "failed",
+				message: error instanceof Error ? error.message : String(error),
+			}).catch((storageError) =>
+				this.logger.error(
+					"Unable to save scheduled task failure",
+					storageError,
+				),
+			);
+		});
+	}
+
+	/** Operations run in a plain workspace without binding a code repository. */
+	private async startDirectOpsTask(
+		request: RepositoryTaskRequest,
+	): Promise<void> {
+		const sessionId = `automation-${request.id}`;
+		if (this.agentSessionManager.getSession(sessionId)) return;
+		const workItem = {
+			id: request.id,
+			identifier: `AUTO-${request.id}`,
+			title: request.title,
+			description: request.instructions,
+			branchName: `automation/${request.id}`,
+			parent: Promise.resolve(undefined),
+			labels: async () => ({ nodes: [] }),
+			inverseRelations: async () => ({ nodes: [] }),
+		} as unknown as Issue;
+		const workspace = await this.gitService.createGitWorktree(workItem, [], {
+			workspaceBaseDir: join(this.mikoHome, "automation-workspaces"),
+		});
+		this.agentSessionManager.createChatSession(
+			sessionId,
+			workspace,
+			"automation",
+			[],
+		);
+		this.agentSessionManager.setActivitySink(
+			sessionId,
+			this.automationActivitySink(new NoopActivitySink(sessionId)),
+		);
+		await this.automations!.update(request.id, {
+			sessionId,
+			status: "running",
+		});
+
+		const linearWorkspaceId = Object.entries(
+			this.config.linearWorkspaces ?? {},
+		).find(([, workspace]) => workspace.linearToken)?.[0];
+		const mcpConfig = linearWorkspaceId
+			? this.mcpConfigService.buildMcpConfig(
+					sessionId,
+					linearWorkspaceId,
+					sessionId,
+				)
+			: undefined;
+		const plugins = await this.skillsPluginResolver.resolve();
+		const skills = await this.skillsPluginResolver.discoverSkillNames(
+			plugins,
+			{},
+		);
+		const allowedTools = this.toolPermissionResolver.buildAllowedTools([]);
+		const userPrompt = `# ${request.title}\n\n${request.instructions}`;
+		const systemPrompt = `You are running a scheduled Miko operations task with no code repository.
+Work in the plain directory ${workspace.path} under the Miko home (not a git worktree).
+Follow the task instructions and available user skills.
+Use connected Linear MCP tools when needed. For requested operations across workspaces, configuration is available at ${join(this.mikoHome, "config.json")}; use only the workspaces and operations requested by the task. Keep credentials out of reports and activity output.
+Do not create pull requests. Do not create a Linear issue as a ticket for this automation run.
+Do not modify active (non-completed) issues unless the instructions explicitly require it.
+${await this.loadSharedInstructions()}`;
+
+		const log = this.logger.withContext({ sessionId, platform: "automation" });
+		const selection = this.runnerSelectionService.determineRunnerSelection(
+			[],
+			request.instructions,
+		);
+		const runnerType = selection.runnerType;
+		const model =
+			selection.modelOverride ||
+			this.runnerSelectionService.getDefaultModelForRunner(runnerType);
+		const chatConfig = this.runnerConfigBuilder.buildChatConfig({
+			workspacePath: workspace.path,
+			workspaceName: workItem.identifier,
+			systemPrompt,
+			sessionId,
+			mikoHome: this.mikoHome,
+			platformName: "automation",
+			repositoryPaths: [this.mikoHome],
+			sandboxSettings: this.sdkSandboxSettings ?? undefined,
+			egressCaCertPath: this.egressCaCertPath ?? undefined,
+			platformMcpConfigOverrides: this.config.linearMcpConfigs,
+			strictMcpConfig: this.config.strictMcpConfig,
+			opencodeGlobalConfig: this.config.opencode?.config,
+			opencodeGlobalStateScope: this.config.opencode?.stateScope,
+			plugins,
+			skills,
+			runnerType,
+			logger: log,
+			onMessage: (message: SDKMessage) => {
+				this.activeWebhookCount++;
+				void this.handleClaudeMessage(sessionId, message, "")
+					.catch((error) =>
+						this.logger.error("Message processing failed", error),
+					)
+					.finally(() => {
+						this.activeWebhookCount--;
+					});
+			},
+			onError: (error: Error) => {
+				void this.handleClaudeError(error);
+				void this.updateAutomationSession(sessionId, {
+					status: "failed",
+					message: error.message,
+				}).catch((storageError) =>
+					this.logger.error(
+						"Unable to save scheduled task failure",
+						storageError,
+					),
+				);
+			},
+		});
+		const config: AgentRunnerConfig = {
+			...chatConfig,
+			allowedTools,
+			...(mcpConfig ? { mcpConfig } : {}),
+			model,
+			fallbackModel:
+				selection.fallbackModelOverride ||
+				this.runnerSelectionService.getDefaultFallbackModelForRunner(
+					runnerType,
+				),
+		};
+		const runner = this.createRunnerForType(runnerType, config);
+		this.agentSessionManager.addAgentRunner(sessionId, runner);
+		await this.savePersistedState();
+		await this.updateAutomationSession(sessionId, { status: "running" });
+		const prompt = `${userPrompt}\n\n${AUTOMATION_OPS_COMPLETION_INSTRUCTIONS}`;
+		void (
+			runner.supportsStreamingInput && runner.startStreaming
+				? runner.startStreaming(prompt)
+				: runner.start(prompt)
+		).catch(async (error) => {
+			this.logger.error("Scheduled ops task failed", error);
 			await this.updateAutomationSession(sessionId, {
 				status: "failed",
 				message: error instanceof Error ? error.message : String(error),
@@ -6220,12 +6384,16 @@ ${await this.loadSharedInstructions()}`;
 					entries
 						.filter((e) => e.type === "result" || e.type === "assistant")
 						.at(-1)?.content || "";
+				const complete =
+					run.snapshot.target.kind === "direct_ops"
+						? automationOpsCompletion
+						: automationCompletion;
 				await this.updateAutomationSession(
 					sessionId,
 					message.subtype === "success" &&
 						!message.is_error &&
 						session?.status !== "error"
-						? automationCompletion(body)
+						? complete(body)
 						: { status: "failed", message: body || "Execution failed" },
 				);
 			}
@@ -7592,6 +7760,7 @@ ${input.userComment}
 				resolvedSkillContext,
 			);
 
+		const githubAuth = await this.resolveSessionGitHubAuth(repository);
 		const result = this.runnerConfigBuilder.buildIssueConfig({
 			standalone: sessionPlatform === "automation",
 			session,
@@ -7628,13 +7797,8 @@ ${input.userComment}
 			// MIKO_GH_TOKEN for gh/git. When App path is used and an operator
 			// slug is configured, also set GIT_AUTHOR/COMMITTER to that App's
 			// bot identity. Undefined token → local git/gh fallback.
-			...(() => {
-				const auth = this.resolveSessionGitHubAuth(repository);
-				return {
-					githubToken: auth.token,
-					gitAuthor: auth.gitAuthor,
-				};
-			})(),
+			githubToken: githubAuth.token,
+			gitAuthor: githubAuth.gitAuthor,
 			logger: log,
 			plugins,
 			opencodeGlobalConfig: this.config.opencode?.config,

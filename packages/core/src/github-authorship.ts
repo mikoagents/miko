@@ -58,16 +58,17 @@ export function resolveGitHubAppBotIdentity(
 	botUserId: string,
 	slug: string,
 ): GitHubAppBotIdentity {
-	const bare = slug.replace(/\[bot\]$/i, "").trim();
-	if (!botUserId || !bare) {
+	const bare = slug.trim().replace(/\[bot\]$/i, "");
+	const userId = botUserId.trim();
+	if (!/^[1-9]\d*$/.test(userId) || !bare) {
 		throw new Error(
-			"resolveGitHubAppBotIdentity requires a non-empty botUserId and slug",
+			"resolveGitHubAppBotIdentity requires a positive numeric botUserId and non-empty slug",
 		);
 	}
 	return {
 		slug: bare,
 		name: `${bare}[bot]`,
-		email: `${botUserId}+${bare}[bot]@users.noreply.github.com`,
+		email: `${userId}+${bare}[bot]@users.noreply.github.com`,
 	};
 }
 
@@ -80,7 +81,7 @@ export function resolveGitHubAppSlugFromEnv(
 ): string | undefined {
 	const raw = env.GITHUB_APP_SLUG || env.GITHUB_BOT_USERNAME;
 	if (!raw) return undefined;
-	const bare = raw.replace(/\[bot\]$/i, "").trim();
+	const bare = raw.trim().replace(/\[bot\]$/i, "");
 	return bare || undefined;
 }
 
@@ -94,5 +95,5 @@ export function resolveGitHubBotUserIdFromEnv(
 	const raw = env.GITHUB_BOT_USER_ID;
 	if (!raw) return undefined;
 	const trimmed = raw.trim();
-	return trimmed || undefined;
+	return /^[1-9]\d*$/.test(trimmed) ? trimmed : undefined;
 }

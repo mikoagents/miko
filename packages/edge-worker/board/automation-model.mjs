@@ -57,9 +57,12 @@ export function scheduleLabel(definition) {
 }
 export function formFromDefinition(definition, options, kind = "daily") {
 	const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	const repo = definition?.repositoryId
-		? options.repositories.find((r) => r.id === definition.repositoryId)
-		: options.repositories[0];
+	const isOps = definition?.target?.kind === "direct_ops";
+	const repo = isOps
+		? undefined
+		: definition?.repositoryId
+			? options.repositories.find((r) => r.id === definition.repositoryId)
+			: options.repositories[0];
 	const at =
 		definition?.schedule.kind === "once"
 			? new Date(definition.schedule.at)
@@ -112,6 +115,15 @@ export function formWithTeam(form, teamId) {
 		projectId: teamId === form.teamId ? form.projectId : "",
 	};
 }
+export function formWithTarget(form, target, options) {
+	const repository =
+		target === "direct_ops"
+			? undefined
+			: form.repositoryId
+				? options.repositories.find((r) => r.id === form.repositoryId)
+				: options.repositories[0];
+	return formWithRepository({ ...form, target }, repository);
+}
 export function scheduleFromForm(form) {
 	if (form.kind === "once") {
 		const at = new Date(form.at);
@@ -132,26 +144,30 @@ export function scheduleFromForm(form) {
 	};
 }
 export function inputFromForm(form) {
-	const input = {
-		name: form.name.trim(),
-		instructions: form.instructions.trim(),
-		repositoryId: form.repositoryId,
-		timezone:
-			form.kind === "once"
-				? Intl.DateTimeFormat().resolvedOptions().timeZone
-				: form.timezone,
-		enabled: form.enabled,
-		schedule: scheduleFromForm(form),
-		target:
-			form.target === "direct_repository"
+	const target =
+		form.target === "direct_ops"
+			? { kind: "direct_ops" }
+			: form.target === "direct_repository"
 				? { kind: "direct_repository" }
 				: {
 						kind: "linear_issue",
 						workspaceId: form.workspaceId,
 						teamId: form.teamId,
 						...(form.projectId ? { projectId: form.projectId } : {}),
-					},
+					};
+	const input = {
+		name: form.name.trim(),
+		instructions: form.instructions.trim(),
+		timezone:
+			form.kind === "once"
+				? Intl.DateTimeFormat().resolvedOptions().timeZone
+				: form.timezone,
+		enabled: form.enabled,
+		schedule: scheduleFromForm(form),
+		target,
 	};
+	if (form.target !== "direct_ops" && form.repositoryId)
+		input.repositoryId = form.repositoryId;
 	if (form.runner) input.runner = form.runner;
 	if (form.model?.trim()) input.model = form.model.trim();
 	return input;

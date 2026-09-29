@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Automations can run operations without a repository in a separate workspace, use connected tools and skills, and finish without opening a pull request. ([#32](https://github.com/mikoagents/miko/pull/32))
 - Automations can select an agent and model per schedule, with model suggestions and editable defaults for existing schedules. ([#30](https://github.com/mikoagents/miko/pull/30))
 - The board now shows runtime resources, repositories, directory shortcuts, and installed skills, with optional token-protected remote access. ([#29](https://github.com/mikoagents/miko/pull/29))
 - Self-hosted GitHub auth prefers App installation tokens for git fetch/push and `gh` when App credentials exist, falls back to local git/`gh` auth, always adds a `Co-authored-by: mikoagent` trailer, and uses the operator-defined App bot (not a hard-coded product bot) for commit authorship on the App path. Startup mints tokens into the token store; `self-add-repo` can clone private repos with those tokens.
 
 ### Fixed
+- GitHub App commits now link to the correct bot account and avatar, including the first session after startup. ([#33](https://github.com/mikoagents/miko/pull/33))
 - Human mentions and delegations can start new Linear sessions after an automation on the same issue has finished. ([#28](https://github.com/mikoagents/miko/pull/28))
 - Workers Builds can deploy the homepage: Alchemy gets the Cloudflare account id from `apps/web/.env`, and `wrangler.jsonc` lets the default Wrangler deploy upload the static site.
 - Cursor Grok 4.7 sessions now accept reasoning-effort and Fast selectors, avoid unsupported model parameters, and display the selected effort in task history. ([#15](https://github.com/nexmoe/atmiko/pull/15))

@@ -3,13 +3,26 @@ import { EdgeWorker } from "../src/EdgeWorker.js";
 import { RunnerConfigBuilder } from "../src/RunnerConfigBuilder.js";
 
 // Exercise the production event handler without starting servers or provider clients.
-function fixture(status = "running", pending = false) {
+function fixture(
+	status = "running",
+	pending = false,
+	kind = "direct_repository",
+) {
 	const worker = Object.create(EdgeWorker.prototype);
 	const update = vi.fn(async () => {});
 	worker.updateAutomationSession = update;
 	worker.automations = {
 		store: {
-			read: () => ({ runs: [{ id: "run", sessionId: "session", status }] }),
+			read: () => ({
+				runs: [
+					{
+						id: "run",
+						sessionId: "session",
+						status,
+						snapshot: { target: { kind } },
+					},
+				],
+			}),
 		},
 	};
 	worker.agentSessionManager = {
@@ -35,6 +48,27 @@ function fixture(status = "running", pending = false) {
 }
 
 describe("scheduled task lifecycle", () => {
+	it("requires a PR for development success but permits completed operations without one", async () => {
+		const body =
+			'<!-- miko-automation-result {"outcome":"succeeded","reason":"Finished operations","prUrls":[]} -->';
+		for (const kind of ["direct_repository", "direct_ops"]) {
+			const { worker, update } = fixture("running", false, kind);
+			worker.agentSessionManager.getSessionEntries = () => [
+				{ type: "result", content: body },
+			];
+			await worker.handleClaudeMessage(
+				"session",
+				{ type: "result", subtype: "success", is_error: false },
+				"",
+			);
+			expect(update).toHaveBeenCalledWith(
+				"session",
+				expect.objectContaining({
+					status: kind === "direct_ops" ? "succeeded" : "uncertain",
+				}),
+			);
+		}
+	});
 	it("completes a reasoned no-change result only after pending work ends", async () => {
 		const { worker, update } = fixture();
 		await worker.handleClaudeMessage(

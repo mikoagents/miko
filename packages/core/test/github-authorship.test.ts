@@ -54,10 +54,23 @@ describe("resolveGitHubAppBotIdentity", () => {
 		expect(identity.email).not.toContain("miko-agent");
 	});
 
-	it("rejects empty botUserId", () => {
-		expect(() => resolveGitHubAppBotIdentity("", "agent")).toThrow(
-			/botUserId/,
-		);
+	it.each([
+		"",
+		" ",
+		"0",
+		"-1",
+		"1.5",
+		"invalid",
+	])("rejects invalid botUserId %s", (id) => {
+		expect(() => resolveGitHubAppBotIdentity(id, "agent")).toThrow(/botUserId/);
+	});
+
+	it("normalizes whitespace around the id and bot login", () => {
+		expect(resolveGitHubAppBotIdentity(" 99 ", " ops-bot[bot] ")).toEqual({
+			slug: "ops-bot",
+			name: "ops-bot[bot]",
+			email: "99+ops-bot[bot]@users.noreply.github.com",
+		});
 	});
 });
 
@@ -80,6 +93,12 @@ describe("resolveGitHubAppSlugFromEnv", () => {
 	it("returns undefined when neither is set", () => {
 		expect(resolveGitHubAppSlugFromEnv({})).toBeUndefined();
 	});
+
+	it("normalizes a bot login with surrounding whitespace", () => {
+		expect(
+			resolveGitHubAppSlugFromEnv({ GITHUB_APP_SLUG: " ops-bot[bot] " }),
+		).toBe("ops-bot");
+	});
 });
 
 describe("resolveGitHubBotUserIdFromEnv", () => {
@@ -93,6 +112,12 @@ describe("resolveGitHubBotUserIdFromEnv", () => {
 		expect(resolveGitHubBotUserIdFromEnv({})).toBeUndefined();
 		expect(
 			resolveGitHubBotUserIdFromEnv({ GITHUB_BOT_USER_ID: "   " }),
+		).toBeUndefined();
+	});
+
+	it.each(["0", "-1", "1.5", "invalid"])("ignores invalid user id %s", (id) => {
+		expect(
+			resolveGitHubBotUserIdFromEnv({ GITHUB_BOT_USER_ID: id }),
 		).toBeUndefined();
 	});
 });
