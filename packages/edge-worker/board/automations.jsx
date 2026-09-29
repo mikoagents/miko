@@ -24,6 +24,8 @@ import {
 	automationApi as api,
 	formatDate,
 	formFromDefinition,
+	formWithRepository,
+	formWithTeam,
 	inputFromForm,
 	modelChoices,
 	RUNNER_LABELS,
@@ -146,9 +148,7 @@ function AutomationEditor({
 			setForm((current) => ({ ...current, enabled: savedEnabled }));
 	}, [savedEnabled]);
 	const [teams, setTeams] = useState([]);
-	const [projects, setProjects] = useState([]);
 	const [teamsLoading, setTeamsLoading] = useState(false);
-	const [projectsLoading, setProjectsLoading] = useState(false);
 	const [preview, setPreview] = useState({
 		times: [],
 		loading: true,
@@ -196,8 +196,13 @@ function AutomationEditor({
 		};
 	}, [scheduleKey]);
 	useEffect(() => {
-		if (form.target !== "linear_issue" || !form.workspaceId) return;
+		if (form.target !== "linear_issue" || !form.workspaceId) {
+			setTeams([]);
+			setTeamsLoading(false);
+			return;
+		}
 		const controller = new AbortController();
+		setTeams([]);
 		setTeamsLoading(true);
 		api(
 			`/linear-options?workspaceId=${encodeURIComponent(form.workspaceId)}`,
@@ -206,13 +211,16 @@ function AutomationEditor({
 			controller.signal,
 		)
 			.then((data) => {
+				if (controller.signal.aborted) return;
 				setTeams(data);
-				setForm((current) => ({
-					...current,
-					teamId: data.some((team) => team.id === current.teamId)
-						? current.teamId
-						: data[0]?.id || "",
-				}));
+				setForm((current) =>
+					formWithTeam(
+						current,
+						data.some((team) => team.id === current.teamId)
+							? current.teamId
+							: data[0]?.id || "",
+					),
+				);
 			})
 			.catch((e) => {
 				if (!controller.signal.aborted) setError(e.message);
@@ -222,35 +230,19 @@ function AutomationEditor({
 			});
 		return () => controller.abort();
 	}, [form.target, form.workspaceId]);
-	useEffect(() => {
-		setProjects([]);
-		if (form.target !== "linear_issue" || !form.workspaceId || !form.teamId)
-			return;
-		const controller = new AbortController();
-		setProjectsLoading(true);
-		api(
-			`/linear-options?workspaceId=${encodeURIComponent(form.workspaceId)}&teamId=${encodeURIComponent(form.teamId)}`,
-			"GET",
-			undefined,
-			controller.signal,
-		)
-			.then((data) => setProjects(data))
-			.catch((e) => {
-				if (!controller.signal.aborted) setError(e.message);
-			})
-			.finally(() => {
-				if (!controller.signal.aborted) setProjectsLoading(false);
-			});
-		return () => controller.abort();
-	}, [form.target, form.workspaceId, form.teamId]);
 	async function submit(event) {
 		event.preventDefault();
 		setError("");
 		setSaving(true);
 		try {
 			const input = inputFromForm(form);
-			if (input.target.kind === "linear_issue" && !input.target.teamId)
-				throw new Error("Choose a Linear team.");
+			if (input.target.kind === "linear_issue") {
+				if (!input.target.workspaceId)
+					throw new Error(
+						"Choose a repository that is connected to a Linear workspace.",
+					);
+				if (!input.target.teamId) throw new Error("Choose a Linear team.");
+			}
 			const saved = definition
 				? await api(`/${definition.id}`, "PATCH", {
 						revision: definition.revision,
@@ -348,24 +340,14 @@ function AutomationEditor({
 										<FieldSelect
 											label="Repository"
 											value={form.repositoryId}
-											onChange={(value) => {
-												const workspaceId =
-													options.repositories.find((r) => r.id === value)
-														?.workspaceId || form.workspaceId;
-												setForm((current) => ({
-													...current,
-													repositoryId: value,
-													workspaceId,
-													teamId:
-														workspaceId === current.workspaceId
-															? current.teamId
-															: "",
-													projectId:
-														workspaceId === current.workspaceId
-															? current.projectId
-															: "",
-												}));
-											}}
+											onChange={(value) =>
+												setForm((current) =>
+													formWithRepository(
+														current,
+														options.repositories.find((r) => r.id === value),
+													),
+												)
+											}
 											items={options.repositories.map((r) => [r.id, r.name])}
 											placeholder="Choose a repository"
 										/>
@@ -429,53 +411,26 @@ function AutomationEditor({
 									<p className="automation-field-hint">
 										{form.target === "direct_repository"
 											? "An isolated worktree. Agent and model override the install defaults for this schedule."
-											: "Creates an issue and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
+											: "Creates an issue in this repository's Linear workspace and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
 									</p>
 									{form.target === "linear_issue" && (
 										<div className="automation-linear-fields">
 											<FieldSelect
-												label="Linear workspace"
-												value={form.workspaceId}
+												label="Team"
+												value={form.teamId}
 												onChange={(value) =>
-													setForm((current) => ({
-														...current,
-														workspaceId: value,
-														teamId: "",
-														projectId: "",
-													}))
+													setForm((current) => formWithTeam(current, value))
 												}
-												items={options.workspaces.map((w) => [w.id, w.name])}
+												items={teams.map((t) => [t.id, t.name])}
+												disabled={teamsLoading || !form.workspaceId}
+												placeholder={
+													!form.workspaceId
+														? "Repository has no Linear workspace"
+														: teamsLoading
+															? "Loading teams…"
+															: "Choose a team"
+												}
 											/>
-											<div className="automation-form-grid">
-												<FieldSelect
-													label="Team"
-													value={form.teamId}
-													onChange={(value) =>
-														setForm((current) => ({
-															...current,
-															teamId: value,
-															projectId: "",
-														}))
-													}
-													items={teams.map((t) => [t.id, t.name])}
-													disabled={teamsLoading}
-													placeholder={
-														teamsLoading ? "Loading teams…" : "Choose a team"
-													}
-												/>
-												<FieldSelect
-													label="Project · optional"
-													value={form.projectId || "none"}
-													onChange={(value) =>
-														set("projectId", value === "none" ? "" : value)
-													}
-													items={[
-														["none", "No project"],
-														...projects.map((p) => [p.id, p.name]),
-													]}
-													disabled={projectsLoading || !form.teamId}
-												/>
-											</div>
 										</div>
 									)}
 								</section>
@@ -637,8 +592,7 @@ function AutomationEditor({
 									!form.repositoryId ||
 									!preview.times.length ||
 									preview.loading ||
-									teamsLoading ||
-									projectsLoading
+									teamsLoading
 								}
 							>
 								{definition ? "Save changes" : "Create automation"}
