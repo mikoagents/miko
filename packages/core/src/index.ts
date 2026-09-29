@@ -123,6 +123,7 @@ export {
 	MIKOAGENT_COAUTHOR_TRAILER,
 	resolveGitHubAppBotIdentity,
 	resolveGitHubAppSlugFromEnv,
+	resolveGitHubBotUserIdFromEnv,
 } from "./github-authorship.js";
 // GitHub App installation token store (multi-org GitHub support)
 export type {

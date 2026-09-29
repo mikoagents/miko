@@ -18,7 +18,7 @@ On self-hosted startup (and when adding a repo), Miko mints tokens for known App
 
 ## Commit authorship
 
-- **App token path:** commits use the operator App bot author form (`<slug>[bot]` / `<appId>+<slug>[bot]@users.noreply.github.com`) via session `GIT_AUTHOR_*` / `GIT_COMMITTER_*` when the App slug is known (`GITHUB_APP_SLUG` or `GITHUB_BOT_USERNAME`).
+- **App token path:** commits use the operator App bot author form (`<slug>[bot]` / `<botUserId>+<slug>[bot]@users.noreply.github.com`) via session `GIT_AUTHOR_*` / `GIT_COMMITTER_*` when the App slug is known (`GITHUB_APP_SLUG` or `GITHUB_BOT_USERNAME`). The bot user ID is separate from `GITHUB_APP_ID`. Set `GITHUB_BOT_USER_ID` to the numeric ID of `<slug>[bot]`, or let Miko retrieve it from GitHub and cache it for the worker's lifetime. The first session waits up to five seconds for this lookup; if it fails, Miko keeps the local git author and retries on a later session while continuing to use the App token.
 - **Local fallback:** commits keep your `git config user.name` / `user.email`.
 - **Always** append this trailer to commits Miko creates (exactly once; preserve other co-authors). Do **not** change `git user.name` / `user.email` to impersonate mikoagent:
 
