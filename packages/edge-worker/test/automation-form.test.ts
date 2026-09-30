@@ -8,7 +8,9 @@ import {
 	formWithTeam,
 	inputFromForm,
 	modelChoices,
+	modelIconKind,
 	resolveAutomationModel,
+	runnerIconKind,
 	scheduleFromForm,
 } from "../board/automation-model.mjs";
 
@@ -343,5 +345,25 @@ describe("automation form serialization", () => {
 		expect(resolveAutomationModel({ instructions: "Do work" }, {})).toBe(
 			"Default",
 		);
+	});
+});
+
+describe("automation brand icon mapping", () => {
+	it("maps model ids to provider icon kinds with a generic fallback", () => {
+		expect(modelIconKind("gpt-5.5")).toBe("openai");
+		expect(modelIconKind("claude-opus-5")).toBe("claude");
+		expect(modelIconKind("sonnet")).toBe("claude");
+		expect(modelIconKind("gemini-3.8-flash")).toBe("gemini");
+		expect(modelIconKind("grok-4.7")).toBe("grok");
+		expect(modelIconKind("composer-2")).toBe("cursor");
+		expect(modelIconKind("gpt-5-codex")).toBe("codex");
+		expect(modelIconKind("mystery-model")).toBe("generic");
+		expect(modelIconKind("")).toBe("generic");
+	});
+	it("maps runners to brand icon kinds", () => {
+		expect(runnerIconKind("claude")).toBe("claude-code");
+		expect(runnerIconKind("cursor")).toBe("cursor");
+		expect(runnerIconKind("opencode")).toBe("opencode");
+		expect(runnerIconKind("")).toBe("generic");
 	});
 });

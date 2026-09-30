@@ -270,3 +270,36 @@ export async function automationApi(path = "", method = "GET", body, signal) {
 		throw new Error(data.error || "Request failed. Please try again.");
 	return data;
 }
+
+/** Map a free-text model id to a brand icon kind used by the board. */
+export function modelIconKind(model = "") {
+	const value = String(model).trim().toLowerCase();
+	if (!value) return "generic";
+	if (/composer|cursor/.test(value)) return "cursor";
+	if (/codex/.test(value)) return "codex";
+	if (/(^|\/|-)gpt|openai|\bo[1-4](-|$)/.test(value)) return "openai";
+	if (/claude|anthropic|sonnet|opus|haiku/.test(value)) return "claude";
+	if (/gemini|gemma|google/.test(value)) return "gemini";
+	if (/grok|xai/.test(value)) return "grok";
+	return "generic";
+}
+
+/** Map an automation runner id to a brand icon kind used by the board. */
+export function runnerIconKind(runner = "") {
+	switch (String(runner).trim().toLowerCase()) {
+		case "claude":
+			return "claude-code";
+		case "gemini":
+			return "gemini";
+		case "codex":
+			return "codex";
+		case "cursor":
+			return "cursor";
+		case "opencode":
+			return "opencode";
+		case "grok":
+			return "grok";
+		default:
+			return "generic";
+	}
+}

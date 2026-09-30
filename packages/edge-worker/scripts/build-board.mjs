@@ -54,6 +54,17 @@ for (const name of ["@hugeicons/react", "@hugeicons/core-free-icons"]) {
 		`\n${name}\n${license}\n`,
 	);
 }
+{
+	const name = "@lobehub/icons";
+	const license = await readFile(
+		new URL(`node_modules/${name}/LICENSE`, root),
+		"utf8",
+	);
+	await appendFile(
+		new URL("dist/board/app.js.LEGAL.txt", root),
+		`\n${name}\n${license}\n`,
+	);
+}
 await copyFile(
 	new URL("board/index.html", root),
 	new URL("dist/board/index.html", root),

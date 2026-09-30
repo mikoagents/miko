@@ -142,9 +142,10 @@ body [hidden] {
 .automation-row-model {
 	display: inline-flex;
 	align-items: center;
+	gap: 5px;
 	width: fit-content;
 	max-width: 100%;
-	padding: 1px 7px;
+	padding: 2px 8px 2px 4px;
 	border-radius: 999px;
 	background: #f3f1f7;
 	color: #5d4f73;
@@ -155,50 +156,32 @@ body [hidden] {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.automation-repo-multi {
-	grid-column: 1 / -1;
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	margin: 0;
-	padding: 0;
-	border: 0;
+.automation-row-model > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.automation-row-model svg,
+.automation-row-model img {
+	flex-shrink: 0;
+}
+.automation-combobox {
+	width: 100%;
 	min-width: 0;
 }
-.automation-repo-multi > legend {
-	padding: 0;
-	margin-bottom: 2px;
-	font-size: 11px;
-	font-weight: 550;
-	color: #555;
-}
-.automation-repo-multi-list {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-}
-.automation-repo-option {
+.automation-combobox-option {
 	display: inline-flex;
 	align-items: center;
-	gap: 7px;
-	max-width: 100%;
-	padding: 7px 10px;
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	background: #fff;
-	font-size: 12px;
-	color: #444;
-	cursor: pointer;
+	gap: 8px;
+	min-width: 0;
 }
-.automation-repo-option.is-selected {
-	border-color: #cbbfe0;
-	background: #f7f4fb;
-	color: #3f3354;
+.automation-combobox-option > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
-.automation-repo-option input {
-	margin: 0;
-}
-.automation-field-hint.is-error {
+.automation-field-hint.is-error,
+.automation-field .text-destructive {
 	color: #b42318;
 }
 .automation-row-schedule {

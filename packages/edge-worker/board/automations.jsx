@@ -21,6 +21,10 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import mikoLogo from "./assets/miko.jpg";
 import {
+	AutomationModelIcon,
+	AutomationRunnerIcon,
+} from "./automation-icons.jsx";
+import {
 	automationApi as api,
 	formatDate,
 	formatRepositoryNames,
@@ -40,6 +44,15 @@ import {
 import { boardPageFromHash, boardPageHref } from "./board-route.mjs";
 import { Badge } from "./fluid/components/ui/badge";
 import { Button } from "./fluid/components/ui/button";
+import {
+	Combobox,
+	ComboboxChips,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxInput,
+	ComboboxItem,
+	ComboboxList,
+} from "./fluid/components/ui/combobox";
 import {
 	Dialog,
 	DialogContent,
@@ -129,6 +142,78 @@ function FieldSelect({
 					))}
 				</SelectContent>
 			</Select>
+		</div>
+	);
+}
+
+function FieldCombobox({
+	label,
+	value,
+	onChange,
+	items,
+	placeholder = "Search…",
+	multiple = false,
+	hideSelected = false,
+	onCreate,
+	disabled = false,
+	error = "",
+	clearable = false,
+	renderItem,
+}) {
+	const id = useId();
+	return (
+		<div className="automation-field">
+			<label id={`${id}-label`} htmlFor={id}>
+				{label}
+			</label>
+			<Combobox
+				items={items}
+				multiple={multiple}
+				hideSelected={hideSelected}
+				value={value}
+				onValueChange={onChange}
+				onCreate={onCreate}
+				disabled={disabled}
+				size="compact"
+			>
+				{multiple ? (
+					<ComboboxChips
+						id={id}
+						aria-labelledby={`${id}-label`}
+						placeholder={placeholder}
+						error={error || undefined}
+						clearable={clearable}
+						className="automation-combobox"
+					/>
+				) : (
+					<ComboboxInput
+						id={id}
+						aria-labelledby={`${id}-label`}
+						placeholder={placeholder}
+						error={error || undefined}
+						clearable={clearable}
+						className="automation-combobox"
+					/>
+				)}
+				<ComboboxContent className="fluid-scope">
+					<ComboboxEmpty
+						allSelected={multiple ? "Everything selected." : undefined}
+					>
+						No matches.
+					</ComboboxEmpty>
+					<ComboboxList>
+						{(item) => {
+							const itemValue = typeof item === "string" ? item : item.value;
+							const itemLabel = typeof item === "string" ? item : item.label;
+							return (
+								<ComboboxItem key={itemValue} value={itemValue}>
+									{renderItem ? renderItem(item) : itemLabel}
+								</ComboboxItem>
+							);
+						}}
+					</ComboboxList>
+				</ComboboxContent>
+			</Combobox>
 		</div>
 	);
 }
@@ -341,59 +426,38 @@ function AutomationEditor({
 									<h3 className="automation-section-label">Execution</h3>
 									<div className="automation-form-grid">
 										{form.target !== "direct_ops" && (
-											<fieldset className="automation-repo-multi">
-												<legend>Repositories</legend>
-												<div className="automation-repo-multi-list">
-													{options.repositories.map((repository) => {
-														const checked = (form.repositoryIds || []).includes(
-															repository.id,
-														);
-														return (
-															<label
-																key={repository.id}
-																className={`automation-repo-option${checked ? " is-selected" : ""}`}
-															>
-																<input
-																	type="checkbox"
-																	checked={checked}
-																	onChange={() =>
-																		setForm((current) => {
-																			const nextIds = checked
-																				? (current.repositoryIds || []).filter(
-																						(id) => id !== repository.id,
-																					)
-																				: [
-																						...(current.repositoryIds || []),
-																						repository.id,
-																					];
-																			const selected = nextIds
-																				.map((id) =>
-																					options.repositories.find(
-																						(item) => item.id === id,
-																					),
-																				)
-																				.filter(Boolean);
-																			return formWithRepositories(
-																				current,
-																				selected,
-																			);
-																		})
-																	}
-																/>
-																<span>{repository.name}</span>
-															</label>
-														);
-													})}
-												</div>
-												{form.target === "linear_issue" &&
+											<FieldCombobox
+												label="Repositories"
+												multiple
+												hideSelected
+												clearable
+												placeholder="Choose repositories"
+												items={options.repositories.map((repository) => ({
+													value: repository.id,
+													label: repository.name,
+												}))}
+												value={form.repositoryIds || []}
+												onChange={(nextIds) => {
+													const ids = Array.isArray(nextIds) ? nextIds : [];
+													const selected = ids
+														.map((id) =>
+															options.repositories.find(
+																(repository) => repository.id === id,
+															),
+														)
+														.filter(Boolean);
+													setForm((current) =>
+														formWithRepositories(current, selected),
+													);
+												}}
+												error={
+													form.target === "linear_issue" &&
 													(form.repositoryIds || []).length > 1 &&
-													!form.workspaceId && (
-														<p className="automation-field-hint is-error">
-															Selected repositories must share one Linear
-															workspace.
-														</p>
-													)}
-											</fieldset>
+													!form.workspaceId
+														? "Selected repositories must share one Linear workspace."
+														: ""
+												}
+											/>
 										)}
 										<FieldSelect
 											label="Mode"
@@ -411,51 +475,79 @@ function AutomationEditor({
 										/>
 									</div>
 									<div className="automation-form-grid">
-										<FieldSelect
+										<FieldCombobox
 											label="Agent"
-											value={form.runner || "default"}
-											onChange={(value) =>
-												setForm((current) => ({
-													...current,
-													runner: value === "default" ? "" : value,
-													// Keep model when switching agents; Cursor accepts cross-provider IDs.
-												}))
-											}
+											clearable
+											placeholder="Choose an agent"
 											items={[
-												[
-													"default",
-													options.defaultRunner
+												{
+													value: "default",
+													label: options.defaultRunner
 														? `Default (${RUNNER_LABELS[options.defaultRunner] || options.defaultRunner})`
 														: "Default",
-												],
+												},
 												...(options.runners || Object.keys(RUNNER_LABELS)).map(
-													(runner) => [runner, RUNNER_LABELS[runner] || runner],
+													(runner) => ({
+														value: runner,
+														label: RUNNER_LABELS[runner] || runner,
+													}),
 												),
 											]}
+											value={form.runner || "default"}
+											onChange={(next) =>
+												setForm((current) => ({
+													...current,
+													runner: !next || next === "default" ? "" : next,
+												}))
+											}
+											renderItem={(item) => (
+												<span className="automation-combobox-option">
+													{item.value !== "default" && (
+														<AutomationRunnerIcon
+															runner={item.value}
+															size={14}
+														/>
+													)}
+													<span>{item.label}</span>
+												</span>
+											)}
 										/>
-										<div className="automation-field">
-											<label htmlFor="automation-model">Model</label>
-											<input
-												className="automation-text-input"
-												id="automation-model"
-												list="automation-model-suggestions"
-												placeholder={
-													(form.runner &&
-														options.defaultModels?.[form.runner]) ||
-													(options.defaultRunner &&
-														options.defaultModels?.[options.defaultRunner]) ||
-													"Default for agent"
-												}
-												value={form.model}
-												onChange={(event) => set("model", event.target.value)}
-												maxLength={200}
-											/>
-											<datalist id="automation-model-suggestions">
-												{modelChoices(options, form.runner).map((model) => (
-													<option key={model} value={model} />
-												))}
-											</datalist>
-										</div>
+										<FieldCombobox
+											label="Model"
+											clearable
+											placeholder={
+												(form.runner && options.defaultModels?.[form.runner]) ||
+												(options.defaultRunner &&
+													options.defaultModels?.[options.defaultRunner]) ||
+												"Default for agent"
+											}
+											items={(() => {
+												const suggestions = modelChoices(options, form.runner);
+												const values = [...suggestions];
+												const current = form.model?.trim();
+												if (current && !values.includes(current))
+													values.unshift(current);
+												return values.map((model) => ({
+													value: model,
+													label: model,
+												}));
+											})()}
+											value={form.model || ""}
+											onChange={(next) =>
+												set("model", typeof next === "string" ? next : "")
+											}
+											onCreate={(query) => {
+												const trimmed = query.trim().slice(0, 200);
+												if (!trimmed || /[\s[\]]/.test(trimmed)) return;
+												return { value: trimmed, label: trimmed };
+											}}
+											renderItem={(item) => (
+												<span className="automation-combobox-option">
+													<AutomationModelIcon model={item.value} size={14} />
+													<span>{item.label}</span>
+												</span>
+											)}
+										/>
 									</div>
 									<p className="automation-field-hint">
 										{form.target === "direct_repository"
@@ -1128,7 +1220,11 @@ function AutomationsApp({ onSession }) {
 											{formatRepositoryNames(d, options.repositories)}
 										</span>
 										<span className="automation-row-model">
-											{resolveAutomationModel(d, options)}
+											<AutomationModelIcon
+												model={resolveAutomationModel(d, options)}
+												size={12}
+											/>
+											<span>{resolveAutomationModel(d, options)}</span>
 										</span>
 									</span>
 									<span className="automation-row-schedule">
