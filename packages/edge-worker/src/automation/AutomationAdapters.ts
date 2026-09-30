@@ -9,15 +9,23 @@ import {
 	type AutomationInput,
 	type AutomationRun,
 	applyAutomationRunnerModel,
+	automationRepositoryIds,
 	type RepositoryTaskRequest,
 	type RunUpdate,
 } from "./types.js";
 
 export interface AutomationRunnerOptions {
-	runners: typeof AUTOMATION_RUNNERS;
+	/** Configured/available runners only (not the full harness catalog). */
+	runners: Array<(typeof AUTOMATION_RUNNERS)[number]>;
 	defaultRunner: (typeof AUTOMATION_RUNNERS)[number];
 	defaultModels: Record<string, string | undefined>;
 	modelSuggestions: typeof AUTOMATION_MODEL_SUGGESTIONS;
+}
+
+export interface CreatedGitHubIssue {
+	number: number;
+	html_url: string;
+	node_id?: string;
 }
 
 export interface AutomationAdapterDeps {
@@ -33,6 +41,22 @@ export interface AutomationAdapterDeps {
 	localState(run: AutomationRun): RunUpdate | undefined;
 	/** Safe runner/model defaults for the Automations form. */
 	runnerOptions?(): AutomationRunnerOptions;
+	/**
+	 * Create (or recover) a GitHub issue for a schedule run via the App/API
+	 * token already used elsewhere in Miko. Required for github_issue targets.
+	 */
+	createGitHubIssue?(input: {
+		repository: RepositoryConfig;
+		title: string;
+		body: string;
+		/** Opaque run id embedded in the body for idempotent recovery. */
+		runId: string;
+	}): Promise<CreatedGitHubIssue>;
+	/** Optional GET of an existing issue for reconcile (by number). */
+	getGitHubIssue?(input: {
+		repository: RepositoryConfig;
+		number: number;
+	}): Promise<{ html_url: string; state: string } | undefined>;
 }
 
 export class AutomationAdapters implements AutomationAdapter {
@@ -70,6 +94,7 @@ export class AutomationAdapters implements AutomationAdapter {
 				id: r.id,
 				name: r.name,
 				workspaceId: r.linearWorkspaceId,
+				githubUrl: r.githubUrl,
 			})),
 			workspaces: Object.entries(this.deps.workspaces()).map(([id, w]) => ({
 				id,
@@ -117,6 +142,16 @@ export class AutomationAdapters implements AutomationAdapter {
 			);
 		return error;
 	}
+	private resolveRepositories(input: AutomationInput) {
+		const ids = automationRepositoryIds(input);
+		const repositories = ids.map((id) => {
+			const repository = this.deps.repositories().find((r) => r.id === id);
+			if (!repository || repository.isActive === false)
+				throw new AutomationError("Repository is unavailable");
+			return repository;
+		});
+		return { ids, repositories };
+	}
 	private async validateTarget(input: AutomationInput) {
 		if (input.target.kind === "direct_ops") {
 			if (this.deps.repoTags(input.instructions).length)
@@ -125,11 +160,8 @@ export class AutomationAdapters implements AutomationAdapter {
 				);
 			return;
 		}
-		const repository = this.deps
-			.repositories()
-			.find((r) => r.id === input.repositoryId);
-		if (!repository || repository.isActive === false)
-			throw new AutomationError("Repository is unavailable");
+		const { ids, repositories } = this.resolveRepositories(input);
+		const selected = new Set(ids);
 		const tags = this.deps.repoTags(input.instructions);
 		if (
 			tags.some((t) => {
@@ -146,22 +178,55 @@ export class AutomationAdapters implements AutomationAdapter {
 							),
 					);
 				return (
-					t.branch || matches.length !== 1 || matches[0]?.id !== repository.id
+					t.branch ||
+					matches.length !== 1 ||
+					!matches[0] ||
+					!selected.has(matches[0].id)
 				);
 			})
 		)
 			throw new AutomationError(
-				"Task repository selectors must match the selected repository without a branch override",
+				"Task repository selectors must match a selected repository without a branch override",
 			);
+		if (input.target.kind === "github_issue") {
+			if (!this.deps.createGitHubIssue)
+				throw new AutomationError(
+					"GitHub issue creation is unavailable on this worker",
+				);
+			for (const repository of repositories) {
+				if (!repository.githubUrl)
+					throw new AutomationError(
+						`Repository ${repository.name} has no GitHub URL configured`,
+					);
+			}
+			return;
+		}
 		if (input.target.kind !== "linear_issue") return;
-		if (repository.linearWorkspaceId !== input.target.workspaceId)
+		const workspaceIds = [
+			...new Set(
+				repositories
+					.map((repository) => repository.linearWorkspaceId)
+					.filter(Boolean),
+			),
+		];
+		// Linear issue creation is workspace-scoped; multi-repo is only allowed
+		// when every selected repository maps to the same Linear workspace. The
+		// first repository is the primary routing target for [repo=…] tags.
+		if (
+			workspaceIds.length !== 1 ||
+			workspaceIds[0] !== input.target.workspaceId
+		)
 			throw new AutomationError(
-				"Repository does not belong to the selected Linear workspace",
+				workspaceIds.length > 1
+					? "Selected repositories must belong to the same Linear workspace"
+					: "Repository does not belong to the selected Linear workspace",
 			);
-		if (!/^[a-zA-Z0-9_\-/.]+$/.test(repository.id))
-			throw new AutomationError(
-				"Repository ID cannot be represented as a routing selector",
-			);
+		for (const repository of repositories) {
+			if (!/^[a-zA-Z0-9_\-/.]+$/.test(repository.id))
+				throw new AutomationError(
+					"Repository ID cannot be represented as a routing selector",
+				);
+		}
 		const client = this.linear(input.target.workspaceId);
 		const viewer = await client.viewer;
 		if (!viewer.app || !viewer.supportsAgentSessions)
@@ -208,16 +273,20 @@ export class AutomationAdapters implements AutomationAdapter {
 			input.target.kind === "direct_repository" ||
 			input.target.kind === "direct_ops"
 		) {
+			const repositoryId = automationRepositoryIds(input)[0];
 			await this.deps.startTask({
 				id: run.id,
 				title: input.name,
 				instructions,
-				repositoryId: input.repositoryId,
+				repositoryId,
 				source: "automation",
 				runner,
 				model: input.model,
 			});
 			return { sessionId: `automation-${run.id}`, status: "running" };
+		}
+		if (input.target.kind === "github_issue") {
+			return await this.dispatchGitHubIssue(run, instructions, runner);
 		}
 		const client = this.linear(input.target.workspaceId);
 		const existing = await client.issues({
@@ -227,14 +296,16 @@ export class AutomationAdapters implements AutomationAdapter {
 		if (existing.nodes[0])
 			return { issueUrl: existing.nodes[0].url, status: "waiting_session" };
 		const viewer = await client.viewer;
-		const repository = this.deps
-			.repositories()
-			.find((r) => r.id === input.repositoryId);
-		if (!repository) throw new AutomationError("Repository is unavailable");
+		const { ids, repositories } = this.resolveRepositories(input);
+		if (!repositories.length)
+			throw new AutomationError("Repository is unavailable");
+		// Primary = first selected repository; additional repos are routing tags
+		// so the Linear agent can attach matching worktrees in one session.
+		const repoTags = ids.map((id) => `[repo=${id}]`).join("\n");
 		const result = await client.createIssue({
 			id: run.issueId,
 			title: input.name,
-			description: `${instructions}\n\n[repo=${repository.id}]\n\nAutomation run: ${run.id}`,
+			description: `${instructions}\n\n${repoTags}\n\nAutomation run: ${run.id}`,
 			teamId: input.target.teamId,
 			projectId: input.target.projectId,
 			delegateId: viewer.id,
@@ -257,6 +328,9 @@ export class AutomationAdapters implements AutomationAdapter {
 					run.message ||
 					"Previous execution cannot be confirmed; it will not be restarted automatically",
 			};
+		if (run.snapshot.target.kind === "github_issue") {
+			return await this.reconcileGitHubIssue(run);
+		}
 		const client = this.linear(run.snapshot.target.workspaceId);
 		const issues = await client.issues({
 			filter: { id: { eq: run.issueId! } },
@@ -338,5 +412,122 @@ export class AutomationAdapters implements AutomationAdapter {
 					sessionId,
 					issueUrl: issues.nodes[0]!.url,
 				};
+	}
+
+	/**
+	 * GitHub Apps do not receive webhooks for events they create, so Linear-style
+	 * delegate wake is impossible. Mirror the product intent by creating the issue
+	 * for tracking, then starting the agent session directly (same as direct_repository).
+	 */
+	private async dispatchGitHubIssue(
+		run: AutomationRun,
+		instructions: string,
+		runner: AutomationInput["runner"],
+	): Promise<RunUpdate> {
+		if (!this.deps.createGitHubIssue)
+			throw new AutomationError(
+				"GitHub issue creation is unavailable on this worker",
+			);
+		const input = run.snapshot;
+		const { repositories } = this.resolveRepositories(input);
+		const repository = repositories[0];
+		if (!repository) throw new AutomationError("Repository is unavailable");
+		const body = `${instructions}\n\n[repo=${repository.id}]\n\nAutomation run: ${run.id}\n\n<!-- miko-automation-run:${run.id} -->`;
+		const created =
+			run.issueUrl && run.issueId
+				? {
+						number: Number(run.issueId),
+						html_url: run.issueUrl,
+					}
+				: await this.deps.createGitHubIssue({
+						repository,
+						title: input.name,
+						body,
+						runId: run.id,
+					});
+		if (!Number.isFinite(created.number) || created.number <= 0)
+			throw new AutomationError("GitHub rejected issue creation");
+		const ownerRepo = parseGitHubOwnerRepo(repository.githubUrl || "");
+		await this.deps.startTask({
+			id: run.id,
+			title: input.name,
+			instructions,
+			repositoryId: repository.id,
+			source: "automation",
+			runner,
+			model: input.model,
+			githubIssue: ownerRepo
+				? {
+						number: created.number,
+						url: created.html_url,
+						owner: ownerRepo.owner,
+						repo: ownerRepo.repo,
+					}
+				: undefined,
+		});
+		return {
+			issueId: String(created.number),
+			issueUrl: created.html_url,
+			sessionId: `automation-${run.id}`,
+			status: "running",
+		};
+	}
+
+	private async reconcileGitHubIssue(run: AutomationRun): Promise<RunUpdate> {
+		const repositoryId = automationRepositoryIds(run.snapshot)[0];
+		const repository = this.deps
+			.repositories()
+			.find((r) => r.id === repositoryId);
+		const number = run.issueId ? Number(run.issueId) : NaN;
+		if (
+			repository &&
+			Number.isFinite(number) &&
+			number > 0 &&
+			this.deps.getGitHubIssue
+		) {
+			const issue = await this.deps.getGitHubIssue({ repository, number });
+			if (!issue)
+				return {
+					status: "uncertain",
+					message: "GitHub issue creation could not be confirmed",
+				};
+			return {
+				status: "uncertain",
+				issueUrl: issue.html_url,
+				message:
+					run.message ||
+					"Previous execution cannot be confirmed; it will not be restarted automatically",
+			};
+		}
+		return {
+			status: "uncertain",
+			message:
+				run.message ||
+				"Previous execution cannot be confirmed; it will not be restarted automatically",
+		};
+	}
+}
+
+/** Parse owner/repo from common GitHub remote URL forms. */
+export function parseGitHubOwnerRepo(
+	url: string,
+): { owner: string; repo: string } | null {
+	if (!url || typeof url !== "string") return null;
+	const trimmed = url.trim();
+	const scp = trimmed.match(
+		/^[\w.-]+@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i,
+	);
+	if (scp?.[1] && scp[2]) return { owner: scp[1], repo: scp[2] };
+	const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+		? trimmed
+		: `https://${trimmed}`;
+	try {
+		const parsed = new URL(withScheme);
+		if (parsed.hostname.toLowerCase() !== "github.com") return null;
+		const [owner, repoWithGit] = parsed.pathname.split("/").filter(Boolean);
+		if (!owner || !repoWithGit) return null;
+		return { owner, repo: repoWithGit.replace(/\.git$/i, "") };
+	} catch {
+		return null;
 	}
 }

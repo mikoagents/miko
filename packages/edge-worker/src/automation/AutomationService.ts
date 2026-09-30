@@ -13,6 +13,8 @@ import {
 	type AutomationRun,
 	activeRun,
 	automationInputSchema,
+	automationRepositoryIds,
+	normalizeAutomationRepositories,
 	type RunUpdate,
 } from "./types.js";
 
@@ -90,7 +92,9 @@ export class AutomationService {
 			.reverse();
 	}
 	async save(raw: unknown, id?: string, revision?: number) {
-		const input = automationInputSchema.parse(raw);
+		const input = normalizeAutomationRepositories(
+			automationInputSchema.parse(raw),
+		);
 		const now = Date.now();
 		const times = previewSchedule(input, now);
 		if (!times.length)
@@ -156,48 +160,81 @@ export class AutomationService {
 			return definition;
 		});
 	}
-	private makeRun(
+	/**
+	 * Build one or more runs for a trigger. `direct_repository` and `github_issue`
+	 * with multiple repositories fan out to one run/session (and GitHub issue) per
+	 * repo. Linear / ops keep a single run with the full repositoryIds snapshot.
+	 */
+	private makeRuns(
 		state: AutomationState,
 		definition: AutomationDefinition,
 		at: number,
 		key: string,
 		trigger: "manual" | "scheduled",
 		reason?: string,
-	): AutomationRun {
-		const existing = state.runs.find((r) => r.key === key);
-		if (existing) return existing;
+	): AutomationRun[] {
+		const repoIds = automationRepositoryIds(definition);
+		const fanOut =
+			(definition.target.kind === "direct_repository" ||
+				definition.target.kind === "github_issue") &&
+			repoIds.length > 1;
 		const overlap = state.runs.some(
 			(r) => r.automationId === definition.id && activeRun(r),
 		);
-		const run: AutomationRun = {
-			id: randomUUID(),
-			automationId: definition.id,
-			key,
-			trigger,
-			scheduledAt: at,
-			createdAt: Date.now(),
-			updatedAt: Date.now(),
-			snapshot: structuredClone(definition),
-			status: reason || overlap ? "skipped" : "dispatching",
-			message: reason || (overlap ? "Previous run has not finished" : ""),
-			issueId:
-				definition.target.kind === "linear_issue" ? randomUUID() : undefined,
-			prUrls: [],
-			attempts: 0,
-		};
-		state.runs.push(run);
-		return run;
+		const slices = fanOut
+			? repoIds.map((repositoryId) => ({
+					key: `${key}:${repositoryId}`,
+					snapshot: normalizeAutomationRepositories({
+						...structuredClone(definition),
+						repositoryIds: [repositoryId],
+					}) as AutomationDefinition,
+				}))
+			: [
+					{
+						key,
+						snapshot: normalizeAutomationRepositories(
+							structuredClone(definition),
+						) as AutomationDefinition,
+					},
+				];
+		const runs: AutomationRun[] = [];
+		for (const slice of slices) {
+			const existing = state.runs.find((r) => r.key === slice.key);
+			if (existing) {
+				runs.push(existing);
+				continue;
+			}
+			const run: AutomationRun = {
+				id: randomUUID(),
+				automationId: definition.id,
+				key: slice.key,
+				trigger,
+				scheduledAt: at,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				snapshot: slice.snapshot,
+				status: reason || overlap ? "skipped" : "dispatching",
+				message: reason || (overlap ? "Previous run has not finished" : ""),
+				issueId:
+					definition.target.kind === "linear_issue" ? randomUUID() : undefined,
+				prUrls: [],
+				attempts: 0,
+			};
+			state.runs.push(run);
+			runs.push(run);
+		}
+		return runs;
 	}
 	async runNow(id: string, requestId: string) {
 		if (this.stopped) throw new AutomationError("Scheduler is stopped", 503);
 		if (!requestId || requestId.length > 128)
 			throw new AutomationError("A request ID is required");
-		const run = await this.store.transact((state) => {
+		const runs = await this.store.transact((state) => {
 			const definition = state.definitions.find(
 				(d) => d.id === id && !d.archived,
 			);
 			if (!definition) throw new AutomationError("Automation not found", 404);
-			return this.makeRun(
+			return this.makeRuns(
 				state,
 				definition,
 				Date.now(),
@@ -205,8 +242,8 @@ export class AutomationService {
 				"manual",
 			);
 		});
-		this.launch(run);
-		return run;
+		for (const run of runs) this.launch(run);
+		return runs[0]!;
 	}
 	async tick(now: number, missed = false) {
 		if (this.polling || this.stopped || this.store.error) return;
@@ -234,7 +271,7 @@ export class AutomationService {
 							continue;
 						const skip = missed || now - d.nextRunAt > 60000;
 						result.push(
-							this.makeRun(
+							...this.makeRuns(
 								state,
 								d,
 								d.nextRunAt,
@@ -304,7 +341,9 @@ export class AutomationService {
 				if (
 					!permanent &&
 					attempt < 3 &&
-					(run.snapshot.target.kind === "linear_issue" || !enteredDispatch)
+					(run.snapshot.target.kind === "linear_issue" ||
+						run.snapshot.target.kind === "github_issue" ||
+						!enteredDispatch)
 				) {
 					await delay(1000 * attempt);
 					continue;
@@ -336,6 +375,7 @@ export class AutomationService {
 				return;
 			// Creation may return after its webhook (or even completion). Keep the
 			// immutable issue link without regressing the execution state.
+			if (patch.issueId && !run.issueId) run.issueId = patch.issueId;
 			if (patch.issueUrl && !run.issueUrl) run.issueUrl = patch.issueUrl;
 			if (!activeRun(run) || (onlyDispatching && run.status !== "dispatching"))
 				return;

@@ -83,8 +83,8 @@ outline-offset: 2px;
 border-radius: var(--shape-input-radius, 8px);
 }
 
-/* Fluid InputField draws its own ring; suppress the global focus outline so
-   rest/focus never stack as a double border. */
+/* Fluid InputField / Combobox draw their own chrome ring; suppress the global
+   focus outline so rest/focus never stack as a nested double border. */
 .fluid-scope .fluid-input-control:focus-visible {
 outline: none;
 outline-offset: 0;

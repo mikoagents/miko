@@ -22,6 +22,7 @@ function fixture() {
 		id: "repo-1",
 		name: "Human readable repo",
 		linearWorkspaceId: "ws",
+		githubUrl: "https://github.com/acme/repo-1",
 		isActive: true,
 	} as RepositoryConfig;
 	const client = {
@@ -64,7 +65,7 @@ function fixture() {
 		snapshot: {
 			name: "Fix it",
 			instructions: "Implement and verify",
-			repositoryId: "repo-1",
+			repositoryIds: ["repo-1"],
 			target: { kind: "linear_issue", workspaceId: "ws", teamId: "team" },
 		},
 	} as AutomationRun;
@@ -213,7 +214,7 @@ describe("automation platform adapters", () => {
 it("validates and dispatches a direct_ops task without a repository", async () => {
 	const { adapter, deps, run } = fixture();
 	run.snapshot.target = { kind: "direct_ops" };
-	delete (run.snapshot as { repositoryId?: string }).repositoryId;
+	delete (run.snapshot as { repositoryIds?: string[] }).repositoryIds;
 	await adapter.validate(run.snapshot);
 	expect(await adapter.dispatch(run)).toEqual({
 		sessionId: "automation-run-1",
@@ -227,13 +228,151 @@ it("validates and dispatches a direct_ops task without a repository", async () =
 		source: "automation",
 	});
 });
-it("rejects repository selectors and repositoryId on direct_ops", async () => {
+it("rejects repository selectors and repositoryIds on direct_ops", async () => {
 	const { adapter, deps, run } = fixture();
 	run.snapshot.target = { kind: "direct_ops" };
-	delete (run.snapshot as { repositoryId?: string }).repositoryId;
+	delete (run.snapshot as { repositoryIds?: string[] }).repositoryIds;
 	deps.repoTags = () => [{ repo: "repo-1" }];
 	await expect(adapter.validate(run.snapshot)).rejects.toThrow(
 		"repository selectors",
+	);
+});
+
+it("creates a GitHub issue then wakes the agent via startTask", async () => {
+	const { adapter, deps, run, factory } = fixture();
+	const createGitHubIssue = vi.fn(async () => ({
+		number: 42,
+		html_url: "https://github.com/acme/repo-1/issues/42",
+	}));
+	deps.createGitHubIssue = createGitHubIssue;
+	run.snapshot.target = { kind: "github_issue" };
+	await adapter.validate(run.snapshot);
+	expect(await adapter.dispatch(run)).toEqual({
+		issueId: "42",
+		issueUrl: "https://github.com/acme/repo-1/issues/42",
+		sessionId: "automation-run-1",
+		status: "running",
+	});
+	expect(factory).not.toHaveBeenCalled();
+	expect(createGitHubIssue).toHaveBeenCalledWith(
+		expect.objectContaining({
+			title: "Fix it",
+			runId: "run-1",
+			body: expect.stringContaining("<!-- miko-automation-run:run-1 -->"),
+		}),
+	);
+	expect(deps.startTask).toHaveBeenCalledWith(
+		expect.objectContaining({
+			id: "run-1",
+			repositoryId: "repo-1",
+			source: "automation",
+			githubIssue: {
+				number: 42,
+				url: "https://github.com/acme/repo-1/issues/42",
+				owner: "acme",
+				repo: "repo-1",
+			},
+		}),
+	);
+});
+
+it("rejects github_issue when the repository has no GitHub URL", async () => {
+	const { adapter, deps, run } = fixture();
+	deps.createGitHubIssue = vi.fn();
+	deps.repositories = () =>
+		[
+			{
+				id: "repo-1",
+				name: "No github",
+				linearWorkspaceId: "ws",
+				isActive: true,
+			},
+		] as never;
+	run.snapshot.target = { kind: "github_issue" };
+	await expect(adapter.validate(run.snapshot)).rejects.toThrow("GitHub URL");
+});
+
+it("reuses an existing GitHub issue link on dispatch retry", async () => {
+	const { adapter, deps, run } = fixture();
+	const createGitHubIssue = vi.fn();
+	deps.createGitHubIssue = createGitHubIssue;
+	run.snapshot.target = { kind: "github_issue" };
+	run.issueId = "7";
+	run.issueUrl = "https://github.com/acme/repo-1/issues/7";
+	await adapter.dispatch(run);
+	expect(createGitHubIssue).not.toHaveBeenCalled();
+	expect(deps.startTask).toHaveBeenCalledWith(
+		expect.objectContaining({
+			githubIssue: expect.objectContaining({ number: 7 }),
+		}),
+	);
+});
+
+it("fans out is handled by the service; adapter dispatches the run snapshot's single repo", async () => {
+	const { adapter, deps, run } = fixture();
+	run.snapshot.target = { kind: "direct_repository" };
+	run.snapshot.repositoryIds = ["repo-1"];
+	await adapter.dispatch(run);
+	expect(deps.startTask).toHaveBeenCalledTimes(1);
+	expect(deps.startTask).toHaveBeenCalledWith(
+		expect.objectContaining({ repositoryId: "repo-1" }),
+	);
+});
+it("rejects linear multi-repo across different workspaces and accepts same-workspace set", async () => {
+	const { adapter, deps, run } = fixture();
+	deps.repositories = () =>
+		[
+			{
+				id: "repo-1",
+				name: "A",
+				linearWorkspaceId: "ws",
+				isActive: true,
+			},
+			{
+				id: "repo-2",
+				name: "B",
+				linearWorkspaceId: "ws",
+				isActive: true,
+			},
+			{
+				id: "repo-3",
+				name: "C",
+				linearWorkspaceId: "other",
+				isActive: true,
+			},
+		] as never;
+	run.snapshot.repositoryIds = ["repo-1", "repo-2"];
+	await adapter.validate(run.snapshot);
+	await adapter.dispatch(run);
+	expect(deps.startTask).not.toHaveBeenCalled();
+	run.snapshot.repositoryIds = ["repo-1", "repo-3"];
+	await expect(adapter.validate(run.snapshot)).rejects.toThrow(
+		"same Linear workspace",
+	);
+});
+it("includes every selected repository as a Linear routing tag", async () => {
+	const { adapter, client, deps, run } = fixture();
+	deps.repositories = () =>
+		[
+			{
+				id: "repo-1",
+				name: "A",
+				linearWorkspaceId: "ws",
+				isActive: true,
+			},
+			{
+				id: "repo-2",
+				name: "B",
+				linearWorkspaceId: "ws",
+				isActive: true,
+			},
+		] as never;
+	run.snapshot.repositoryIds = ["repo-1", "repo-2"];
+	await adapter.dispatch(run);
+	expect(client.createIssue).toHaveBeenCalledWith(
+		expect.objectContaining({
+			description: expect.stringContaining("[repo=repo-1]\n[repo=repo-2]"),
+		}),
 	);
 });
 

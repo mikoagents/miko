@@ -4,6 +4,7 @@ import { initializeStatus } from "./status.jsx";
 import "./layout.css";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { createLogViewer } from "./log-viewer.jsx";
+import { mountTaskSearch } from "./task-search.jsx";
 
 const $ = (id) => document.getElementById(id);
 const names = {
@@ -15,6 +16,7 @@ const names = {
 	unknown: "Unconfirmed",
 	idle: "Idle",
 };
+let taskSearchQuery = "";
 let latest = null,
 	displayed = null,
 	selected = null,
@@ -161,7 +163,7 @@ function render(data) {
 	loadHistory(data.tasks?.find((task) => task.id === selected));
 }
 function renderTasks() {
-	const needle = $("task-search").value.trim().toLowerCase();
+	const needle = taskSearchQuery.trim().toLowerCase();
 	const tasks = (displayed?.tasks || []).filter(
 		(t) =>
 			!needle ||
@@ -306,7 +308,10 @@ function renderLogs() {
 		scope: [selected, source, controls.errorsOnly].join("|"),
 	});
 }
-$("task-search").addEventListener("input", renderTasks);
+mountTaskSearch($("task-search-root"), (query) => {
+	taskSearchQuery = query;
+	renderTasks();
+});
 async function refresh() {
 	if (refreshing) return;
 	refreshing = true;

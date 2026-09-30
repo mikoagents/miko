@@ -53,6 +53,33 @@ export class RunnerSelectionService {
 	}
 
 	/**
+	 * Runners that are actually usable on this install (credentials or default).
+	 * Board Automations Agent Combobox should list only these — never gray out
+	 * unconfigured harnesses.
+	 */
+	public getAvailableRunners(): RunnerType[] {
+		const available = new Set<RunnerType>();
+		available.add(this.getDefaultRunner());
+		if (process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_API_KEY) {
+			available.add("claude");
+		}
+		if (process.env.GEMINI_API_KEY) available.add("gemini");
+		if (process.env.OPENAI_API_KEY) available.add("codex");
+		if (process.env.CURSOR_API_KEY) available.add("cursor");
+		if (process.env.XAI_API_KEY) available.add("grok");
+		// OpenCode auth is CLI-managed; only surface it when explicitly defaulted.
+		const order: RunnerType[] = [
+			"claude",
+			"gemini",
+			"codex",
+			"cursor",
+			"opencode",
+			"grok",
+		];
+		return order.filter((runner) => available.has(runner));
+	}
+
+	/**
 	 * Resolve default model for a given runner from config with sensible built-in defaults.
 	 */
 	public getDefaultModelForRunner(runnerType: RunnerType): string | undefined {

@@ -68,65 +68,120 @@ export const targetSchema = z.discriminatedUnion("kind", [
 		teamId: z.string().min(1),
 		projectId: z.string().min(1).optional(),
 	}),
+	/** Create a GitHub issue on each selected repository (App/API), then wake the agent. */
+	z.object({ kind: z.literal("github_issue") }),
 ]);
-export const automationInputSchema = z
-	.object({
-		name: z.string().trim().min(1).max(200),
-		instructions: z.string().trim().min(1).max(50000),
-		/** Required for repository-backed targets; omit for direct_ops. */
-		repositoryId: z.string().min(1).optional(),
-		timezone: z.string().min(1).max(100),
-		schedule: scheduleSchema,
-		target: targetSchema,
-		enabled: z.boolean(),
-		/** Coding harness override; omit to use global/defaultRunner. */
-		runner: RunnerTypeSchema.optional(),
-		/** Model override for the selected runner; omit to use that runner's default. */
-		model: z
-			.string()
-			.trim()
-			.min(1)
-			.max(200)
-			.regex(
-				/^[^\s[\]]+$/,
-				"Model must be an identifier without whitespace or brackets",
-			)
-			.optional(),
-	})
-	.superRefine((input, ctx) => {
-		if (input.target.kind === "direct_ops") {
-			if (input.repositoryId) {
-				ctx.addIssue({
-					code: "custom",
-					message: "Ops automations must not bind a repository",
-					path: ["repositoryId"],
-				});
-			}
-			return;
-		}
-		if (!input.repositoryId) {
+/**
+ * Resolve repository bindings. Prefers `repositoryIds`; falls back to legacy
+ * single `repositoryId` so older on-disk automations keep loading.
+ */
+export function automationRepositoryIds(input: {
+	repositoryIds?: string[] | null;
+	repositoryId?: string | null;
+}): string[] {
+	const fromArray = (input.repositoryIds ?? []).filter(
+		(id): id is string => typeof id === "string" && id.length > 0,
+	);
+	if (fromArray.length) return [...new Set(fromArray)];
+	if (input.repositoryId) return [input.repositoryId];
+	return [];
+}
+
+/** Rewrite legacy `repositoryId` into `repositoryIds` and drop the singular field. */
+export function normalizeAutomationRepositories<
+	T extends {
+		repositoryIds?: string[] | null;
+		repositoryId?: string | null;
+	},
+>(
+	input: T,
+): Omit<T, "repositoryId" | "repositoryIds"> & {
+	repositoryIds?: string[];
+} {
+	const repositoryIds = automationRepositoryIds(input);
+	const { repositoryId: _legacy, repositoryIds: _ignored, ...rest } = input;
+	return repositoryIds.length ? { ...rest, repositoryIds } : { ...rest };
+}
+
+const automationFields = {
+	name: z.string().trim().min(1).max(200),
+	instructions: z.string().trim().min(1).max(50000),
+	/**
+	 * One or more repositories for repository-backed targets.
+	 * Omit for direct_ops. Legacy `repositoryId` is accepted on read and
+	 * normalized to this array before persistence.
+	 */
+	repositoryIds: z.array(z.string().min(1)).min(1).optional(),
+	/** @deprecated Prefer repositoryIds; kept for reading older stored defs. */
+	repositoryId: z.string().min(1).optional(),
+	timezone: z.string().min(1).max(100),
+	schedule: scheduleSchema,
+	target: targetSchema,
+	enabled: z.boolean(),
+	/** Coding harness override; omit to use global/defaultRunner. */
+	runner: RunnerTypeSchema.optional(),
+	/** Model override for the selected runner; omit to use that runner's default. */
+	model: z
+		.string()
+		.trim()
+		.min(1)
+		.max(200)
+		.regex(
+			/^[^\s[\]]+$/,
+			"Model must be an identifier without whitespace or brackets",
+		)
+		.optional(),
+};
+
+function refineRepositories(
+	input: {
+		target: { kind: string };
+		repositoryIds?: string[];
+		repositoryId?: string;
+	},
+	ctx: z.RefinementCtx,
+) {
+	const ids = automationRepositoryIds(input);
+	if (input.target.kind === "direct_ops") {
+		if (ids.length) {
 			ctx.addIssue({
 				code: "custom",
-				message: "Repository is required",
-				path: ["repositoryId"],
+				message: "Ops automations must not bind a repository",
+				path: ["repositoryIds"],
 			});
 		}
-	});
-export const definitionSchema = automationInputSchema.extend({
-	id: z.string(),
-	revision: z.number().int().positive(),
-	createdAt: z.number(),
-	updatedAt: z.number(),
-	archived: z.boolean(),
-	nextRunAt: z.number().nullable(),
-	scheduleState: z.enum([
-		"scheduled",
-		"paused",
-		"finished",
-		"missed",
-		"archived",
-	]),
-});
+		return;
+	}
+	if (!ids.length) {
+		ctx.addIssue({
+			code: "custom",
+			message: "Repository is required",
+			path: ["repositoryIds"],
+		});
+	}
+}
+
+export const automationInputSchema = z
+	.object(automationFields)
+	.superRefine(refineRepositories);
+export const definitionSchema = z
+	.object({
+		...automationFields,
+		id: z.string(),
+		revision: z.number().int().positive(),
+		createdAt: z.number(),
+		updatedAt: z.number(),
+		archived: z.boolean(),
+		nextRunAt: z.number().nullable(),
+		scheduleState: z.enum([
+			"scheduled",
+			"paused",
+			"finished",
+			"missed",
+			"archived",
+		]),
+	})
+	.superRefine(refineRepositories);
 export const runSchema = z.object({
 	id: z.string(),
 	automationId: z.string(),
@@ -164,6 +219,7 @@ export type RunUpdate = Partial<
 		AutomationRun,
 		| "status"
 		| "message"
+		| "issueId"
 		| "issueUrl"
 		| "sessionId"
 		| "prUrls"
@@ -183,6 +239,8 @@ export interface RepositoryTaskRequest {
 	repositoryId?: string;
 	source: "automation" | "linear";
 	issueContext?: { issueId: string; workspaceId: string };
+	/** When set, the task was dispatched via a GitHub issue created by the schedule. */
+	githubIssue?: { number: number; url: string; owner: string; repo: string };
 	/** Optional coding harness for direct automation runs. */
 	runner?: z.infer<typeof RunnerTypeSchema>;
 	/** Optional model for direct automation runs. */

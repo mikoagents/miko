@@ -2,13 +2,57 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { definitionSchema, runSchema } from "./types.js";
+import {
+	definitionSchema,
+	normalizeAutomationRepositories,
+	runSchema,
+} from "./types.js";
 
 const schema = z.object({
 	version: z.literal(1),
 	definitions: z.array(definitionSchema),
 	runs: z.array(runSchema),
 });
+
+/** Migrate legacy singular repositoryId before Zod validation. */
+function migrateState(raw: unknown): unknown {
+	if (!raw || typeof raw !== "object") return raw;
+	const state = raw as {
+		definitions?: unknown[];
+		runs?: unknown[];
+		[key: string]: unknown;
+	};
+	return {
+		...state,
+		definitions: Array.isArray(state.definitions)
+			? state.definitions.map((definition) =>
+					definition && typeof definition === "object"
+						? normalizeAutomationRepositories(
+								definition as Parameters<
+									typeof normalizeAutomationRepositories
+								>[0],
+							)
+						: definition,
+				)
+			: state.definitions,
+		runs: Array.isArray(state.runs)
+			? state.runs.map((run) => {
+					if (!run || typeof run !== "object") return run;
+					const current = run as { snapshot?: unknown; [key: string]: unknown };
+					if (!current.snapshot || typeof current.snapshot !== "object")
+						return run;
+					return {
+						...current,
+						snapshot: normalizeAutomationRepositories(
+							current.snapshot as Parameters<
+								typeof normalizeAutomationRepositories
+							>[0],
+						),
+					};
+				})
+			: state.runs,
+	};
+}
 export type AutomationState = z.infer<typeof schema>;
 
 /** A single owner, copy-on-write transactions, and durable replace-before-dispatch. */
@@ -53,7 +97,11 @@ export class AutomationStore {
 		}
 		try {
 			this.state = schema.parse(
-				JSON.parse(await readFile(join(this.directory, "state.json"), "utf8")),
+				migrateState(
+					JSON.parse(
+						await readFile(join(this.directory, "state.json"), "utf8"),
+					),
+				),
 			);
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {

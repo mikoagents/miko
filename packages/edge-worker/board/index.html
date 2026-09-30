@@ -8,22 +8,14 @@
 	</head>
 	<body>
 		<nav id="board-navigation" class="board-navigation" aria-label="Board pages"></nav>
-		<section id="automations" class="automation-page" hidden aria-label="Scheduled tasks"></section>
+		<section id="automations" class="automation-page" hidden aria-label="Schedules"></section>
 		<section id="status" class="status-page" hidden aria-label="Status"></section>
 		<section id="skills" class="skills-page" hidden aria-label="Skills"></section>
 		<main id="tasks-page">
 			<aside class="sidebar" aria-label="Task list">
 				<div class="sidebar-tools">
 					<div id="connection" class="sr-only" role="status">Connecting</div>
-					<label class="search"
-						><span class="sr-only">Search tasks</span>
-						<input
-							id="task-search"
-							type="search"
-							placeholder="Search tasks…"
-							autocomplete="off"
-						></label
-					>
+					<div id="task-search-root" class="search fluid-scope"></div>
 				</div>
 				<div class="task-list" id="tasks">
 					<div class="empty">Loading tasks…</div>
@@ -36,6 +28,6 @@
 				</div>
 			</section>
 		</main>
-		<script type="module" src="/board/assets/app.js"></script>
+		<script data-cfasync="false" type="module" src="/board/assets/app.js"></script>
 	</body>
 </html>

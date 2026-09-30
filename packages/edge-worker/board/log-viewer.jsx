@@ -9,6 +9,7 @@ import {
 	visibleRows,
 } from "./activity-model.mjs";
 import { selectionText, selectRows } from "./activity-selection.mjs";
+import { InputField, InputGroup } from "./fluid/components/ui/input-group";
 import { isAboveBottom, JumpToBottom } from "./jump-to-bottom.jsx";
 import { LogOptions } from "./log-options.jsx";
 import { RawLogView } from "./raw-log-viewer.jsx";
@@ -455,21 +456,28 @@ function LogView({
 					</div>
 				)}
 				{mode === "activity" && (
-					<label className="activity-search">
-						<span className="sr-only">Search activity</span>
-						<input
-							type="search"
-							placeholder="Search logs…"
-							value={query}
-							onChange={(event) => {
-								stopFollowing();
-								setQuery(event.target.value);
-							}}
-						/>
+					<div className="activity-search fluid-scope">
+						<InputGroup
+							className="activity-search-input w-full max-w-full"
+							size="compact"
+						>
+							<InputField
+								label="Search logs"
+								labelHidden
+								index={0}
+								type="search"
+								value={query}
+								placeholder="Search logs…"
+								onChange={(next) => {
+									stopFollowing();
+									setQuery(next);
+								}}
+							/>
+						</InputGroup>
 						<span className="search-count" aria-live="polite">
 							{visible.length}/{rows.length}
 						</span>
-					</label>
+					</div>
 				)}
 				{mode === "raw" && <span className="toolbar-spacer" />}
 				<LogOptions

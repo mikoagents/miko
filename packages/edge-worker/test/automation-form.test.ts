@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+	formatRepositoryNames,
 	formFromDefinition,
+	formWithRepositories,
 	formWithRepository,
 	formWithTarget,
 	formWithTeam,
 	inputFromForm,
 	modelChoices,
+	modelIconKind,
+	resolveAutomationModel,
+	runnerIconKind,
 	scheduleFromForm,
 } from "../board/automation-model.mjs";
 
@@ -23,12 +28,12 @@ describe("automation form serialization", () => {
 		};
 		const ops = formWithTarget(original, "direct_ops", options);
 		expect(inputFromForm(ops).target).toEqual({ kind: "direct_ops" });
-		expect(inputFromForm(ops)).not.toHaveProperty("repositoryId");
+		expect(inputFromForm(ops)).not.toHaveProperty("repositoryIds");
 		const linear = formWithTarget(ops, "linear_issue", {
 			...options,
 			repositories: [{ id: "repo2", workspaceId: "ws2" }],
 		});
-		expect(linear.repositoryId).toBe("repo2");
+		expect(linear.repositoryIds).toEqual(["repo2"]);
 		expect(inputFromForm(linear).target).toEqual({
 			kind: "linear_issue",
 			workspaceId: "ws2",
@@ -70,7 +75,7 @@ describe("automation form serialization", () => {
 		const input = {
 			name: "Weekly maintenance",
 			instructions: "Check dependencies",
-			repositoryId: "repo",
+			repositoryIds: ["repo"],
 			schedule: { kind: "weekly", days: [1, 5], time: "09:30" },
 			timezone: "America/New_York",
 			enabled: false,
@@ -86,7 +91,7 @@ describe("automation form serialization", () => {
 	it("derives the workspace from the repository and clears a mismatched target", () => {
 		const form = formFromDefinition(
 			{
-				repositoryId: "repo",
+				repositoryIds: ["repo"],
 				schedule: { kind: "daily", time: "09:00" },
 				target: {
 					kind: "linear_issue",
@@ -106,13 +111,13 @@ describe("automation form serialization", () => {
 	it("does not silently replace an unavailable repository", () => {
 		const form = formFromDefinition(
 			{
-				repositoryId: "removed-repo",
+				repositoryIds: ["removed-repo"],
 				schedule: { kind: "daily", time: "09:00" },
 				target: { kind: "linear_issue", workspaceId: "ws", teamId: "team" },
 			},
 			options,
 		);
-		expect(form.repositoryId).toBe("");
+		expect(form.repositoryIds).toEqual([]);
 		expect(inputFromForm(form).target).toEqual({
 			kind: "linear_issue",
 			workspaceId: "",
@@ -196,7 +201,7 @@ describe("automation form serialization", () => {
 		const input = {
 			name: "Frontier digest",
 			instructions: "Collect news",
-			repositoryId: "repo",
+			repositoryIds: ["repo"],
 			schedule: { kind: "daily", time: "09:00" },
 			timezone: "Asia/Shanghai",
 			enabled: true,
@@ -228,7 +233,7 @@ describe("automation form serialization", () => {
 		expect(input).not.toHaveProperty("runner");
 		expect(input).not.toHaveProperty("model");
 	});
-	it("omits repositoryId for direct_ops and preserves it for repository modes", () => {
+	it("omits repositoryIds for direct_ops and preserves them for repository modes", () => {
 		const opsForm = {
 			...formFromDefinition(
 				{
@@ -240,21 +245,136 @@ describe("automation form serialization", () => {
 			name: "Linear cap",
 			instructions: "Follow linear-issue-cap",
 			target: "direct_ops",
-			repositoryId: "should-be-ignored",
+			repositoryIds: ["should-be-ignored"],
 		};
 		expect(inputFromForm(opsForm)).toMatchObject({
 			name: "Linear cap",
 			target: { kind: "direct_ops" },
 		});
-		expect(inputFromForm(opsForm)).not.toHaveProperty("repositoryId");
+		expect(inputFromForm(opsForm)).not.toHaveProperty("repositoryIds");
 
 		const repoForm = {
 			...formFromDefinition(undefined, options),
 			name: "Repo task",
 			instructions: "Do work",
 			target: "direct_repository",
-			repositoryId: "repo",
+			repositoryIds: ["repo"],
 		};
-		expect(inputFromForm(repoForm).repositoryId).toBe("repo");
+		expect(inputFromForm(repoForm).repositoryIds).toEqual(["repo"]);
+	});
+	it("serializes github_issue target without Linear fields", () => {
+		const form = {
+			...formFromDefinition(undefined, options),
+			target: "github_issue",
+			repositoryIds: ["repo"],
+			teamId: "should-ignore",
+			workspaceId: "ws",
+		};
+		expect(inputFromForm(form).target).toEqual({ kind: "github_issue" });
+		expect(inputFromForm(form).repositoryIds).toEqual(["repo"]);
+	});
+	it("loads legacy singular repositoryId into repositoryIds", () => {
+		const form = formFromDefinition(
+			{
+				repositoryId: "repo",
+				target: { kind: "direct_repository" },
+				schedule: { kind: "daily", time: "09:00" },
+			},
+			options,
+		);
+		expect(form.repositoryIds).toEqual(["repo"]);
+		expect(inputFromForm(form).repositoryIds).toEqual(["repo"]);
+	});
+	it("supports selecting multiple repositories and clears workspace when they diverge", () => {
+		const multi = {
+			repositories: [
+				{ id: "repo-a", workspaceId: "ws" },
+				{ id: "repo-b", workspaceId: "ws" },
+				{ id: "repo-c", workspaceId: "other" },
+			],
+			workspaces: [{ id: "ws" }, { id: "other" }],
+		};
+		const form = formWithRepositories(
+			{ ...formFromDefinition(undefined, multi), target: "linear_issue" },
+			[multi.repositories[0], multi.repositories[1]],
+		);
+		expect(form.repositoryIds).toEqual(["repo-a", "repo-b"]);
+		expect(form.workspaceId).toBe("ws");
+		expect(inputFromForm(form).repositoryIds).toEqual(["repo-a", "repo-b"]);
+		const diverged = formWithRepositories(form, [
+			multi.repositories[0],
+			multi.repositories[2],
+		]);
+		expect(diverged.workspaceId).toBe("");
+		expect(diverged.teamId).toBe("");
+	});
+	it("formats repository names and resolves list model labels", () => {
+		const repositories = [
+			{ id: "repo-a", name: "Alpha" },
+			{ id: "repo-b", name: "Beta" },
+			{ id: "repo-c", name: "Gamma" },
+		];
+		expect(
+			formatRepositoryNames({ target: { kind: "direct_ops" } }, repositories),
+		).toBe("No repository");
+		expect(
+			formatRepositoryNames(
+				{
+					repositoryIds: ["repo-a", "repo-b"],
+					target: { kind: "direct_repository" },
+				},
+				repositories,
+			),
+		).toBe("Alpha, Beta");
+		expect(
+			formatRepositoryNames(
+				{
+					repositoryIds: ["repo-a", "repo-b", "repo-c"],
+					target: { kind: "direct_repository" },
+				},
+				repositories,
+			),
+		).toBe("Alpha +2");
+		expect(
+			resolveAutomationModel(
+				{ model: "gpt-5.5", instructions: "Do work" },
+				{ defaultModels: { cursor: "composer-2" }, defaultRunner: "cursor" },
+			),
+		).toBe("gpt-5.5");
+		expect(
+			resolveAutomationModel(
+				{ instructions: "[model=sonnet]\n\nDo work" },
+				{ defaultModels: { claude: "opus" }, defaultRunner: "claude" },
+			),
+		).toBe("sonnet");
+		expect(
+			resolveAutomationModel(
+				{ instructions: "Do work", runner: "cursor" },
+				{ defaultModels: { cursor: "composer-2" }, defaultRunner: "claude" },
+			),
+		).toBe("composer-2");
+		expect(resolveAutomationModel({ instructions: "Do work" }, {})).toBe(
+			"Default",
+		);
+	});
+});
+
+describe("automation brand icon mapping", () => {
+	it("maps model ids to provider icon kinds with a generic fallback", () => {
+		expect(modelIconKind("gpt-5.5")).toBe("openai");
+		expect(modelIconKind("claude-opus-5")).toBe("claude");
+		expect(modelIconKind("sonnet")).toBe("claude");
+		expect(modelIconKind("gemini-3.8-flash")).toBe("gemini");
+		expect(modelIconKind("grok-4.7")).toBe("grok");
+		expect(modelIconKind("composer-2")).toBe("cursor");
+		expect(modelIconKind("gpt-5-codex")).toBe("codex");
+		expect(modelIconKind("mystery-model")).toBe("generic");
+		expect(modelIconKind("")).toBe("generic");
+	});
+	it("maps runners to brand icon kinds", () => {
+		expect(runnerIconKind("claude")).toBe("claude-code");
+		expect(runnerIconKind("cursor")).toBe("cursor");
+		expect(runnerIconKind("opencode")).toBe("opencode");
+		expect(runnerIconKind("")).toBe("generic");
 	});
 });

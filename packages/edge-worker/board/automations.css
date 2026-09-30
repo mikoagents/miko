@@ -97,14 +97,19 @@ body [hidden] {
 }
 .automation-row {
 	display: grid;
-	grid-template-columns: minmax(180px, 1fr) minmax(140px, 220px) minmax(
-			170px,
-			220px
-		) 100px 16px;
+	grid-template-columns:
+		minmax(140px, 1.5fr)
+		minmax(88px, 1fr)
+		minmax(96px, 140px)
+		minmax(110px, 1fr)
+		minmax(120px, 1.1fr)
+		88px
+		16px;
 	align-items: center;
-	gap: 24px;
+	gap: 12px;
 	width: 100%;
-	padding: 18px 24px;
+	min-height: 40px;
+	padding: 8px 24px;
 	border: 0;
 	border-bottom: 1px solid var(--line);
 	background: #fff;
@@ -118,21 +123,82 @@ body [hidden] {
 	outline-offset: -3px;
 }
 .automation-row-name,
-.automation-row-schedule {
-	display: flex;
-	flex-direction: column;
-	gap: 5px;
+.automation-row-meta,
+.automation-row-schedule,
+.automation-row-next {
 	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
-.automation-row-name strong {
+.automation-row-name {
 	font-size: 13px;
 	font-weight: 550;
-	overflow-wrap: anywhere;
+	color: #222;
 }
-.automation-row-name > span,
-.automation-row-schedule > span {
-	font-size: 11px;
-	color: #929292;
+.automation-row-meta {
+	font-size: 12px;
+	color: #777;
+}
+.automation-row-model {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	max-width: 100%;
+	height: 22px;
+	padding: 0 8px 0 4px;
+	border-radius: 999px;
+	background: #f3f1f7;
+	color: #5d4f73;
+	font-size: 10px;
+	font-weight: 550;
+	letter-spacing: 0.01em;
+	line-height: 1;
+	overflow: hidden;
+	white-space: nowrap;
+}
+.automation-row-model > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: 1;
+}
+.automation-row-model .automation-brand-icon,
+.automation-combobox-option .automation-brand-icon {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+	overflow: visible;
+}
+.automation-row-model .automation-brand-icon > *,
+.automation-combobox-option .automation-brand-icon > * {
+	display: block;
+	flex-shrink: 0;
+}
+.automation-combobox {
+	width: 100%;
+	min-width: 0;
+}
+.automation-combobox-option {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	line-height: 1;
+	max-width: 100%;
+}
+.automation-combobox-option > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	line-height: 1.25;
+}
+.automation-field-hint.is-error,
+.automation-field .text-destructive {
+	color: #b42318;
 }
 .automation-row-schedule {
 	font-size: 12px;
@@ -142,8 +208,14 @@ body [hidden] {
 	font-size: 11px;
 	color: #888;
 }
+.automation-row-status {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+}
 .automation-row > svg {
 	color: #999;
+	justify-self: end;
 }
 .automation-page-footer {
 	display: flex;
@@ -410,27 +482,14 @@ body [hidden] {
 }
 .automation-input-group {
 	width: 100%;
+	max-width: 100%;
+}
+.automation-input-group.w-full,
+.automation-input-group {
+	width: 100% !important;
 }
 .automation-input-group input {
 	min-width: 0;
-}
-.automation-text-input {
-	display: block;
-	width: 100%;
-	height: 36px;
-	padding: 0 12px;
-	border: 1px solid #e3e3e3;
-	border-radius: 6px;
-	background: #fff;
-	font-size: 12px;
-	color: #333;
-}
-.automation-text-input:focus-visible {
-	outline: 2px solid #aeb8c4;
-	outline-offset: 1px;
-}
-.automation-text-input::placeholder {
-	color: #999;
 }
 .automation-form-grid {
 	display: grid;
@@ -601,9 +660,15 @@ body [hidden] {
 
 @media (max-width: 850px) {
 	.automation-row {
-		grid-template-columns: minmax(160px, 1fr) 140px 90px 16px;
-		gap: 14px;
+		grid-template-columns:
+			minmax(120px, 1.4fr)
+			minmax(72px, 1fr)
+			minmax(88px, 120px)
+			88px
+			16px;
+		gap: 10px;
 	}
+	.automation-row-schedule,
 	.automation-row-next {
 		display: none;
 	}
@@ -629,22 +694,15 @@ body [hidden] {
 		gap: 12px;
 	}
 	.automation-row {
-		grid-template-columns: minmax(0, 1fr) 90px 16px;
-		gap: 10px;
-		padding: 16px;
+		grid-template-columns: minmax(0, 1fr) 88px 16px;
+		gap: 8px;
+		padding: 8px 15px;
 	}
-	.automation-row-name {
-		grid-column: 1;
-	}
-	.automation-row-schedule {
-		grid-row: 2;
-		grid-column: 1 / -1;
-		flex-direction: row;
-		flex-wrap: wrap;
-	}
-	.automation-row > svg {
-		grid-column: 3;
-		grid-row: 1;
+	.automation-row-meta,
+	.automation-row-model,
+	.automation-row-schedule,
+	.automation-row-next {
+		display: none;
 	}
 	.automation-form-grid {
 		grid-template-columns: 1fr;

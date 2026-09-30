@@ -233,4 +233,18 @@ describe("RunnerSelectionService", () => {
 		expect(service.getDefaultRunner()).toBe("grok");
 		delete process.env.XAI_API_KEY;
 	});
+
+	it("lists only credentialed runners plus the configured default", () => {
+		delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+		delete process.env.ANTHROPIC_API_KEY;
+		delete process.env.GEMINI_API_KEY;
+		delete process.env.OPENAI_API_KEY;
+		delete process.env.XAI_API_KEY;
+		process.env.CURSOR_API_KEY = "cursor-test-key";
+		const service = new RunnerSelectionService({
+			defaultRunner: "grok",
+		} as EdgeWorkerConfig);
+		expect(service.getAvailableRunners()).toEqual(["cursor", "grok"]);
+		delete process.env.CURSOR_API_KEY;
+	});
 });

@@ -473,6 +473,26 @@
       ],
       "css": {},
       "cssVars": {}
+    },
+    {
+      "name": "use-merge-split",
+      "url": "https://www.fluidfunctionalism.com/r/use-merge-split.json",
+      "sha256": "b487bde4d7d2b9038e557d53b074d88196bb450a592a040bc2882905535a408b",
+      "files": [
+        "hooks/use-merge-split.tsx"
+      ],
+      "css": {},
+      "cssVars": {}
+    },
+    {
+      "name": "combobox",
+      "url": "https://www.fluidfunctionalism.com/r/base/combobox.json",
+      "sha256": "f31b47de0b49da62969e6a056807a935d0960c4726831fdf071e6ddfc7d21ca1",
+      "files": [
+        "components/ui/combobox.tsx"
+      ],
+      "css": {},
+      "cssVars": {}
     }
   ]
 }

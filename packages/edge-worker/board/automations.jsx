@@ -21,23 +21,42 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import mikoLogo from "./assets/miko.jpg";
 import {
+	AutomationModelIcon,
+	AutomationRunnerIcon,
+} from "./automation-icons.jsx";
+import {
 	automationApi as api,
 	formatDate,
+	formatRepositoryNames,
 	formFromDefinition,
-	formWithRepository,
+	formWithRepositories,
 	formWithTarget,
 	formWithTeam,
 	inputFromForm,
 	modelChoices,
 	RUNNER_LABELS,
+	resolveAutomationModel,
 	runLabels,
 	scheduleFromForm,
 	scheduleLabel,
 	statusColors,
 } from "./automation-model.mjs";
-import { boardPageFromHash, boardPageHref } from "./board-route.mjs";
+import {
+	boardPageFromHash,
+	boardPageHref,
+	redirectLegacyBoardHash,
+} from "./board-route.mjs";
 import { Badge } from "./fluid/components/ui/badge";
 import { Button } from "./fluid/components/ui/button";
+import {
+	Combobox,
+	ComboboxChips,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxInput,
+	ComboboxItem,
+	ComboboxList,
+} from "./fluid/components/ui/combobox";
 import {
 	Dialog,
 	DialogContent,
@@ -83,19 +102,20 @@ function StatusBadge({ status }) {
 		</Badge>
 	);
 }
-function FormInput({ label, id: providedId, onChange, ...props }) {
-	const generatedId = useId();
-	const id = providedId || generatedId;
+function FormInput({ label, id: providedId, onChange, className, ...props }) {
 	return (
-		<div className="automation-field">
-			<label htmlFor={id}>{label}</label>
-			<input
-				className="automation-text-input"
-				id={id}
-				onChange={(event) => onChange(event.target.value)}
+		<InputGroup
+			className={className || "automation-input-group w-full"}
+			size="compact"
+		>
+			<InputField
+				id={providedId}
+				label={label}
+				index={0}
+				onChange={onChange}
 				{...props}
 			/>
-		</div>
+		</InputGroup>
 	);
 }
 function FieldSelect({
@@ -112,7 +132,12 @@ function FieldSelect({
 			<label id={`${id}-label`} htmlFor={id}>
 				{label}
 			</label>
-			<Select value={value} onValueChange={onChange} disabled={disabled}>
+			<Select
+				value={value}
+				onValueChange={onChange}
+				disabled={disabled}
+				size="compact"
+			>
 				<SelectTrigger
 					id={id}
 					aria-labelledby={`${id}-label`}
@@ -127,6 +152,78 @@ function FieldSelect({
 					))}
 				</SelectContent>
 			</Select>
+		</div>
+	);
+}
+
+function FieldCombobox({
+	label,
+	value,
+	onChange,
+	items,
+	placeholder = "Search…",
+	multiple = false,
+	hideSelected = false,
+	onCreate,
+	disabled = false,
+	error = "",
+	clearable = false,
+	renderItem,
+}) {
+	const id = useId();
+	return (
+		<div className="automation-field">
+			<label id={`${id}-label`} htmlFor={id}>
+				{label}
+			</label>
+			<Combobox
+				items={items}
+				multiple={multiple}
+				hideSelected={hideSelected}
+				value={value}
+				onValueChange={onChange}
+				onCreate={onCreate}
+				disabled={disabled}
+				size="compact"
+			>
+				{multiple ? (
+					<ComboboxChips
+						id={id}
+						aria-labelledby={`${id}-label`}
+						placeholder={placeholder}
+						error={error || undefined}
+						clearable={clearable}
+						className="automation-combobox"
+					/>
+				) : (
+					<ComboboxInput
+						id={id}
+						aria-labelledby={`${id}-label`}
+						placeholder={placeholder}
+						error={error || undefined}
+						clearable={clearable}
+						className="automation-combobox"
+					/>
+				)}
+				<ComboboxContent className="fluid-scope">
+					<ComboboxEmpty
+						allSelected={multiple ? "Everything selected." : undefined}
+					>
+						No matches.
+					</ComboboxEmpty>
+					<ComboboxList>
+						{(item) => {
+							const itemValue = typeof item === "string" ? item : item.value;
+							const itemLabel = typeof item === "string" ? item : item.label;
+							return (
+								<ComboboxItem key={itemValue} value={itemValue}>
+									{renderItem ? renderItem(item) : itemLabel}
+								</ComboboxItem>
+							);
+						}}
+					</ComboboxList>
+				</ComboboxContent>
+			</Combobox>
 		</div>
 	);
 }
@@ -244,6 +341,16 @@ function AutomationEditor({
 					);
 				if (!input.target.teamId) throw new Error("Choose a Linear team.");
 			}
+			if (input.target.kind === "github_issue") {
+				const missing = (input.repositoryIds || []).filter((id) => {
+					const repository = options.repositories.find((r) => r.id === id);
+					return !repository?.githubUrl;
+				});
+				if (missing.length)
+					throw new Error(
+						"Choose repositories that have a GitHub URL configured.",
+					);
+			}
 			const saved = definition
 				? await api(`/${definition.id}`, "PATCH", {
 						revision: definition.revision,
@@ -277,10 +384,10 @@ function AutomationEditor({
 				<DialogHeader className="automation-editor-header">
 					<DialogTitle>
 						{definition?.archived
-							? "Archived automation"
+							? "Archived schedule"
 							: definition
-								? "Edit automation"
-								: "New automation"}
+								? "Edit schedule"
+								: "New schedule"}
 					</DialogTitle>
 					<DialogDescription>
 						{definition
@@ -291,8 +398,8 @@ function AutomationEditor({
 				</DialogHeader>
 				{definition && (
 					<div className="automation-editor-tabs">
-						<Tabs value={panel} onValueChange={setPanel}>
-							<TabsList aria-label="Automation details">
+						<Tabs value={panel} onValueChange={setPanel} size="compact">
+							<TabsList aria-label="Schedule details">
 								<TabItem value="configuration" label="Configuration" />
 								<TabItem value="history" label="Run history" />
 							</TabsList>
@@ -308,17 +415,15 @@ function AutomationEditor({
 						>
 							<section className="automation-form-section automation-task-section">
 								<h3 className="automation-section-label">Task</h3>
-								<div className="automation-input-group">
-									<FormInput
-										id="automation-name"
-										label="Name"
-										placeholder="e.g. Review dependencies every Monday"
-										value={form.name}
-										onChange={(value) => set("name", value)}
-										required
-										maxLength={200}
-									/>
-								</div>
+								<FormInput
+									id="automation-name"
+									label="Name"
+									placeholder="e.g. Review dependencies every Monday"
+									value={form.name}
+									onChange={(value) => set("name", value)}
+									required
+									maxLength={200}
+								/>
 								<div className="automation-field automation-instruction-field">
 									<label htmlFor={instructionsId}>Instructions</label>
 									<textarea
@@ -339,19 +444,45 @@ function AutomationEditor({
 									<h3 className="automation-section-label">Execution</h3>
 									<div className="automation-form-grid">
 										{form.target !== "direct_ops" && (
-											<FieldSelect
-												label="Repository"
-												value={form.repositoryId}
-												onChange={(value) =>
+											<FieldCombobox
+												label="Repositories"
+												multiple
+												hideSelected
+												clearable
+												placeholder="Choose repositories"
+												items={options.repositories.map((repository) => ({
+													value: repository.id,
+													label: repository.name,
+												}))}
+												value={form.repositoryIds || []}
+												onChange={(nextIds) => {
+													const ids = Array.isArray(nextIds) ? nextIds : [];
+													const selected = ids
+														.map((id) =>
+															options.repositories.find(
+																(repository) => repository.id === id,
+															),
+														)
+														.filter(Boolean);
 													setForm((current) =>
-														formWithRepository(
-															current,
-															options.repositories.find((r) => r.id === value),
-														),
-													)
+														formWithRepositories(current, selected),
+													);
+												}}
+												error={
+													form.target === "linear_issue" &&
+													(form.repositoryIds || []).length > 1 &&
+													!form.workspaceId
+														? "Selected repositories must share one Linear workspace."
+														: form.target === "github_issue" &&
+																(form.repositoryIds || []).some((id) => {
+																	const repository = options.repositories.find(
+																		(r) => r.id === id,
+																	);
+																	return !repository?.githubUrl;
+																})
+															? "Selected repositories need a GitHub URL."
+															: ""
 												}
-												items={options.repositories.map((r) => [r.id, r.name])}
-												placeholder="Choose a repository"
 											/>
 										)}
 										<FieldSelect
@@ -366,62 +497,91 @@ function AutomationEditor({
 												["direct_repository", "Run directly"],
 												["direct_ops", "Ops (no repository)"],
 												["linear_issue", "Create Linear issue"],
+												["github_issue", "Create GitHub issue"],
 											]}
 										/>
 									</div>
 									<div className="automation-form-grid">
-										<FieldSelect
+										<FieldCombobox
 											label="Agent"
-											value={form.runner || "default"}
-											onChange={(value) =>
-												setForm((current) => ({
-													...current,
-													runner: value === "default" ? "" : value,
-													// Keep model when switching agents; Cursor accepts cross-provider IDs.
-												}))
-											}
+											clearable
+											placeholder="Choose an agent"
 											items={[
-												[
-													"default",
-													options.defaultRunner
+												{
+													value: "default",
+													label: options.defaultRunner
 														? `Default (${RUNNER_LABELS[options.defaultRunner] || options.defaultRunner})`
 														: "Default",
-												],
-												...(options.runners || Object.keys(RUNNER_LABELS)).map(
-													(runner) => [runner, RUNNER_LABELS[runner] || runner],
-												),
+												},
+												...(options.runners || []).map((runner) => ({
+													value: runner,
+													label: RUNNER_LABELS[runner] || runner,
+												})),
 											]}
+											value={form.runner || "default"}
+											onChange={(next) =>
+												setForm((current) => ({
+													...current,
+													runner: !next || next === "default" ? "" : next,
+												}))
+											}
+											renderItem={(item) => (
+												<span className="automation-combobox-option">
+													{item.value !== "default" && (
+														<AutomationRunnerIcon
+															runner={item.value}
+															size={14}
+														/>
+													)}
+													<span>{item.label}</span>
+												</span>
+											)}
 										/>
-										<div className="automation-field">
-											<label htmlFor="automation-model">Model</label>
-											<input
-												className="automation-text-input"
-												id="automation-model"
-												list="automation-model-suggestions"
-												placeholder={
-													(form.runner &&
-														options.defaultModels?.[form.runner]) ||
-													(options.defaultRunner &&
-														options.defaultModels?.[options.defaultRunner]) ||
-													"Default for agent"
-												}
-												value={form.model}
-												onChange={(event) => set("model", event.target.value)}
-												maxLength={200}
-											/>
-											<datalist id="automation-model-suggestions">
-												{modelChoices(options, form.runner).map((model) => (
-													<option key={model} value={model} />
-												))}
-											</datalist>
-										</div>
+										<FieldCombobox
+											label="Model"
+											clearable
+											placeholder={
+												(form.runner && options.defaultModels?.[form.runner]) ||
+												(options.defaultRunner &&
+													options.defaultModels?.[options.defaultRunner]) ||
+												"Default for agent"
+											}
+											items={(() => {
+												const suggestions = modelChoices(options, form.runner);
+												const values = [...suggestions];
+												const current = form.model?.trim();
+												if (current && !values.includes(current))
+													values.unshift(current);
+												return values.map((model) => ({
+													value: model,
+													label: model,
+												}));
+											})()}
+											value={form.model || ""}
+											onChange={(next) =>
+												set("model", typeof next === "string" ? next : "")
+											}
+											onCreate={(query) => {
+												const trimmed = query.trim().slice(0, 200);
+												if (!trimmed || /[\s[\]]/.test(trimmed)) return;
+												return { value: trimmed, label: trimmed };
+											}}
+											renderItem={(item) => (
+												<span className="automation-combobox-option">
+													<AutomationModelIcon model={item.value} size={14} />
+													<span>{item.label}</span>
+												</span>
+											)}
+										/>
 									</div>
 									<p className="automation-field-hint">
 										{form.target === "direct_repository"
-											? "An isolated worktree. Agent and model override the install defaults for this schedule."
+											? "One isolated worktree session per selected repository. Agent and model override the install defaults for this schedule."
 											: form.target === "direct_ops"
 												? "Runs in a separate workspace without cloning a repository. Use for Linear operations and other tasks outside a code repository."
-												: "Creates an issue in this repository's Linear workspace and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
+												: form.target === "github_issue"
+													? "Creates a GitHub issue on each selected repository via the GitHub App, then starts the agent in that repo. Multi-repo fans out one issue and session per repository."
+													: "Creates an issue in the selected repositories' shared Linear workspace and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
 									</p>
 									{form.target === "linear_issue" && (
 										<div className="automation-linear-fields">
@@ -435,7 +595,7 @@ function AutomationEditor({
 												disabled={teamsLoading || !form.workspaceId}
 												placeholder={
 													!form.workspaceId
-														? "Repository has no Linear workspace"
+														? "Select repositories that share a Linear workspace"
 														: teamsLoading
 															? "Loading teams…"
 															: "Choose a team"
@@ -467,33 +627,31 @@ function AutomationEditor({
 												["cron", "Custom cron"],
 											]}
 										/>
-										<div className="automation-input-group">
-											{form.kind === "once" ? (
-												<FormInput
-													label="Date & time"
-													type="datetime-local"
-													value={form.at}
-													onChange={(value) => set("at", value)}
-													required
-												/>
-											) : form.kind === "cron" ? (
-												<FormInput
-													label="Cron expression"
-													placeholder="0 9 * * *"
-													value={form.expression}
-													onChange={(value) => set("expression", value)}
-													required
-												/>
-											) : (
-												<FormInput
-													label="Time"
-													type="time"
-													value={form.time}
-													onChange={(value) => set("time", value)}
-													required
-												/>
-											)}
-										</div>
+										{form.kind === "once" ? (
+											<FormInput
+												label="Date & time"
+												type="datetime-local"
+												value={form.at}
+												onChange={(value) => set("at", value)}
+												required
+											/>
+										) : form.kind === "cron" ? (
+											<FormInput
+												label="Cron expression"
+												placeholder="0 9 * * *"
+												value={form.expression}
+												onChange={(value) => set("expression", value)}
+												required
+											/>
+										) : (
+											<FormInput
+												label="Time"
+												type="time"
+												value={form.time}
+												onChange={(value) => set("time", value)}
+												required
+											/>
+										)}
 									</div>
 									{form.kind === "weekly" && (
 										<fieldset className="automation-weekdays">
@@ -503,6 +661,7 @@ function AutomationEditor({
 													<Button
 														key={day}
 														type="button"
+														size="compact"
 														variant={
 															form.days.includes(day) ? "secondary" : "ghost"
 														}
@@ -529,15 +688,13 @@ function AutomationEditor({
 											Five fields: minute · hour · day · month · weekday.
 										</p>
 									)}
-									<div className="automation-input-group">
-										<FormInput
-											label="Timezone"
-											value={form.timezone}
-											onChange={(value) => set("timezone", value)}
-											readOnly={form.kind === "once"}
-											required
-										/>
-									</div>
+									<FormInput
+										label="Timezone"
+										value={form.timezone}
+										onChange={(value) => set("timezone", value)}
+										readOnly={form.kind === "once"}
+										required
+									/>
 									<div
 										className={`automation-preview ${preview.error ? "is-error" : ""}`}
 										aria-live="polite"
@@ -571,6 +728,7 @@ function AutomationEditor({
 										label="Enable schedule"
 										checked={form.enabled}
 										onToggle={() => set("enabled", !form.enabled)}
+										size="compact"
 										className="automation-switch-only"
 									/>
 								</div>
@@ -587,6 +745,7 @@ function AutomationEditor({
 						<Button
 							type="button"
 							variant="ghost"
+							size="compact"
 							onClick={onClose}
 							disabled={saving}
 						>
@@ -595,17 +754,19 @@ function AutomationEditor({
 						{panel === "configuration" && !definition?.archived && (
 							<Button
 								type="submit"
+								size="compact"
 								leadingIcon={definition ? Check : Plus}
 								loading={saving}
 								disabled={
 									definition?.archived ||
-									(form.target !== "direct_ops" && !form.repositoryId) ||
+									(form.target !== "direct_ops" &&
+										!(form.repositoryIds || []).length) ||
 									!preview.times.length ||
 									preview.loading ||
 									teamsLoading
 								}
 							>
-								{definition ? "Save changes" : "Create automation"}
+								{definition ? "Save changes" : "Create schedule"}
 							</Button>
 						)}
 					</DialogFooter>
@@ -706,7 +867,7 @@ function AutomationActivity({
 	return (
 		<section
 			className="automation-dialog-activity"
-			aria-label="Automation activity"
+			aria-label="Schedule activity"
 		>
 			<div className="automation-history-toolbar">
 				<span>
@@ -740,8 +901,8 @@ function AutomationActivity({
 							type="button"
 							variant="ghost"
 							size="icon-compact"
-							title="Archive automation"
-							aria-label="Archive automation"
+							title="Archive schedule"
+							aria-label="Archive schedule"
 							onClick={() => onAction("archive")}
 						>
 							<Archive size={16} />
@@ -924,17 +1085,19 @@ function AutomationsApp({ onSession }) {
 	}
 	useEffect(() => {
 		const onRouteChange = () => {
+			redirectLegacyBoardHash();
 			setPage(boardPageFromHash(window.location.hash));
 			setEditor(null);
 			setConfirmation(null);
 		};
+		redirectLegacyBoardHash();
 		window.addEventListener("hashchange", onRouteChange);
 		return () => window.removeEventListener("hashchange", onRouteChange);
 	}, []);
 	useEffect(() => {
 		const titles = {
 			tasks: "Miko · Tasks & Logs",
-			automations: "Miko · Automations",
+			automations: "Miko · Schedules",
 			status: "Miko · Status",
 			skills: "Miko · Skills",
 		};
@@ -966,6 +1129,7 @@ function AutomationsApp({ onSession }) {
 							<Button
 								id="show-tasks"
 								variant="ghost"
+								size="compact"
 								active={page === "tasks"}
 								leadingIcon={ListTodo}
 								asChild
@@ -976,16 +1140,18 @@ function AutomationsApp({ onSession }) {
 							<Button
 								id="show-automations"
 								variant="ghost"
+								size="compact"
 								active={page === "automations"}
 								leadingIcon={CalendarClock}
 								asChild
 								aria-current={page === "automations" ? "page" : undefined}
 							>
-								<a href={boardPageHref("automations")}>Automations</a>
+								<a href={boardPageHref("automations")}>Schedules</a>
 							</Button>
 							<Button
 								id="show-skills"
 								variant="ghost"
+								size="compact"
 								active={page === "skills"}
 								leadingIcon={BookOpen}
 								asChild
@@ -996,6 +1162,7 @@ function AutomationsApp({ onSession }) {
 							<Button
 								id="show-status"
 								variant="ghost"
+								size="compact"
 								active={page === "status"}
 								leadingIcon={Activity}
 								asChild
@@ -1013,27 +1180,27 @@ function AutomationsApp({ onSession }) {
 				)}
 				<div className="fluid-scope automation-canvas">
 					<div className="automation-toolbar">
-						<InputGroup className="automation-search" size="default">
+						<InputGroup className="automation-search" size="compact">
 							<InputField
-								label="Search automations"
+								label="Search schedules"
 								labelHidden
 								index={0}
 								type="search"
 								value={query}
 								onChange={setQuery}
-								placeholder="Search automations…"
+								placeholder="Search schedules…"
 							/>
 						</InputGroup>
 						<Button
-							size="default"
+							size="compact"
 							className="automation-create"
 							variant="primary"
-							aria-label="New automation"
-							title="New automation"
+							aria-label="New schedule"
+							title="New schedule"
 							onClick={() => create()}
 							disabled={loading}
 						>
-							New automation
+							New schedule
 						</Button>
 					</div>
 					{(error || storeError) && (
@@ -1065,7 +1232,7 @@ function AutomationsApp({ onSession }) {
 							<div className="automation-list-empty">
 								{query
 									? "No matching schedules."
-									: "No automations yet. Create one to get started."}
+									: "No schedules yet. Create one to get started."}
 							</div>
 						) : (
 							matching.map((d) => (
@@ -1080,27 +1247,47 @@ function AutomationsApp({ onSession }) {
 										setEditor({ definition: d });
 									}}
 								>
-									<span className="automation-row-name">
-										<strong>{d.name}</strong>
-										<span>
-											{d.target?.kind === "direct_ops"
-												? "No repository"
-												: options.repositories.find(
-														(r) => r.id === d.repositoryId,
-													)?.name || d.repositoryId}
-										</span>
+									<span className="automation-row-name" title={d.name}>
+										{d.name}
 									</span>
-									<span className="automation-row-schedule">
+									<span
+										className="automation-row-meta"
+										title={formatRepositoryNames(d, options.repositories)}
+									>
+										{formatRepositoryNames(d, options.repositories)}
+									</span>
+									<span
+										className="automation-row-model"
+										title={resolveAutomationModel(d, options)}
+									>
+										<AutomationModelIcon
+											model={resolveAutomationModel(d, options)}
+											size={12}
+										/>
+										<span>{resolveAutomationModel(d, options)}</span>
+									</span>
+									<span
+										className="automation-row-schedule"
+										title={`${scheduleLabel(d)} · ${d.timezone}`}
+									>
 										{scheduleLabel(d)}
-										<span>{d.timezone}</span>
 									</span>
-									<span className="automation-row-next">
+									<span
+										className="automation-row-next"
+										title={
+											d.nextRunAt
+												? formatDate(d.nextRunAt, d.timezone, true)
+												: "No upcoming runs"
+										}
+									>
 										{d.nextRunAt
-											? `Next ${formatDate(d.nextRunAt, d.timezone, true)}`
-											: "No upcoming runs"}
+											? formatDate(d.nextRunAt, d.timezone, true)
+											: "—"}
 									</span>
-									<StatusBadge status={d.scheduleState} />
-									<ChevronRight size={15} />
+									<span className="automation-row-status">
+										<StatusBadge status={d.scheduleState} />
+									</span>
+									<ChevronRight size={15} aria-hidden />
 								</button>
 							))
 						)}
@@ -1153,7 +1340,7 @@ function AutomationsApp({ onSession }) {
 						<DialogHeader>
 							<DialogTitle>
 								{confirmation?.action === "archive"
-									? "Archive this automation?"
+									? "Archive this schedule?"
 									: "Has the execution ended?"}
 							</DialogTitle>
 							<DialogDescription>
@@ -1165,14 +1352,19 @@ function AutomationsApp({ onSession }) {
 						<DialogFooter>
 							<Button
 								variant="ghost"
+								size="compact"
 								onClick={() => setConfirmation(null)}
 								disabled={busy === "confirm"}
 							>
 								Cancel
 							</Button>
-							<Button loading={busy === "confirm"} onClick={confirm}>
+							<Button
+								size="compact"
+								loading={busy === "confirm"}
+								onClick={confirm}
+							>
 								{confirmation?.action === "archive"
-									? "Archive automation"
+									? "Archive schedule"
 									: "Confirm ended"}
 							</Button>
 						</DialogFooter>
