@@ -24,13 +24,28 @@ const ICONS = {
 
 function BrandIcon({ kind, size = 14, className }) {
 	const Icon = ICONS[kind];
+	const boxStyle = { width: size, height: size };
 	if (!Icon) {
 		return (
-			<Brain size={size} strokeWidth={1.75} className={className} aria-hidden />
+			<span
+				className={`automation-brand-icon ${className || ""}`.trim()}
+				style={boxStyle}
+				aria-hidden
+			>
+				<Brain size={size} strokeWidth={1.75} />
+			</span>
 		);
 	}
 	const Avatar = Icon.Avatar || Icon.Color || Icon;
-	return <Avatar size={size} className={className} aria-hidden />;
+	return (
+		<span
+			className={`automation-brand-icon ${className || ""}`.trim()}
+			style={boxStyle}
+			aria-hidden
+		>
+			<Avatar size={size} />
+		</span>
+	);
 }
 
 export function AutomationModelIcon({ model, size = 14, className }) {

@@ -1126,9 +1126,9 @@ const ComboboxItem = forwardRef<HTMLDivElement, ComboboxItemProps>(
           />
         )}
 
-        {/* py-1/-my-1 keeps truncate's overflow:hidden from clipping
-            ascenders/descenders outside the trimmed box. */}
-        <span className="flex-1 min-w-0 truncate [text-box:trim-both_cap_alphabetic] py-1 -my-1">
+        {/* Flex + overflow-hidden (not text-box trim) so brand icons inside
+            custom children are not clipped at the top; labels still truncate. */}
+        <span className="flex flex-1 min-w-0 items-center gap-2 overflow-hidden py-1 -my-1">
           {children}
         </span>
 

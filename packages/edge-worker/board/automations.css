@@ -154,17 +154,28 @@ body [hidden] {
 	font-size: 10px;
 	font-weight: 550;
 	letter-spacing: 0.01em;
+	line-height: 1;
 	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 .automation-row-model > span {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	line-height: 1;
 }
-.automation-row-model svg,
-.automation-row-model img {
+.automation-row-model .automation-brand-icon,
+.automation-combobox-option .automation-brand-icon {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+	overflow: visible;
+}
+.automation-row-model .automation-brand-icon > *,
+.automation-combobox-option .automation-brand-icon > * {
+	display: block;
 	flex-shrink: 0;
 }
 .automation-combobox {
@@ -176,11 +187,14 @@ body [hidden] {
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
+	line-height: 1;
+	max-width: 100%;
 }
 .automation-combobox-option > span {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	line-height: 1.25;
 }
 .automation-field-hint.is-error,
 .automation-field .text-destructive {

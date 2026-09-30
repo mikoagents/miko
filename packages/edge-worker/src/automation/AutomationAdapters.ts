@@ -15,7 +15,8 @@ import {
 } from "./types.js";
 
 export interface AutomationRunnerOptions {
-	runners: typeof AUTOMATION_RUNNERS;
+	/** Configured/available runners only (not the full harness catalog). */
+	runners: Array<(typeof AUTOMATION_RUNNERS)[number]>;
 	defaultRunner: (typeof AUTOMATION_RUNNERS)[number];
 	defaultModels: Record<string, string | undefined>;
 	modelSuggestions: typeof AUTOMATION_MODEL_SUGGESTIONS;
@@ -530,4 +531,3 @@ export function parseGitHubOwnerRepo(
 		return null;
 	}
 }
-

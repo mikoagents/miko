@@ -104,7 +104,10 @@ function StatusBadge({ status }) {
 }
 function FormInput({ label, id: providedId, onChange, className, ...props }) {
 	return (
-		<InputGroup className={className || "automation-input-group w-full"} size="compact">
+		<InputGroup
+			className={className || "automation-input-group w-full"}
+			size="compact"
+		>
 			<InputField
 				id={providedId}
 				label={label}
@@ -471,12 +474,12 @@ function AutomationEditor({
 													!form.workspaceId
 														? "Selected repositories must share one Linear workspace."
 														: form.target === "github_issue" &&
-															  (form.repositoryIds || []).some((id) => {
+																(form.repositoryIds || []).some((id) => {
 																	const repository = options.repositories.find(
 																		(r) => r.id === id,
 																	);
 																	return !repository?.githubUrl;
-															  })
+																})
 															? "Selected repositories need a GitHub URL."
 															: ""
 												}
@@ -510,12 +513,10 @@ function AutomationEditor({
 														? `Default (${RUNNER_LABELS[options.defaultRunner] || options.defaultRunner})`
 														: "Default",
 												},
-												...(options.runners || Object.keys(RUNNER_LABELS)).map(
-													(runner) => ({
-														value: runner,
-														label: RUNNER_LABELS[runner] || runner,
-													}),
-												),
+												...(options.runners || []).map((runner) => ({
+													value: runner,
+													label: RUNNER_LABELS[runner] || runner,
+												})),
 											]}
 											value={form.runner || "default"}
 											onChange={(next) =>

@@ -166,7 +166,6 @@ import {
 } from "./automation/completion.js";
 import {
 	AUTOMATION_MODEL_SUGGESTIONS,
-	AUTOMATION_RUNNERS,
 	type AutomationRun,
 	activeRun,
 	type RepositoryTaskRequest,
@@ -835,17 +834,20 @@ export class EdgeWorker extends EventEmitter {
 			localState: (run) => this.automationLocalState(run),
 			createGitHubIssue: (input) => this.createAutomationGitHubIssue(input),
 			getGitHubIssue: (input) => this.getAutomationGitHubIssue(input),
-			runnerOptions: () => ({
-				runners: AUTOMATION_RUNNERS,
-				defaultRunner: this.runnerSelectionService.getDefaultRunner(),
-				defaultModels: Object.fromEntries(
-					AUTOMATION_RUNNERS.map((runner) => [
-						runner,
-						this.runnerSelectionService.getDefaultModelForRunner(runner),
-					]),
-				),
-				modelSuggestions: AUTOMATION_MODEL_SUGGESTIONS,
-			}),
+			runnerOptions: () => {
+				const runners = this.runnerSelectionService.getAvailableRunners();
+				return {
+					runners,
+					defaultRunner: this.runnerSelectionService.getDefaultRunner(),
+					defaultModels: Object.fromEntries(
+						runners.map((runner) => [
+							runner,
+							this.runnerSelectionService.getDefaultModelForRunner(runner),
+						]),
+					),
+					modelSuggestions: AUTOMATION_MODEL_SUGGESTIONS,
+				};
+			},
 		});
 		this.automations = new AutomationService(
 			new AutomationStore(join(this.mikoHome, "automations")),
@@ -5659,9 +5661,10 @@ ${await this.loadSharedInstructions()}`;
 		return process.env.GITHUB_TOKEN;
 	}
 
-	private parseAutomationGitHubRepo(
-		repository: RepositoryConfig,
-	): { owner: string; repo: string } {
+	private parseAutomationGitHubRepo(repository: RepositoryConfig): {
+		owner: string;
+		repo: string;
+	} {
 		const parsed = parseGitHubOwnerRepo(repository.githubUrl || "");
 		if (!parsed) {
 			throw new Error(
