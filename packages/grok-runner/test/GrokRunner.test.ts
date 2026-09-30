@@ -1,9 +1,4 @@
-import {
-	chmodSync,
-	mkdtempSync,
-	readFileSync,
-	writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SDKAssistantMessage, SDKResultMessage } from "miko-core";
