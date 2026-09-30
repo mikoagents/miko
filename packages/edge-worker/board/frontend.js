@@ -74,6 +74,17 @@ function element(tag, cls, text) {
 function fastLabel(task) {
 	return task.fastMode === true ? " · Fast" : "";
 }
+/** Model chip: omit a broken "Effort unknown" when nothing was recorded. */
+function modelEffortLabel(task) {
+	const model = task.model || "Model unknown";
+	const effort = task.reasoningEffort;
+	return effort
+		? `${model} · ${effort}${fastLabel(task)}`
+		: `${model}${fastLabel(task)}`;
+}
+function effortDetail(task) {
+	return task.reasoningEffort || "—";
+}
 
 function linearIssueLink(identifier, workspaceSlug) {
 	if (!/^[a-z0-9][a-z0-9_-]*$/i.test(workspaceSlug || "")) return null;
@@ -213,7 +224,7 @@ function renderTasks() {
 			t.reason +
 			(t.quiet ? " · No activity for over 2 minutes" : "") +
 			`\nModel: ${t.model || "Unknown"}` +
-			`\nReasoning effort: ${t.reasoningEffort || "Unknown"}` +
+			`\nReasoning effort: ${effortDetail(t)}` +
 			(t.fastMode === true ? "\nFast" : "") +
 			"\nSession " +
 			t.id;
@@ -241,11 +252,7 @@ function renderTasks() {
 				(t.repositories?.join(", ") || "Repository unconfirmed") +
 					(t.archived ? " · Archived" : ""),
 			),
-			element(
-				"span",
-				"task-model",
-				`${t.model || "Model unknown"} · ${t.reasoningEffort || "Effort unknown"}${fastLabel(t)}`,
-			),
+			element("span", "task-model", modelEffortLabel(t)),
 		);
 		meta.append(
 			context,
@@ -276,10 +283,7 @@ function renderLogs() {
 	const task = displayed?.tasks?.find((t) => t.id === selected);
 	const taskDetail = task
 		? `${task.issue || "Task"} · ` +
-			(task.model || "Unknown model") +
-			" · " +
-			(task.reasoningEffort || "Effort unknown") +
-			fastLabel(task) +
+			modelEffortLabel(task) +
 			" · " +
 			(names[task.status] || task.status) +
 			" · Last activity " +

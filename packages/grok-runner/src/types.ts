@@ -14,6 +14,12 @@ export interface GrokRunnerConfig extends AgentRunnerConfig {
 	 * terminated. Disabled by default. Set to 0 to explicitly disable.
 	 */
 	inactivityTimeoutMs?: number;
+	/**
+	 * Reasoning effort passed to `grok --reasoning-effort` / `--effort`.
+	 * When omitted, defaults to the Grok model catalog default (`high`).
+	 * Recorded on the board via the synthetic/enriched init message.
+	 */
+	modelReasoningEffort?: string;
 }
 
 export interface GrokSessionInfo extends AgentSessionInfo {

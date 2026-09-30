@@ -133,6 +133,8 @@ describe("GrokRunner", () => {
 		expect(capture.argv).toContain("--prompt-file");
 		expect(capture.argv).toContain("-m");
 		expect(capture.argv).toContain("grok-4.6");
+		expect(capture.argv).toContain("--reasoning-effort");
+		expect(capture.argv).toContain("high");
 		expect(capture.argv).toContain("--max-turns");
 		expect(capture.argv).toContain("4");
 
@@ -145,6 +147,7 @@ describe("GrokRunner", () => {
 			type: "system",
 			subtype: "init",
 			session_id: "grok-session-123",
+			reasoningEffort: "high",
 		});
 
 		const assistant = allMessages.find(
@@ -260,6 +263,76 @@ process.stdout.write(JSON.stringify({
 		expect(captures[1].promptContents).toContain("Follow-up from Linear");
 		expect(captures[1].argv).toContain("-r");
 		expect(captures[1].argv).toContain("grok-session-123");
+	});
+
+
+	it("passes and records an explicit modelReasoningEffort", async () => {
+		const dir = makeTempDir();
+		const captureFile = join(dir, "capture.json");
+		const grokPath = writeFakeGrok(
+			dir,
+			`process.stdout.write(${JSON.stringify(`${sampleOutput}\n`)});`,
+			captureFile,
+		);
+		const runner = new GrokRunner({
+			grokPath,
+			workingDirectory: dir,
+			mikoHome: dir,
+			model: "grok-4.7",
+			modelReasoningEffort: "xhigh",
+		});
+
+		await runner.start("Use high effort");
+		const capture = JSON.parse(readFileSync(captureFile, "utf8"));
+		expect(capture.argv).toContain("--reasoning-effort");
+		expect(capture.argv).toContain("xhigh");
+		expect(runner.getMessages()[0]).toMatchObject({
+			type: "system",
+			subtype: "init",
+			reasoningEffort: "xhigh",
+		});
+	});
+
+	it("records default effort on synthetic init when CLI emits none", async () => {
+		const dir = makeTempDir();
+		const resultLine = JSON.stringify({
+			type: "result",
+			subtype: "success",
+			session_id: "synth-1",
+			uuid: "33333333-3333-3333-3333-333333333333",
+			is_error: false,
+			duration_ms: 1,
+			duration_api_ms: 1,
+			num_turns: 1,
+			result: "done",
+			stop_reason: "end_turn",
+			total_cost_usd: 0,
+			usage: {
+				input_tokens: 1,
+				output_tokens: 1,
+				cache_creation_input_tokens: 0,
+				cache_read_input_tokens: 0,
+			},
+			modelUsage: {},
+			permission_denials: [],
+		});
+		const grokPath = writeFakeGrok(
+			dir,
+			`process.stdout.write(${JSON.stringify(resultLine + "\n")});`,
+		);
+		const runner = new GrokRunner({
+			grokPath,
+			workingDirectory: dir,
+			mikoHome: dir,
+			model: "grok-4.7",
+		});
+		await runner.start("synth");
+		expect(runner.getMessages()[0]).toMatchObject({
+			type: "system",
+			subtype: "init",
+			model: "grok-4.7",
+			reasoningEffort: "high",
+		});
 	});
 
 	it("rejects addStreamMessage when no session is running", () => {
