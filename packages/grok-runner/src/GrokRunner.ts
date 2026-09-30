@@ -56,7 +56,14 @@ export declare interface GrokRunner {
  * IAgentRunner interface.
  */
 export class GrokRunner extends EventEmitter implements IAgentRunner {
-	readonly supportsStreamingInput = false;
+	/**
+	 * Grok headless CLI is single-turn, but Linear follow-ups arrive while a turn
+	 * is still running. Advertise streaming so EdgeWorker injects via
+	 * {@link addStreamMessage} instead of SIGTERM + resume. Follow-ups are
+	 * buffered and chained as `-r` turns on the same runner until the queue
+	 * drains — mirroring Codex's mid-session injection contract.
+	 */
+	readonly supportsStreamingInput = true;
 
 	private readonly config: GrokRunnerConfig;
 	private readonly formatter: IMessageFormatter;
@@ -72,6 +79,10 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 	private stderr = "";
 	private nonJsonStartupOutput: string[] = [];
 	private promptDir: string | null = null;
+	/** Follow-ups that arrived while a turn was still running. */
+	private pendingFollowups: string[] = [];
+	/** Session id to pass as `-r` on chained turns (updated from init/result). */
+	private chainedResumeSessionId: string | null = null;
 
 	constructor(config: GrokRunnerConfig) {
 		super();
@@ -84,29 +95,127 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 	}
 
 	async start(prompt: string): Promise<GrokSessionInfo> {
+		return this.runSession(prompt);
+	}
+
+	async startStreaming(initialPrompt?: string): Promise<GrokSessionInfo> {
+		return this.runSession(initialPrompt || "");
+	}
+
+	/**
+	 * Queue a follow-up for the next chained `-r` turn. While a turn is running
+	 * Grok headless cannot accept stdin, so we buffer and resume after close —
+	 * avoiding EdgeWorker's SIGTERM + "Grok session stopped" path.
+	 */
+	addStreamMessage(content: string): void {
+		if (!this.isRunning()) {
+			throw new Error("Cannot stream message: no active Grok session");
+		}
+		this.pendingFollowups.push(content);
+	}
+
+	completeStream(): void {
+		// No-op: each turn is delivered up front (or via chained `-r`); there is
+		// no open stdin stream to close.
+	}
+
+	isStreaming(): boolean {
+		// True for the whole running multi-turn window so callers stream
+		// follow-ups in (buffered) rather than stopping the process.
+		return this.supportsStreamingInput && this.isRunning();
+	}
+
+	stop(): void {
+		if (!this.sessionInfo?.isRunning) {
+			return;
+		}
+		this.wasStopped = true;
+		this.pendingFollowups = [];
+		this.process?.kill("SIGTERM");
+	}
+
+	isRunning(): boolean {
+		return this.sessionInfo?.isRunning ?? false;
+	}
+
+	/**
+	 * Keep one logical session open across multiple single-turn `grok` processes.
+	 * Follow-ups buffered via {@link addStreamMessage} become subsequent `-r` turns.
+	 */
+	private async runSession(initialPrompt: string): Promise<GrokSessionInfo> {
 		if (this.isRunning()) {
 			throw new Error("Grok session already running");
 		}
 
 		this.resetSessionState();
+		this.chainedResumeSessionId = this.config.resumeSessionId || null;
 		this.sessionInfo = {
-			sessionId: this.config.resumeSessionId || null,
+			sessionId: this.chainedResumeSessionId,
 			startedAt: new Date(),
 			isRunning: true,
 		};
 
-		return new Promise<GrokSessionInfo>((resolve) => {
+		let nextPrompt: string | null = initialPrompt;
+		let sessionError: unknown;
+
+		while (nextPrompt !== null) {
+			if (this.wasStopped) {
+				sessionError = new Error("Grok session stopped");
+				break;
+			}
+
+			try {
+				await this.runOneTurn(nextPrompt);
+			} catch (error) {
+				sessionError = error;
+				break;
+			}
+
+			if (this.wasStopped) {
+				sessionError = sessionError ?? new Error("Grok session stopped");
+				break;
+			}
+
+			if (this.pendingFollowups.length > 0) {
+				nextPrompt = this.pendingFollowups.shift()!;
+				// Remember session id for `-r` on the next CLI invocation.
+				this.chainedResumeSessionId =
+					this.sessionInfo?.sessionId || this.chainedResumeSessionId;
+				this.prepareForChainedTurn();
+				continue;
+			}
+
+			nextPrompt = null;
+		}
+
+		this.finishSession(sessionError);
+		return this.sessionInfo as GrokSessionInfo;
+	}
+
+	private runOneTurn(prompt: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
 			let stdoutBuffer = "";
 			let inactivityTimer: NodeJS.Timeout | undefined;
 			let forceKillTimer: NodeJS.Timeout | undefined;
 			const inactivityTimeoutMs = this.config.inactivityTimeoutMs;
+			let settled = false;
+
+			const settle = (error?: unknown) => {
+				if (settled) return;
+				settled = true;
+				if (error) {
+					reject(error instanceof Error ? error : new Error(String(error)));
+				} else {
+					resolve();
+				}
+			};
 
 			let args: string[];
 			try {
 				args = this.buildArgs(prompt);
 			} catch (error) {
-				this.finalizeSession(error);
-				resolve(this.sessionInfo as GrokSessionInfo);
+				this.finalizeTurn(error);
+				settle(error);
 				return;
 			}
 
@@ -120,6 +229,7 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 			this.process = child;
+			// Headless Grok does not read piped stdin; prompt is via --prompt-file.
 			child.stdin.end();
 
 			const clearInactivityTimers = () => {
@@ -139,8 +249,8 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 					const error = new Error(
 						`Grok produced no output for ${timeoutDescription} and was terminated`,
 					);
-					this.finalizeSession(error);
-					resolve(this.sessionInfo as GrokSessionInfo);
+					this.finalizeTurn(error);
+					settle(error);
 					child.kill("SIGTERM");
 					forceKillTimer = setTimeout(() => {
 						if (child.exitCode === null && child.signalCode === null) {
@@ -169,8 +279,8 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 			child.on("error", (error) => {
 				clearInactivityTimers();
 				this.cleanupPromptDir();
-				this.finalizeSession(error);
-				resolve(this.sessionInfo as GrokSessionInfo);
+				this.finalizeTurn(error);
+				settle(error);
 			});
 
 			child.on("close", (code, signal) => {
@@ -192,34 +302,10 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 					error = new Error(`Grok exited with signal ${signal}`);
 				}
 
-				this.finalizeSession(error);
-				resolve(this.sessionInfo as GrokSessionInfo);
+				this.finalizeTurn(error);
+				settle(error);
 			});
 		});
-	}
-
-	async startStreaming(initialPrompt?: string): Promise<GrokSessionInfo> {
-		return this.start(initialPrompt || "");
-	}
-
-	addStreamMessage(_content: string): void {
-		throw new Error("GrokRunner does not support streaming input messages");
-	}
-
-	completeStream(): void {
-		// No-op: GrokRunner does not support streaming input.
-	}
-
-	stop(): void {
-		if (!this.sessionInfo?.isRunning) {
-			return;
-		}
-		this.wasStopped = true;
-		this.process?.kill("SIGTERM");
-	}
-
-	isRunning(): boolean {
-		return this.sessionInfo?.isRunning ?? false;
 	}
 
 	getMessages(): SDKMessage[] {
@@ -238,6 +324,20 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 		this.lastAssistantText = null;
 		this.startTimestampMs = Date.now();
 		this.wasStopped = false;
+		this.hasFinalized = false;
+		this.stderr = "";
+		this.nonJsonStartupOutput = [];
+		this.pendingFollowups = [];
+		this.chainedResumeSessionId = null;
+		this.cleanupPromptDir();
+	}
+
+	/** Reset per-turn bookkeeping while keeping the logical session running. */
+	private prepareForChainedTurn(): void {
+		this.process = null;
+		this.pendingResultMessage = null;
+		this.lastAssistantText = null;
+		this.startTimestampMs = Date.now();
 		this.hasFinalized = false;
 		this.stderr = "";
 		this.nonJsonStartupOutput = [];
@@ -278,8 +378,10 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 		if (this.config.maxTurns !== undefined) {
 			args.push("--max-turns", String(this.config.maxTurns));
 		}
-		if (this.config.resumeSessionId) {
-			args.push("-r", this.config.resumeSessionId);
+		const resumeId =
+			this.chainedResumeSessionId || this.config.resumeSessionId || null;
+		if (resumeId) {
+			args.push("-r", resumeId);
 		}
 		if (this.config.allowedTools && this.config.allowedTools.length > 0) {
 			args.push("--tools", this.config.allowedTools.join(","));
@@ -332,6 +434,7 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 		const sessionId = extractSessionId(message);
 		if (sessionId && this.sessionInfo) {
 			this.sessionInfo.sessionId = sessionId;
+			this.chainedResumeSessionId = sessionId;
 		}
 
 		if (
@@ -423,22 +526,27 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 		} as SDKResultMessage;
 	}
 
-	private finalizeSession(error?: unknown): void {
+	/**
+	 * Finalize a single CLI turn: emit result (and synthetic init if needed).
+	 * Leaves {@link isRunning} true so chained follow-ups can keep streaming in.
+	 */
+	private finalizeTurn(error?: unknown): void {
 		if (this.hasFinalized) {
 			return;
 		}
 		this.hasFinalized = true;
+		this.process = null;
 
 		if (!this.sessionInfo) {
 			return;
 		}
 
-		this.sessionInfo.isRunning = false;
-		this.process = null;
-
 		if (!this.hasInitMessage) {
 			const sessionId =
-				this.sessionInfo.sessionId || this.config.resumeSessionId || "pending";
+				this.sessionInfo.sessionId ||
+				this.chainedResumeSessionId ||
+				this.config.resumeSessionId ||
+				"pending";
 			this.pushMessage({
 				type: "system",
 				subtype: "init",
@@ -459,6 +567,7 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 			} as SDKMessage);
 			this.hasInitMessage = true;
 			this.sessionInfo.sessionId = sessionId;
+			this.chainedResumeSessionId = sessionId;
 		}
 
 		if (error) {
@@ -477,6 +586,22 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 
 		this.pushMessage(this.pendingResultMessage);
 		this.pendingResultMessage = null;
+	}
+
+	/** Mark the logical session finished after the last turn (or on fatal stop). */
+	private finishSession(error?: unknown): void {
+		if (!this.sessionInfo) {
+			return;
+		}
+
+		// If we stopped before any turn finalized, still emit a terminal result.
+		if (!this.hasFinalized && error) {
+			this.finalizeTurn(error);
+		}
+
+		this.sessionInfo.isRunning = false;
+		this.process = null;
+		this.pendingFollowups = [];
 		this.emit("complete", [...this.messages]);
 	}
 
