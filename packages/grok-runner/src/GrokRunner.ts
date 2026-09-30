@@ -39,6 +39,28 @@ function extractSessionId(
 		: null;
 }
 
+/** Canonical levels accepted by `grok --reasoning-effort`. */
+const GROK_REASONING_EFFORTS = new Set([
+	"none",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+]);
+
+/** Grok model catalog default when the caller does not set an override. */
+const DEFAULT_GROK_REASONING_EFFORT = "high";
+
+function normalizeGrokReasoningEffort(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim().toLowerCase();
+	return GROK_REASONING_EFFORTS.has(trimmed) ? trimmed : undefined;
+}
+
+type GrokInitMessage = SDKMessage & { reasoningEffort?: string };
+
 export declare interface GrokRunner {
 	on<K extends keyof GrokRunnerEvents>(
 		event: K,
@@ -354,6 +376,34 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 		this.promptDir = null;
 	}
 
+
+	/**
+	 * Effective effort for this session: explicit config, else the Grok catalog
+	 * default (`high`). Always set so the status board can show a real value —
+	 * the CLI init event does not include effort.
+	 */
+	private effectiveReasoningEffort(): string {
+		return (
+			normalizeGrokReasoningEffort(this.config.modelReasoningEffort) ??
+			DEFAULT_GROK_REASONING_EFFORT
+		);
+	}
+
+	/** Attach reasoningEffort to an init message when the CLI omitted it. */
+	private withReasoningEffort(message: SDKMessage): GrokInitMessage {
+		const existing = (message as { reasoningEffort?: unknown }).reasoningEffort;
+		const effort =
+			normalizeGrokReasoningEffort(existing) ?? this.effectiveReasoningEffort();
+		if (
+			typeof existing === "string" &&
+			existing === effort &&
+			"reasoningEffort" in message
+		) {
+			return message as GrokInitMessage;
+		}
+		return { ...(message as object), reasoningEffort: effort } as GrokInitMessage;
+	}
+
 	private buildArgs(prompt: string): string[] {
 		const workingDirectory = this.config.workingDirectory || cwd();
 		const fullPrompt = this.buildInputPrompt(prompt);
@@ -375,6 +425,7 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 		if (this.config.model) {
 			args.push("-m", this.config.model);
 		}
+		args.push("--reasoning-effort", this.effectiveReasoningEffort());
 		if (this.config.maxTurns !== undefined) {
 			args.push("--max-turns", String(this.config.maxTurns));
 		}
@@ -442,6 +493,8 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 			(message as { subtype?: string }).subtype === "init"
 		) {
 			this.hasInitMessage = true;
+			this.pushMessage(this.withReasoningEffort(message));
+			return;
 		}
 
 		if (message.type === "assistant") {
@@ -547,24 +600,26 @@ export class GrokRunner extends EventEmitter implements IAgentRunner {
 				this.chainedResumeSessionId ||
 				this.config.resumeSessionId ||
 				"pending";
-			this.pushMessage({
-				type: "system",
-				subtype: "init",
-				agents: undefined,
-				apiKeySource: "user",
-				claude_code_version: "grok-cli",
-				cwd: this.config.workingDirectory || cwd(),
-				tools: this.config.allowedTools || [],
-				mcp_servers: [],
-				model: this.config.model || "grok-4.6",
-				permissionMode: "default",
-				slash_commands: [],
-				output_style: "default",
-				skills: [],
-				plugins: [],
-				uuid: randomUUID(),
-				session_id: sessionId,
-			} as SDKMessage);
+			this.pushMessage(
+				this.withReasoningEffort({
+					type: "system",
+					subtype: "init",
+					agents: undefined,
+					apiKeySource: "user",
+					claude_code_version: "grok-cli",
+					cwd: this.config.workingDirectory || cwd(),
+					tools: this.config.allowedTools || [],
+					mcp_servers: [],
+					model: this.config.model || "grok-4.6",
+					permissionMode: "default",
+					slash_commands: [],
+					output_style: "default",
+					skills: [],
+					plugins: [],
+					uuid: randomUUID(),
+					session_id: sessionId,
+				} as SDKMessage),
+			);
 			this.hasInitMessage = true;
 			this.sessionInfo.sessionId = sessionId;
 			this.chainedResumeSessionId = sessionId;
