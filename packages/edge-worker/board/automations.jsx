@@ -41,7 +41,11 @@ import {
 	scheduleLabel,
 	statusColors,
 } from "./automation-model.mjs";
-import { boardPageFromHash, boardPageHref } from "./board-route.mjs";
+import {
+	boardPageFromHash,
+	boardPageHref,
+	redirectLegacyBoardHash,
+} from "./board-route.mjs";
 import { Badge } from "./fluid/components/ui/badge";
 import { Button } from "./fluid/components/ui/button";
 import {
@@ -369,10 +373,10 @@ function AutomationEditor({
 				<DialogHeader className="automation-editor-header">
 					<DialogTitle>
 						{definition?.archived
-							? "Archived automation"
+							? "Archived schedule"
 							: definition
-								? "Edit automation"
-								: "New automation"}
+								? "Edit schedule"
+								: "New schedule"}
 					</DialogTitle>
 					<DialogDescription>
 						{definition
@@ -384,7 +388,7 @@ function AutomationEditor({
 				{definition && (
 					<div className="automation-editor-tabs">
 						<Tabs value={panel} onValueChange={setPanel} size="compact">
-							<TabsList aria-label="Automation details">
+							<TabsList aria-label="Schedule details">
 								<TabItem value="configuration" label="Configuration" />
 								<TabItem value="history" label="Run history" />
 							</TabsList>
@@ -748,7 +752,7 @@ function AutomationEditor({
 									teamsLoading
 								}
 							>
-								{definition ? "Save changes" : "Create automation"}
+								{definition ? "Save changes" : "Create schedule"}
 							</Button>
 						)}
 					</DialogFooter>
@@ -849,7 +853,7 @@ function AutomationActivity({
 	return (
 		<section
 			className="automation-dialog-activity"
-			aria-label="Automation activity"
+			aria-label="Schedule activity"
 		>
 			<div className="automation-history-toolbar">
 				<span>
@@ -883,8 +887,8 @@ function AutomationActivity({
 							type="button"
 							variant="ghost"
 							size="icon-compact"
-							title="Archive automation"
-							aria-label="Archive automation"
+							title="Archive schedule"
+							aria-label="Archive schedule"
 							onClick={() => onAction("archive")}
 						>
 							<Archive size={16} />
@@ -1067,17 +1071,19 @@ function AutomationsApp({ onSession }) {
 	}
 	useEffect(() => {
 		const onRouteChange = () => {
+			redirectLegacyBoardHash();
 			setPage(boardPageFromHash(window.location.hash));
 			setEditor(null);
 			setConfirmation(null);
 		};
+		redirectLegacyBoardHash();
 		window.addEventListener("hashchange", onRouteChange);
 		return () => window.removeEventListener("hashchange", onRouteChange);
 	}, []);
 	useEffect(() => {
 		const titles = {
 			tasks: "Miko · Tasks & Logs",
-			automations: "Miko · Automations",
+			automations: "Miko · Schedules",
 			status: "Miko · Status",
 			skills: "Miko · Skills",
 		};
@@ -1126,7 +1132,7 @@ function AutomationsApp({ onSession }) {
 								asChild
 								aria-current={page === "automations" ? "page" : undefined}
 							>
-								<a href={boardPageHref("automations")}>Automations</a>
+								<a href={boardPageHref("automations")}>Schedules</a>
 							</Button>
 							<Button
 								id="show-skills"
@@ -1162,25 +1168,25 @@ function AutomationsApp({ onSession }) {
 					<div className="automation-toolbar">
 						<InputGroup className="automation-search" size="compact">
 							<InputField
-								label="Search automations"
+								label="Search schedules"
 								labelHidden
 								index={0}
 								type="search"
 								value={query}
 								onChange={setQuery}
-								placeholder="Search automations…"
+								placeholder="Search schedules…"
 							/>
 						</InputGroup>
 						<Button
 							size="compact"
 							className="automation-create"
 							variant="primary"
-							aria-label="New automation"
-							title="New automation"
+							aria-label="New schedule"
+							title="New schedule"
 							onClick={() => create()}
 							disabled={loading}
 						>
-							New automation
+							New schedule
 						</Button>
 					</div>
 					{(error || storeError) && (
@@ -1212,7 +1218,7 @@ function AutomationsApp({ onSession }) {
 							<div className="automation-list-empty">
 								{query
 									? "No matching schedules."
-									: "No automations yet. Create one to get started."}
+									: "No schedules yet. Create one to get started."}
 							</div>
 						) : (
 							matching.map((d) => (
@@ -1303,7 +1309,7 @@ function AutomationsApp({ onSession }) {
 						<DialogHeader>
 							<DialogTitle>
 								{confirmation?.action === "archive"
-									? "Archive this automation?"
+									? "Archive this schedule?"
 									: "Has the execution ended?"}
 							</DialogTitle>
 							<DialogDescription>
@@ -1327,7 +1333,7 @@ function AutomationsApp({ onSession }) {
 								onClick={confirm}
 							>
 								{confirmation?.action === "archive"
-									? "Archive automation"
+									? "Archive schedule"
 									: "Confirm ended"}
 							</Button>
 						</DialogFooter>

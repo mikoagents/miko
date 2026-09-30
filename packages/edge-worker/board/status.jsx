@@ -241,7 +241,7 @@ function StatusApp() {
 								<strong>{formatUptime(data.uptimeSeconds)}</strong>
 							</article>
 							<article className="status-card">
-								<span>Automations</span>
+								<span>Schedules</span>
 								<strong>
 									{typeof data.automationCount === "number"
 										? data.automationCount
