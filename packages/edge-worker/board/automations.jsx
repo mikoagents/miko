@@ -340,6 +340,16 @@ function AutomationEditor({
 					);
 				if (!input.target.teamId) throw new Error("Choose a Linear team.");
 			}
+			if (input.target.kind === "github_issue") {
+				const missing = (input.repositoryIds || []).filter((id) => {
+					const repository = options.repositories.find((r) => r.id === id);
+					return !repository?.githubUrl;
+				});
+				if (missing.length)
+					throw new Error(
+						"Choose repositories that have a GitHub URL configured.",
+					);
+			}
 			const saved = definition
 				? await api(`/${definition.id}`, "PATCH", {
 						revision: definition.revision,
@@ -464,7 +474,15 @@ function AutomationEditor({
 													(form.repositoryIds || []).length > 1 &&
 													!form.workspaceId
 														? "Selected repositories must share one Linear workspace."
-														: ""
+														: form.target === "github_issue" &&
+															  (form.repositoryIds || []).some((id) => {
+																	const repository = options.repositories.find(
+																		(r) => r.id === id,
+																	);
+																	return !repository?.githubUrl;
+															  })
+															? "Selected repositories need a GitHub URL."
+															: ""
 												}
 											/>
 										)}
@@ -480,6 +498,7 @@ function AutomationEditor({
 												["direct_repository", "Run directly"],
 												["direct_ops", "Ops (no repository)"],
 												["linear_issue", "Create Linear issue"],
+												["github_issue", "Create GitHub issue"],
 											]}
 										/>
 									</div>
@@ -563,7 +582,9 @@ function AutomationEditor({
 											? "One isolated worktree session per selected repository. Agent and model override the install defaults for this schedule."
 											: form.target === "direct_ops"
 												? "Runs in a separate workspace without cloning a repository. Use for Linear operations and other tasks outside a code repository."
-												: "Creates an issue in the selected repositories' shared Linear workspace and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
+												: form.target === "github_issue"
+													? "Creates a GitHub issue on each selected repository via the GitHub App, then starts the agent in that repo. Multi-repo fans out one issue and session per repository."
+													: "Creates an issue in the selected repositories' shared Linear workspace and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
 									</p>
 									{form.target === "linear_issue" && (
 										<div className="automation-linear-fields">

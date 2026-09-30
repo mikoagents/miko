@@ -262,6 +262,17 @@ describe("automation form serialization", () => {
 		};
 		expect(inputFromForm(repoForm).repositoryIds).toEqual(["repo"]);
 	});
+	it("serializes github_issue target without Linear fields", () => {
+		const form = {
+			...formFromDefinition(undefined, options),
+			target: "github_issue",
+			repositoryIds: ["repo"],
+			teamId: "should-ignore",
+			workspaceId: "ws",
+		};
+		expect(inputFromForm(form).target).toEqual({ kind: "github_issue" });
+		expect(inputFromForm(form).repositoryIds).toEqual(["repo"]);
+	});
 	it("loads legacy singular repositoryId into repositoryIds", () => {
 		const form = formFromDefinition(
 			{

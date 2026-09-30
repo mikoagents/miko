@@ -68,6 +68,8 @@ export const targetSchema = z.discriminatedUnion("kind", [
 		teamId: z.string().min(1),
 		projectId: z.string().min(1).optional(),
 	}),
+	/** Create a GitHub issue on each selected repository (App/API), then wake the agent. */
+	z.object({ kind: z.literal("github_issue") }),
 ]);
 /**
  * Resolve repository bindings. Prefers `repositoryIds`; falls back to legacy
@@ -217,6 +219,7 @@ export type RunUpdate = Partial<
 		AutomationRun,
 		| "status"
 		| "message"
+		| "issueId"
 		| "issueUrl"
 		| "sessionId"
 		| "prUrls"
@@ -236,6 +239,8 @@ export interface RepositoryTaskRequest {
 	repositoryId?: string;
 	source: "automation" | "linear";
 	issueContext?: { issueId: string; workspaceId: string };
+	/** When set, the task was dispatched via a GitHub issue created by the schedule. */
+	githubIssue?: { number: number; url: string; owner: string; repo: string };
 	/** Optional coding harness for direct automation runs. */
 	runner?: z.infer<typeof RunnerTypeSchema>;
 	/** Optional model for direct automation runs. */

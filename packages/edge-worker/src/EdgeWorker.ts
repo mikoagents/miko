@@ -152,7 +152,10 @@ import { ActivityPoster } from "./ActivityPoster.js";
 import { AgentSessionManager } from "./AgentSessionManager.js";
 import { AskUserQuestionHandler } from "./AskUserQuestionHandler.js";
 import { AttachmentService } from "./AttachmentService.js";
-import { AutomationAdapters } from "./automation/AutomationAdapters.js";
+import {
+	AutomationAdapters,
+	parseGitHubOwnerRepo,
+} from "./automation/AutomationAdapters.js";
 import { AutomationService } from "./automation/AutomationService.js";
 import { AutomationStore } from "./automation/AutomationStore.js";
 import {
@@ -830,6 +833,8 @@ export class EdgeWorker extends EventEmitter {
 				this.repositoryRouter.parseRepoTagsFromDescription(text),
 			startTask: (request) => this.startDirectRepositoryTask(request),
 			localState: (run) => this.automationLocalState(run),
+			createGitHubIssue: (input) => this.createAutomationGitHubIssue(input),
+			getGitHubIssue: (input) => this.getAutomationGitHubIssue(input),
 			runnerOptions: () => ({
 				runners: AUTOMATION_RUNNERS,
 				defaultRunner: this.runnerSelectionService.getDefaultRunner(),
@@ -5448,11 +5453,14 @@ ${taskSection}`;
 		const allowedTools = this.toolPermissionResolver
 			.buildGithubAllowedTools(repository)
 			.filter((tool) => !tool.startsWith("mcp__linear"));
+		const githubIssueLine = request.githubIssue
+			? `A GitHub issue was created for this schedule run: ${request.githubIssue.url} (${request.githubIssue.owner}/${request.githubIssue.repo}#${request.githubIssue.number}). Reference it in your PR and final response. Do not query or update Linear.`
+			: "There is no external issue for this task. Do not query or update Linear.";
 		const userPrompt = `# ${request.title}\n\n${request.instructions}`;
 		const systemPrompt = `You are implementing a scheduled repository development task in ${repository.name}.
 Work in the isolated worktree ${workspace.path}, branch ${workItem.branchName}, based on ${repository.baseBranch}.
 Follow the repository instructions and available implementation and verification skills. Implement the requested change, run appropriate tests, commit and push the changes, and create or update a pull request. This is a complete development task; do not stop after planning or implementation alone.
-There is no external issue for this task. Do not query or update Linear. Return the PR URL and validation results in your final response. If no change is necessary, explain why without creating an empty PR. If blocked or clarification is required, explicitly describe the blocker; do not report successful completion.
+${githubIssueLine} Return the PR URL and validation results in your final response. If no change is necessary, explain why without creating an empty PR. If blocked or clarification is required, explicitly describe the blocker; do not report successful completion.
 ${await this.loadSharedInstructions()}`;
 		void this.executeRepositoryTask(request, {
 			session,
@@ -5620,6 +5628,162 @@ ${await this.loadSharedInstructions()}`;
 				),
 			);
 		});
+	}
+
+	/**
+	 * Resolve an installation token for automation GitHub issue API calls.
+	 * Prefer the org-matched store token, then mint via App credentials, then GITHUB_TOKEN.
+	 */
+	private async resolveAutomationGitHubToken(
+		repository: RepositoryConfig,
+	): Promise<string | undefined> {
+		if (repository.githubUrl) {
+			const stored = this.githubTokenStore.getTokenForRepoUrl(
+				repository.githubUrl,
+			);
+			if (stored) return stored;
+			const fallback = this.githubTokenStore.getFallbackToken();
+			if (fallback) return fallback;
+		}
+		this.createOrGetGitHubAppTokenProvider();
+		if (this.gitHubAppTokenProvider) {
+			try {
+				return await this.gitHubAppTokenProvider.getToken();
+			} catch (error) {
+				this.logger.warn(
+					"Failed to mint GitHub App token for automation issue",
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			}
+		}
+		return process.env.GITHUB_TOKEN;
+	}
+
+	private parseAutomationGitHubRepo(
+		repository: RepositoryConfig,
+	): { owner: string; repo: string } {
+		const parsed = parseGitHubOwnerRepo(repository.githubUrl || "");
+		if (!parsed) {
+			throw new Error(
+				`Repository ${repository.name} does not have a parseable GitHub URL`,
+			);
+		}
+		return parsed;
+	}
+
+	/**
+	 * Create a GitHub issue for a schedule run (or recover an existing one tagged
+	 * with the run id). Uses the same App/installation token path as other GitHub API calls.
+	 */
+	private async createAutomationGitHubIssue(input: {
+		repository: RepositoryConfig;
+		title: string;
+		body: string;
+		runId: string;
+	}): Promise<{ number: number; html_url: string; node_id?: string }> {
+		const token = await this.resolveAutomationGitHubToken(input.repository);
+		if (!token) {
+			throw new Error(
+				"No GitHub App installation token available to create issues",
+			);
+		}
+		const { owner, repo } = this.parseAutomationGitHubRepo(input.repository);
+		const marker = `<!-- miko-automation-run:${input.runId} -->`;
+		// Recover a prior create if dispatch retried after the API succeeded.
+		const searchUrl = new URL("https://api.github.com/search/issues");
+		searchUrl.searchParams.set(
+			"q",
+			`repo:${owner}/${repo} in:body miko-automation-run:${input.runId}`,
+		);
+		try {
+			const search = await fetch(searchUrl, {
+				headers: {
+					Accept: "application/vnd.github+json",
+					Authorization: `Bearer ${token}`,
+					"X-GitHub-Api-Version": "2022-11-28",
+					"User-Agent": "miko-edge-worker",
+				},
+				signal: AbortSignal.timeout(15000),
+			});
+			if (search.ok) {
+				const data = (await search.json()) as {
+					items?: {
+						number: number;
+						html_url: string;
+						body?: string | null;
+					}[];
+				};
+				const match = data.items?.find((item) =>
+					(item.body || "").includes(marker),
+				);
+				if (match) {
+					return { number: match.number, html_url: match.html_url };
+				}
+			}
+		} catch (error) {
+			this.logger.warn(
+				"GitHub issue search for automation recovery failed; creating a new issue",
+				error instanceof Error ? error : new Error(String(error)),
+			);
+		}
+		const response = await fetch(
+			`https://api.github.com/repos/${owner}/${repo}/issues`,
+			{
+				method: "POST",
+				headers: {
+					Accept: "application/vnd.github+json",
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+					"X-GitHub-Api-Version": "2022-11-28",
+					"User-Agent": "miko-edge-worker",
+				},
+				body: JSON.stringify({ title: input.title, body: input.body }),
+				signal: AbortSignal.timeout(30000),
+			},
+		);
+		if (!response.ok) {
+			const detail = await response.text().catch(() => "");
+			throw new Error(
+				`GitHub issue creation failed (${response.status}): ${detail.slice(0, 300)}`,
+			);
+		}
+		const created = (await response.json()) as {
+			number: number;
+			html_url: string;
+			node_id?: string;
+		};
+		return {
+			number: created.number,
+			html_url: created.html_url,
+			node_id: created.node_id,
+		};
+	}
+
+	private async getAutomationGitHubIssue(input: {
+		repository: RepositoryConfig;
+		number: number;
+	}): Promise<{ html_url: string; state: string } | undefined> {
+		const token = await this.resolveAutomationGitHubToken(input.repository);
+		if (!token) return undefined;
+		const { owner, repo } = this.parseAutomationGitHubRepo(input.repository);
+		const response = await fetch(
+			`https://api.github.com/repos/${owner}/${repo}/issues/${input.number}`,
+			{
+				headers: {
+					Accept: "application/vnd.github+json",
+					Authorization: `Bearer ${token}`,
+					"X-GitHub-Api-Version": "2022-11-28",
+					"User-Agent": "miko-edge-worker",
+				},
+				signal: AbortSignal.timeout(15000),
+			},
+		);
+		if (response.status === 404 || !response.ok) return undefined;
+		const issue = (await response.json()) as {
+			html_url: string;
+			state: string;
+		};
+		return { html_url: issue.html_url, state: issue.state };
 	}
 
 	private automationLocalState(run: AutomationRun): RunUpdate | undefined {

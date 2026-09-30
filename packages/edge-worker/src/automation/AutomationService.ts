@@ -161,9 +161,9 @@ export class AutomationService {
 		});
 	}
 	/**
-	 * Build one or more runs for a trigger. `direct_repository` with multiple
-	 * repositories fans out to one run/session per repo (sessions are single-repo).
-	 * Linear / ops keep a single run with the full repositoryIds snapshot.
+	 * Build one or more runs for a trigger. `direct_repository` and `github_issue`
+	 * with multiple repositories fan out to one run/session (and GitHub issue) per
+	 * repo. Linear / ops keep a single run with the full repositoryIds snapshot.
 	 */
 	private makeRuns(
 		state: AutomationState,
@@ -175,7 +175,9 @@ export class AutomationService {
 	): AutomationRun[] {
 		const repoIds = automationRepositoryIds(definition);
 		const fanOut =
-			definition.target.kind === "direct_repository" && repoIds.length > 1;
+			(definition.target.kind === "direct_repository" ||
+				definition.target.kind === "github_issue") &&
+			repoIds.length > 1;
 		const overlap = state.runs.some(
 			(r) => r.automationId === definition.id && activeRun(r),
 		);
@@ -339,7 +341,9 @@ export class AutomationService {
 				if (
 					!permanent &&
 					attempt < 3 &&
-					(run.snapshot.target.kind === "linear_issue" || !enteredDispatch)
+					(run.snapshot.target.kind === "linear_issue" ||
+						run.snapshot.target.kind === "github_issue" ||
+						!enteredDispatch)
 				) {
 					await delay(1000 * attempt);
 					continue;
@@ -371,6 +375,7 @@ export class AutomationService {
 				return;
 			// Creation may return after its webhook (or even completion). Keep the
 			// immutable issue link without regressing the execution state.
+			if (patch.issueId && !run.issueId) run.issueId = patch.issueId;
 			if (patch.issueUrl && !run.issueUrl) run.issueUrl = patch.issueUrl;
 			if (!activeRun(run) || (onlyDispatching && run.status !== "dispatching"))
 				return;

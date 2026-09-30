@@ -21,6 +21,12 @@ export interface AutomationRunnerOptions {
 	modelSuggestions: typeof AUTOMATION_MODEL_SUGGESTIONS;
 }
 
+export interface CreatedGitHubIssue {
+	number: number;
+	html_url: string;
+	node_id?: string;
+}
+
 export interface AutomationAdapterDeps {
 	/** Use the existing tracker client so OAuth refresh and token hot reload remain shared. */
 	clientForWorkspace?(workspaceId: string): LinearClient | undefined;
@@ -34,6 +40,22 @@ export interface AutomationAdapterDeps {
 	localState(run: AutomationRun): RunUpdate | undefined;
 	/** Safe runner/model defaults for the Automations form. */
 	runnerOptions?(): AutomationRunnerOptions;
+	/**
+	 * Create (or recover) a GitHub issue for a schedule run via the App/API
+	 * token already used elsewhere in Miko. Required for github_issue targets.
+	 */
+	createGitHubIssue?(input: {
+		repository: RepositoryConfig;
+		title: string;
+		body: string;
+		/** Opaque run id embedded in the body for idempotent recovery. */
+		runId: string;
+	}): Promise<CreatedGitHubIssue>;
+	/** Optional GET of an existing issue for reconcile (by number). */
+	getGitHubIssue?(input: {
+		repository: RepositoryConfig;
+		number: number;
+	}): Promise<{ html_url: string; state: string } | undefined>;
 }
 
 export class AutomationAdapters implements AutomationAdapter {
@@ -71,6 +93,7 @@ export class AutomationAdapters implements AutomationAdapter {
 				id: r.id,
 				name: r.name,
 				workspaceId: r.linearWorkspaceId,
+				githubUrl: r.githubUrl,
 			})),
 			workspaces: Object.entries(this.deps.workspaces()).map(([id, w]) => ({
 				id,
@@ -164,6 +187,19 @@ export class AutomationAdapters implements AutomationAdapter {
 			throw new AutomationError(
 				"Task repository selectors must match a selected repository without a branch override",
 			);
+		if (input.target.kind === "github_issue") {
+			if (!this.deps.createGitHubIssue)
+				throw new AutomationError(
+					"GitHub issue creation is unavailable on this worker",
+				);
+			for (const repository of repositories) {
+				if (!repository.githubUrl)
+					throw new AutomationError(
+						`Repository ${repository.name} has no GitHub URL configured`,
+					);
+			}
+			return;
+		}
 		if (input.target.kind !== "linear_issue") return;
 		const workspaceIds = [
 			...new Set(
@@ -248,6 +284,9 @@ export class AutomationAdapters implements AutomationAdapter {
 			});
 			return { sessionId: `automation-${run.id}`, status: "running" };
 		}
+		if (input.target.kind === "github_issue") {
+			return await this.dispatchGitHubIssue(run, instructions, runner);
+		}
 		const client = this.linear(input.target.workspaceId);
 		const existing = await client.issues({
 			filter: { id: { eq: run.issueId! } },
@@ -288,6 +327,9 @@ export class AutomationAdapters implements AutomationAdapter {
 					run.message ||
 					"Previous execution cannot be confirmed; it will not be restarted automatically",
 			};
+		if (run.snapshot.target.kind === "github_issue") {
+			return await this.reconcileGitHubIssue(run);
+		}
 		const client = this.linear(run.snapshot.target.workspaceId);
 		const issues = await client.issues({
 			filter: { id: { eq: run.issueId! } },
@@ -370,4 +412,122 @@ export class AutomationAdapters implements AutomationAdapter {
 					issueUrl: issues.nodes[0]!.url,
 				};
 	}
+
+	/**
+	 * GitHub Apps do not receive webhooks for events they create, so Linear-style
+	 * delegate wake is impossible. Mirror the product intent by creating the issue
+	 * for tracking, then starting the agent session directly (same as direct_repository).
+	 */
+	private async dispatchGitHubIssue(
+		run: AutomationRun,
+		instructions: string,
+		runner: string | undefined,
+	): Promise<RunUpdate> {
+		if (!this.deps.createGitHubIssue)
+			throw new AutomationError(
+				"GitHub issue creation is unavailable on this worker",
+			);
+		const input = run.snapshot;
+		const { repositories } = this.resolveRepositories(input);
+		const repository = repositories[0];
+		if (!repository) throw new AutomationError("Repository is unavailable");
+		const body = `${instructions}\n\n[repo=${repository.id}]\n\nAutomation run: ${run.id}\n\n<!-- miko-automation-run:${run.id} -->`;
+		const created =
+			run.issueUrl && run.issueId
+				? {
+						number: Number(run.issueId),
+						html_url: run.issueUrl,
+					}
+				: await this.deps.createGitHubIssue({
+						repository,
+						title: input.name,
+						body,
+						runId: run.id,
+					});
+		if (!Number.isFinite(created.number) || created.number <= 0)
+			throw new AutomationError("GitHub rejected issue creation");
+		const ownerRepo = parseGitHubOwnerRepo(repository.githubUrl || "");
+		await this.deps.startTask({
+			id: run.id,
+			title: input.name,
+			instructions,
+			repositoryId: repository.id,
+			source: "automation",
+			runner,
+			model: input.model,
+			githubIssue: ownerRepo
+				? {
+						number: created.number,
+						url: created.html_url,
+						owner: ownerRepo.owner,
+						repo: ownerRepo.repo,
+					}
+				: undefined,
+		});
+		return {
+			issueId: String(created.number),
+			issueUrl: created.html_url,
+			sessionId: `automation-${run.id}`,
+			status: "running",
+		};
+	}
+
+	private async reconcileGitHubIssue(run: AutomationRun): Promise<RunUpdate> {
+		const repositoryId = automationRepositoryIds(run.snapshot)[0];
+		const repository = this.deps
+			.repositories()
+			.find((r) => r.id === repositoryId);
+		const number = run.issueId ? Number(run.issueId) : NaN;
+		if (
+			repository &&
+			Number.isFinite(number) &&
+			number > 0 &&
+			this.deps.getGitHubIssue
+		) {
+			const issue = await this.deps.getGitHubIssue({ repository, number });
+			if (!issue)
+				return {
+					status: "uncertain",
+					message: "GitHub issue creation could not be confirmed",
+				};
+			return {
+				status: "uncertain",
+				issueUrl: issue.html_url,
+				message:
+					run.message ||
+					"Previous execution cannot be confirmed; it will not be restarted automatically",
+			};
+		}
+		return {
+			status: "uncertain",
+			message:
+				run.message ||
+				"Previous execution cannot be confirmed; it will not be restarted automatically",
+		};
+	}
 }
+
+/** Parse owner/repo from common GitHub remote URL forms. */
+export function parseGitHubOwnerRepo(
+	url: string,
+): { owner: string; repo: string } | null {
+	if (!url || typeof url !== "string") return null;
+	const trimmed = url.trim();
+	const scp = trimmed.match(
+		/^[\w.-]+@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i,
+	);
+	if (scp?.[1] && scp[2]) return { owner: scp[1], repo: scp[2] };
+	const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+		? trimmed
+		: `https://${trimmed}`;
+	try {
+		const parsed = new URL(withScheme);
+		if (parsed.hostname.toLowerCase() !== "github.com") return null;
+		const [owner, repoWithGit] = parsed.pathname.split("/").filter(Boolean);
+		if (!owner || !repoWithGit) return null;
+		return { owner, repo: repoWithGit.replace(/\.git$/i, "") };
+	} catch {
+		return null;
+	}
+}
+

@@ -451,6 +451,25 @@ describe("multi-repository automation runs", () => {
 		expect(adapter.dispatch).toHaveBeenCalledTimes(2);
 		expect(run.snapshot.repositoryIds).toHaveLength(1);
 	});
+	it("fans out one GitHub issue run per repository", async () => {
+		const { service, adapter } = await fixture();
+		const definition = await service.save(
+			input({
+				repositoryIds: ["repo-a", "repo-b"],
+				target: { kind: "github_issue" },
+				enabled: false,
+			}),
+		);
+		await service.setEnabled(definition.id, definition.revision, true);
+		await service.runNow(definition.id, "gh-fan-out");
+		await dispatched(service, definition.id);
+		const runs = service.runs(definition.id);
+		expect(runs).toHaveLength(2);
+		expect(runs.every((item) => item.snapshot.target.kind === "github_issue")).toBe(
+			true,
+		);
+		expect(adapter.dispatch).toHaveBeenCalledTimes(2);
+	});
 	it("migrates legacy on-disk repositoryId when opening the store", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "automation-migrate-"));
 		cleanups.push(() => rm(directory, { recursive: true, force: true }));

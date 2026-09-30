@@ -214,12 +214,14 @@ export function inputFromForm(form) {
 			? { kind: "direct_ops" }
 			: form.target === "direct_repository"
 				? { kind: "direct_repository" }
-				: {
-						kind: "linear_issue",
-						workspaceId: form.workspaceId,
-						teamId: form.teamId,
-						...(form.projectId ? { projectId: form.projectId } : {}),
-					};
+				: form.target === "github_issue"
+					? { kind: "github_issue" }
+					: {
+							kind: "linear_issue",
+							workspaceId: form.workspaceId,
+							teamId: form.teamId,
+							...(form.projectId ? { projectId: form.projectId } : {}),
+						};
 	const input = {
 		name: form.name.trim(),
 		instructions: form.instructions.trim(),

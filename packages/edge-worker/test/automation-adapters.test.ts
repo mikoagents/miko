@@ -22,6 +22,7 @@ function fixture() {
 		id: "repo-1",
 		name: "Human readable repo",
 		linearWorkspaceId: "ws",
+		githubUrl: "https://github.com/acme/repo-1",
 		isActive: true,
 	} as RepositoryConfig;
 	const client = {
@@ -234,6 +235,76 @@ it("rejects repository selectors and repositoryIds on direct_ops", async () => {
 	deps.repoTags = () => [{ repo: "repo-1" }];
 	await expect(adapter.validate(run.snapshot)).rejects.toThrow(
 		"repository selectors",
+	);
+});
+
+it("creates a GitHub issue then wakes the agent via startTask", async () => {
+	const { adapter, deps, run, factory } = fixture();
+	const createGitHubIssue = vi.fn(async () => ({
+		number: 42,
+		html_url: "https://github.com/acme/repo-1/issues/42",
+	}));
+	deps.createGitHubIssue = createGitHubIssue;
+	run.snapshot.target = { kind: "github_issue" };
+	await adapter.validate(run.snapshot);
+	expect(await adapter.dispatch(run)).toEqual({
+		issueId: "42",
+		issueUrl: "https://github.com/acme/repo-1/issues/42",
+		sessionId: "automation-run-1",
+		status: "running",
+	});
+	expect(factory).not.toHaveBeenCalled();
+	expect(createGitHubIssue).toHaveBeenCalledWith(
+		expect.objectContaining({
+			title: "Fix it",
+			runId: "run-1",
+			body: expect.stringContaining("<!-- miko-automation-run:run-1 -->"),
+		}),
+	);
+	expect(deps.startTask).toHaveBeenCalledWith(
+		expect.objectContaining({
+			id: "run-1",
+			repositoryId: "repo-1",
+			source: "automation",
+			githubIssue: {
+				number: 42,
+				url: "https://github.com/acme/repo-1/issues/42",
+				owner: "acme",
+				repo: "repo-1",
+			},
+		}),
+	);
+});
+
+it("rejects github_issue when the repository has no GitHub URL", async () => {
+	const { adapter, deps, run } = fixture();
+	deps.createGitHubIssue = vi.fn();
+	deps.repositories = () =>
+		[
+			{
+				id: "repo-1",
+				name: "No github",
+				linearWorkspaceId: "ws",
+				isActive: true,
+			},
+		] as never;
+	run.snapshot.target = { kind: "github_issue" };
+	await expect(adapter.validate(run.snapshot)).rejects.toThrow("GitHub URL");
+});
+
+it("reuses an existing GitHub issue link on dispatch retry", async () => {
+	const { adapter, deps, run } = fixture();
+	const createGitHubIssue = vi.fn();
+	deps.createGitHubIssue = createGitHubIssue;
+	run.snapshot.target = { kind: "github_issue" };
+	run.issueId = "7";
+	run.issueUrl = "https://github.com/acme/repo-1/issues/7";
+	await adapter.dispatch(run);
+	expect(createGitHubIssue).not.toHaveBeenCalled();
+	expect(deps.startTask).toHaveBeenCalledWith(
+		expect.objectContaining({
+			githubIssue: expect.objectContaining({ number: 7 }),
+		}),
 	);
 });
 
