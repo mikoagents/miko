@@ -7,35 +7,7 @@
 		<link rel="stylesheet" href="/board/assets/app.css">
 	</head>
 	<body>
-		<nav id="board-navigation" class="board-navigation" aria-label="Board pages"></nav>
-		<section id="automations" class="automation-page" hidden aria-label="Scheduled tasks"></section>
-		<section id="status" class="status-page" hidden aria-label="Status"></section>
-		<section id="skills" class="skills-page" hidden aria-label="Skills"></section>
-		<main id="tasks-page">
-			<aside class="sidebar" aria-label="Task list">
-				<div class="sidebar-tools">
-					<div id="connection" class="sr-only" role="status">Connecting</div>
-					<label class="search"
-						><span class="sr-only">Search tasks</span>
-						<input
-							id="task-search"
-							type="search"
-							placeholder="Search tasks…"
-							autocomplete="off"
-						></label
-					>
-				</div>
-				<div class="task-list" id="tasks">
-					<div class="empty">Loading tasks…</div>
-				</div>
-			</aside>
-			<section class="log-pane" aria-label="Live logs">
-				<div class="warn" id="warnings" role="status"></div>
-				<div class="terminal" id="logs" tabindex="0" aria-label="Log contents">
-					<div class="empty">Connecting to logs…</div>
-				</div>
-			</section>
-		</main>
-		<script type="module" src="/board/assets/app.js"></script>
+		<div id="root"></div>
+		<script data-cfasync="false" type="module" src="/board/assets/app.js"></script>
 	</body>
 </html>

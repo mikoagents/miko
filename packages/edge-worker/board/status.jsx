@@ -12,7 +12,6 @@ import {
 	Settings2,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
 import { Badge } from "./fluid/components/ui/badge";
 import { Button } from "./fluid/components/ui/button";
 import { ShapeProvider } from "./fluid/lib/shape-context";
@@ -100,7 +99,7 @@ async function copyText(value) {
 	}
 }
 
-function StatusApp() {
+export function StatusPage() {
 	const [data, setData] = useState(null);
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(true);
@@ -178,432 +177,454 @@ function StatusApp() {
 	}
 
 	return (
-		<ShapeProvider defaultShape="rounded">
-			<div className="fluid-scope status-canvas">
-				<header className="status-header">
-					<div>
-						<h1>Status</h1>
-						<p className="status-subtitle">
-							Runtime details and shortcuts into Miko directories on this
-							machine.
-						</p>
-					</div>
-					<Button
-						variant="ghost"
-						leadingIcon={RefreshCw}
-						onClick={() => {
-							setLoading(true);
-							reload()
-								.then((next) => {
-									setData(next);
-									setError("");
-								})
-								.catch((err) => setError(err.message || "Cannot load status"))
-								.finally(() => setLoading(false));
-						}}
-					>
-						Refresh
-					</Button>
-				</header>
-				{error && (
-					<div className="status-banner status-banner-error" role="alert">
-						{error}
-					</div>
-				)}
-				{message && !error && (
-					<div className="status-banner" role="status">
-						{message}
-					</div>
-				)}
-				{loading && !data ? (
-					<div className="status-empty">Loading status…</div>
-				) : data ? (
-					<>
-						<section className="status-metrics" aria-label="Runtime">
-							<article className="status-card">
-								<span>Version</span>
-								<strong>{data.version || "Unknown"}</strong>
-							</article>
-							<article className="status-card">
-								<span>Service</span>
-								<strong className="status-service">
-									<Badge
-										variant="dot"
-										color={data.service?.status === "busy" ? "blue" : "green"}
-										size="compact"
-									>
-										{data.service?.status === "busy" ? "Busy" : "Idle"}
-									</Badge>
-								</strong>
-							</article>
-							<article className="status-card">
-								<span>Uptime</span>
-								<strong>{formatUptime(data.uptimeSeconds)}</strong>
-							</article>
-							<article className="status-card">
-								<span>Automations</span>
-								<strong>
-									{typeof data.automationCount === "number"
-										? data.automationCount
-										: "—"}
-								</strong>
-							</article>
-							<article className="status-card">
-								<span>Process</span>
-								<strong>
-									pid {data.pid} · {data.platform} · {data.nodeVersion}
-								</strong>
-							</article>
-							<article className="status-card">
-								<span>Working directory</span>
-								<strong className="status-mono">{data.cwd}</strong>
-							</article>
-						</section>
+		<section className="status-page" aria-label="Status">
+			<ShapeProvider defaultShape="rounded">
+				<div className="fluid-scope status-canvas">
+					<header className="status-header">
+						<div>
+							<h1>Status</h1>
+							<p className="status-subtitle">
+								Runtime details and shortcuts into Miko directories on this
+								machine.
+							</p>
+						</div>
+						<Button
+							variant="ghost"
+							leadingIcon={RefreshCw}
+							onClick={() => {
+								setLoading(true);
+								reload()
+									.then((next) => {
+										setData(next);
+										setError("");
+									})
+									.catch((err) => setError(err.message || "Cannot load status"))
+									.finally(() => setLoading(false));
+							}}
+						>
+							Refresh
+						</Button>
+					</header>
+					{error && (
+						<div className="status-banner status-banner-error" role="alert">
+							{error}
+						</div>
+					)}
+					{message && !error && (
+						<div className="status-banner" role="status">
+							{message}
+						</div>
+					)}
+					{loading && !data ? (
+						<div className="status-empty">Loading status…</div>
+					) : data ? (
+						<>
+							<section className="status-metrics" aria-label="Runtime">
+								<article className="status-card">
+									<span>Version</span>
+									<strong>{data.version || "Unknown"}</strong>
+								</article>
+								<article className="status-card">
+									<span>Service</span>
+									<strong className="status-service">
+										<Badge
+											variant="dot"
+											color={data.service?.status === "busy" ? "blue" : "green"}
+											size="compact"
+										>
+											{data.service?.status === "busy" ? "Busy" : "Idle"}
+										</Badge>
+									</strong>
+								</article>
+								<article className="status-card">
+									<span>Uptime</span>
+									<strong>{formatUptime(data.uptimeSeconds)}</strong>
+								</article>
+								<article className="status-card">
+									<span>Automations</span>
+									<strong>
+										{typeof data.automationCount === "number"
+											? data.automationCount
+											: "—"}
+									</strong>
+								</article>
+								<article className="status-card">
+									<span>Process</span>
+									<strong>
+										pid {data.pid} · {data.platform} · {data.nodeVersion}
+									</strong>
+								</article>
+								<article className="status-card">
+									<span>Working directory</span>
+									<strong className="status-mono">{data.cwd}</strong>
+								</article>
+							</section>
 
-						<section className="status-resources" aria-label="System resources">
-							<div className="status-section-title">
-								<Cpu size={16} />
-								<span>System resources</span>
-							</div>
-							<div className="status-resource-grid">
-								<article className="status-resource-card">
-									<div className="status-resource-heading">
-										<Cpu size={15} />
-										<strong>CPU</strong>
-										<span>{data.resources?.cpu?.cores ?? "—"} cores</span>
-									</div>
-									<div className="status-resource-metric">
-										<span>Load (1 / 5 / 15)</span>
-										<strong>
-											{formatLoad(data.resources?.cpu?.loadAverage)}
-										</strong>
-									</div>
-									<div className="status-resource-metric">
-										<span>Approx. usage</span>
-										<strong>
-											{typeof data.resources?.cpu?.usagePercent === "number"
-												? `${data.resources.cpu.usagePercent}%`
-												: "—"}
-										</strong>
-									</div>
-									<ResourceBar
-										percent={data.resources?.cpu?.usagePercent}
-										label="CPU usage"
-									/>
-								</article>
-								<article className="status-resource-card">
-									<div className="status-resource-heading">
-										<MemoryStick size={15} />
-										<strong>Memory</strong>
-										<span>
-											{typeof data.resources?.memory?.usedPercent === "number"
-												? `${data.resources.memory.usedPercent}%`
-												: "—"}
-										</span>
-									</div>
-									<div className="status-resource-metric">
-										<span>Used / total</span>
-										<strong>
-											{data.resources?.memory
-												? `${formatBytes(data.resources.memory.usedBytes)} / ${formatBytes(data.resources.memory.totalBytes)}`
-												: "—"}
-										</strong>
-									</div>
-									<div className="status-resource-metric">
-										<span>Available</span>
-										<strong>
-											{data.resources?.memory
-												? formatBytes(data.resources.memory.availableBytes)
-												: "—"}
-										</strong>
-									</div>
-									<ResourceBar
-										percent={data.resources?.memory?.usedPercent}
-										label="Memory usage"
-									/>
-								</article>
-								{(data.resources?.disks || []).map((disk) => (
-									<article
-										key={`${disk.label}:${disk.mount}`}
-										className="status-resource-card"
-									>
+							<section
+								className="status-resources"
+								aria-label="System resources"
+							>
+								<div className="status-section-title">
+									<Cpu size={16} />
+									<span>System resources</span>
+								</div>
+								<div className="status-resource-grid">
+									<article className="status-resource-card">
 										<div className="status-resource-heading">
-											<HardDrive size={15} />
-											<strong>{disk.label}</strong>
-											<span>{disk.usedPercent}%</span>
+											<Cpu size={15} />
+											<strong>CPU</strong>
+											<span>{data.resources?.cpu?.cores ?? "—"} cores</span>
+										</div>
+										<div className="status-resource-metric">
+											<span>Load (1 / 5 / 15)</span>
+											<strong>
+												{formatLoad(data.resources?.cpu?.loadAverage)}
+											</strong>
+										</div>
+										<div className="status-resource-metric">
+											<span>Approx. usage</span>
+											<strong>
+												{typeof data.resources?.cpu?.usagePercent === "number"
+													? `${data.resources.cpu.usagePercent}%`
+													: "—"}
+											</strong>
+										</div>
+										<ResourceBar
+											percent={data.resources?.cpu?.usagePercent}
+											label="CPU usage"
+										/>
+									</article>
+									<article className="status-resource-card">
+										<div className="status-resource-heading">
+											<MemoryStick size={15} />
+											<strong>Memory</strong>
+											<span>
+												{typeof data.resources?.memory?.usedPercent === "number"
+													? `${data.resources.memory.usedPercent}%`
+													: "—"}
+											</span>
 										</div>
 										<div className="status-resource-metric">
 											<span>Used / total</span>
 											<strong>
-												{formatBytes(disk.usedBytes)} /{" "}
-												{formatBytes(disk.totalBytes)}
+												{data.resources?.memory
+													? `${formatBytes(data.resources.memory.usedBytes)} / ${formatBytes(data.resources.memory.totalBytes)}`
+													: "—"}
 											</strong>
 										</div>
 										<div className="status-resource-metric">
 											<span>Available</span>
-											<strong>{formatBytes(disk.availableBytes)}</strong>
+											<strong>
+												{data.resources?.memory
+													? formatBytes(data.resources.memory.availableBytes)
+													: "—"}
+											</strong>
 										</div>
-										<code className="status-resource-path">{disk.mount}</code>
 										<ResourceBar
-											percent={disk.usedPercent}
-											label={`${disk.label} disk`}
+											percent={data.resources?.memory?.usedPercent}
+											label="Memory usage"
 										/>
 									</article>
-								))}
-							</div>
-						</section>
+									{(data.resources?.disks || []).map((disk) => (
+										<article
+											key={`${disk.label}:${disk.mount}`}
+											className="status-resource-card"
+										>
+											<div className="status-resource-heading">
+												<HardDrive size={15} />
+												<strong>{disk.label}</strong>
+												<span>{disk.usedPercent}%</span>
+											</div>
+											<div className="status-resource-metric">
+												<span>Used / total</span>
+												<strong>
+													{formatBytes(disk.usedBytes)} /{" "}
+													{formatBytes(disk.totalBytes)}
+												</strong>
+											</div>
+											<div className="status-resource-metric">
+												<span>Available</span>
+												<strong>{formatBytes(disk.availableBytes)}</strong>
+											</div>
+											<code className="status-resource-path">{disk.mount}</code>
+											<ResourceBar
+												percent={disk.usedPercent}
+												label={`${disk.label} disk`}
+											/>
+										</article>
+									))}
+								</div>
+							</section>
 
-						<section className="status-host" aria-label="Host and process">
-							<div className="status-section-title">
-								<Activity size={16} />
-								<span>Host & process</span>
-							</div>
-							<div className="status-host-grid">
-								<article className="status-card">
-									<span>Host uptime</span>
-									<strong>
-										{typeof data.resources?.hostUptimeSeconds === "number"
-											? formatUptime(data.resources.hostUptimeSeconds)
-											: "—"}
-									</strong>
-								</article>
-								<article className="status-card">
-									<span>Processes</span>
-									<strong>
-										{typeof data.resources?.processCount === "number"
-											? data.resources.processCount
-											: "—"}
-									</strong>
-								</article>
-								<article className="status-card">
-									<span>Miko RSS</span>
-									<strong>
-										{data.resources?.process
-											? formatBytes(data.resources.process.rssBytes)
-											: "—"}
-									</strong>
-								</article>
-								<article className="status-card">
-									<span>Heap used</span>
-									<strong>
-										{data.resources?.process
-											? formatBytes(data.resources.process.heapUsedBytes)
-											: "—"}
-									</strong>
-								</article>
-							</div>
-						</section>
+							<section className="status-host" aria-label="Host and process">
+								<div className="status-section-title">
+									<Activity size={16} />
+									<span>Host & process</span>
+								</div>
+								<div className="status-host-grid">
+									<article className="status-card">
+										<span>Host uptime</span>
+										<strong>
+											{typeof data.resources?.hostUptimeSeconds === "number"
+												? formatUptime(data.resources.hostUptimeSeconds)
+												: "—"}
+										</strong>
+									</article>
+									<article className="status-card">
+										<span>Processes</span>
+										<strong>
+											{typeof data.resources?.processCount === "number"
+												? data.resources.processCount
+												: "—"}
+										</strong>
+									</article>
+									<article className="status-card">
+										<span>Miko RSS</span>
+										<strong>
+											{data.resources?.process
+												? formatBytes(data.resources.process.rssBytes)
+												: "—"}
+										</strong>
+									</article>
+									<article className="status-card">
+										<span>Heap used</span>
+										<strong>
+											{data.resources?.process
+												? formatBytes(data.resources.process.heapUsedBytes)
+												: "—"}
+										</strong>
+									</article>
+								</div>
+							</section>
 
-						<section className="status-config" aria-label="Configuration">
-							<div className="status-section-title">
-								<Settings2 size={16} />
-								<span>Configuration</span>
-							</div>
-							<div className="status-config-grid">
-								<article className="status-config-card">
-									<div className="status-config-heading">
-										<strong>Defaults</strong>
-										<span>Runner & models</span>
-									</div>
-									{defaultRows(data.defaults).length ? (
-										<dl className="status-config-list">
-											{defaultRows(data.defaults).map(([label, value]) => (
-												<div key={label}>
-													<dt>{label}</dt>
-													<dd>{value}</dd>
-												</div>
-											))}
-										</dl>
-									) : (
-										<p className="status-config-empty">
-											No defaults configured.
-										</p>
-									)}
-								</article>
-								<article className="status-config-card">
-									<div className="status-config-heading">
-										<strong>Workspaces</strong>
-										<span>{(data.workspaces || []).length}</span>
-									</div>
-									{(data.workspaces || []).length ? (
-										<ul className="status-workspace-list">
-											{(data.workspaces || []).map((workspace) => (
-												<li key={workspace.id}>
-													<div className="status-workspace-copy">
-														<strong>
-															{workspace.name || workspace.slug || workspace.id}
-														</strong>
-														{workspace.slug && <code>{workspace.slug}</code>}
+							<section className="status-config" aria-label="Configuration">
+								<div className="status-section-title">
+									<Settings2 size={16} />
+									<span>Configuration</span>
+								</div>
+								<div className="status-config-grid">
+									<article className="status-config-card">
+										<div className="status-config-heading">
+											<strong>Defaults</strong>
+											<span>Runner & models</span>
+										</div>
+										{defaultRows(data.defaults).length ? (
+											<dl className="status-config-list">
+												{defaultRows(data.defaults).map(([label, value]) => (
+													<div key={label}>
+														<dt>{label}</dt>
+														<dd>{value}</dd>
 													</div>
-													<div className="status-workspace-badges">
-														{workspace.tokenConfigured && (
-															<Badge variant="dot" color="green" size="compact">
-																Token configured
-															</Badge>
-														)}
-														{workspace.oauthConfigured && (
-															<Badge variant="dot" color="blue" size="compact">
-																OAuth configured
-															</Badge>
-														)}
-														{!workspace.tokenConfigured &&
-															!workspace.oauthConfigured && (
+												))}
+											</dl>
+										) : (
+											<p className="status-config-empty">
+												No defaults configured.
+											</p>
+										)}
+									</article>
+									<article className="status-config-card">
+										<div className="status-config-heading">
+											<strong>Workspaces</strong>
+											<span>{(data.workspaces || []).length}</span>
+										</div>
+										{(data.workspaces || []).length ? (
+											<ul className="status-workspace-list">
+												{(data.workspaces || []).map((workspace) => (
+													<li key={workspace.id}>
+														<div className="status-workspace-copy">
+															<strong>
+																{workspace.name ||
+																	workspace.slug ||
+																	workspace.id}
+															</strong>
+															{workspace.slug && <code>{workspace.slug}</code>}
+														</div>
+														<div className="status-workspace-badges">
+															{workspace.tokenConfigured && (
 																<Badge
 																	variant="dot"
-																	color="gray"
+																	color="green"
 																	size="compact"
 																>
-																	No credentials
+																	Token configured
 																</Badge>
 															)}
-													</div>
-												</li>
-											))}
-										</ul>
-									) : (
-										<p className="status-config-empty">No Linear workspaces.</p>
-									)}
-								</article>
-							</div>
-						</section>
+															{workspace.oauthConfigured && (
+																<Badge
+																	variant="dot"
+																	color="blue"
+																	size="compact"
+																>
+																	OAuth configured
+																</Badge>
+															)}
+															{!workspace.tokenConfigured &&
+																!workspace.oauthConfigured && (
+																	<Badge
+																		variant="dot"
+																		color="gray"
+																		size="compact"
+																	>
+																		No credentials
+																	</Badge>
+																)}
+														</div>
+													</li>
+												))}
+											</ul>
+										) : (
+											<p className="status-config-empty">
+												No Linear workspaces.
+											</p>
+										)}
+									</article>
+								</div>
+							</section>
 
-						<section className="status-repositories" aria-label="Repositories">
-							<div className="status-section-title">
-								<Boxes size={16} />
-								<span>Repositories</span>
-								<span className="status-section-count">
-									{(data.repositories || []).length}
-								</span>
-							</div>
-							{(data.repositories || []).length ? (
-								<div className="status-repo-grid">
-									{(data.repositories || []).map((repo) => (
-										<article key={repo.id} className="status-repo">
-											<div className="status-repo-copy">
-												<div className="status-repo-heading">
-													<strong title={repo.name}>
-														{repoDisplayName(repo)}
-													</strong>
-													{repo.isActive ? (
+							<section
+								className="status-repositories"
+								aria-label="Repositories"
+							>
+								<div className="status-section-title">
+									<Boxes size={16} />
+									<span>Repositories</span>
+									<span className="status-section-count">
+										{(data.repositories || []).length}
+									</span>
+								</div>
+								{(data.repositories || []).length ? (
+									<div className="status-repo-grid">
+										{(data.repositories || []).map((repo) => (
+											<article key={repo.id} className="status-repo">
+												<div className="status-repo-copy">
+													<div className="status-repo-heading">
+														<strong title={repo.name}>
+															{repoDisplayName(repo)}
+														</strong>
+														{repo.isActive ? (
+															<Badge variant="dot" color="green" size="compact">
+																Active
+															</Badge>
+														) : (
+															<Badge variant="dot" color="gray" size="compact">
+																Inactive
+															</Badge>
+														)}
+														{repo.checkoutExists ? (
+															<Badge variant="dot" color="blue" size="compact">
+																Checked out
+															</Badge>
+														) : (
+															<Badge
+																variant="dot"
+																color="orange"
+																size="compact"
+															>
+																Missing checkout
+															</Badge>
+														)}
+													</div>
+													{(repo.githubUrl || repo.gitlabUrl) && (
+														<a
+															className="status-repo-link"
+															href={repo.githubUrl || repo.gitlabUrl}
+															target="_blank"
+															rel="noreferrer"
+														>
+															{repo.githubUrl || repo.gitlabUrl}
+														</a>
+													)}
+													<div className="status-repo-meta">
+														<span>
+															<GitBranch size={12} />
+															{repo.baseBranch || "—"}
+														</span>
+														{(repo.linearWorkspaceName ||
+															repo.linearWorkspaceSlug) && (
+															<span>
+																Workspace{" "}
+																{repo.linearWorkspaceName ||
+																	repo.linearWorkspaceSlug}
+																{repo.linearWorkspaceSlug
+																	? ` (${repo.linearWorkspaceSlug})`
+																	: ""}
+															</span>
+														)}
+													</div>
+													<code title={repo.repositoryPath}>
+														{repo.repositoryPath}
+													</code>
+												</div>
+											</article>
+										))}
+									</div>
+								) : (
+									<div className="status-empty">
+										No repositories configured.
+									</div>
+								)}
+							</section>
+
+							<section className="status-directories" aria-label="Directories">
+								<div className="status-section-title">
+									<FolderOpen size={16} />
+									<span>Directories</span>
+								</div>
+								<div className="status-directory-list">
+									{(data.directories || []).map((directory) => (
+										<article key={directory.id} className="status-directory">
+											<div className="status-directory-copy">
+												<div className="status-directory-heading">
+													<strong>{directory.label}</strong>
+													{directory.exists ? (
 														<Badge variant="dot" color="green" size="compact">
-															Active
+															Present
 														</Badge>
 													) : (
 														<Badge variant="dot" color="gray" size="compact">
-															Inactive
-														</Badge>
-													)}
-													{repo.checkoutExists ? (
-														<Badge variant="dot" color="blue" size="compact">
-															Checked out
-														</Badge>
-													) : (
-														<Badge variant="dot" color="orange" size="compact">
-															Missing checkout
+															Missing
 														</Badge>
 													)}
 												</div>
-												{(repo.githubUrl || repo.gitlabUrl) && (
-													<a
-														className="status-repo-link"
-														href={repo.githubUrl || repo.gitlabUrl}
-														target="_blank"
-														rel="noreferrer"
-													>
-														{repo.githubUrl || repo.gitlabUrl}
-													</a>
-												)}
-												<div className="status-repo-meta">
-													<span>
-														<GitBranch size={12} />
-														{repo.baseBranch || "—"}
-													</span>
-													{(repo.linearWorkspaceName ||
-														repo.linearWorkspaceSlug) && (
-														<span>
-															Workspace{" "}
-															{repo.linearWorkspaceName ||
-																repo.linearWorkspaceSlug}
-															{repo.linearWorkspaceSlug
-																? ` (${repo.linearWorkspaceSlug})`
-																: ""}
-														</span>
-													)}
-												</div>
-												<code title={repo.repositoryPath}>
-													{repo.repositoryPath}
-												</code>
+												<p>{directory.description}</p>
+												<code>{directory.path}</code>
+											</div>
+											<div className="status-directory-actions">
+												<Button
+													variant="ghost"
+													size="compact"
+													leadingIcon={copied === directory.id ? Check : Copy}
+													onClick={() => copyPath(directory.id, directory.path)}
+												>
+													{copied === directory.id ? "Copied" : "Copy"}
+												</Button>
+												<Button
+													variant="secondary"
+													size="compact"
+													leadingIcon={FolderOpen}
+													loading={busy === directory.id}
+													disabled={!directory.exists || busy === directory.id}
+													onClick={() => openDirectory(directory.id)}
+												>
+													Open
+												</Button>
 											</div>
 										</article>
 									))}
 								</div>
-							) : (
-								<div className="status-empty">No repositories configured.</div>
-							)}
-						</section>
-
-						<section className="status-directories" aria-label="Directories">
-							<div className="status-section-title">
-								<FolderOpen size={16} />
-								<span>Directories</span>
-							</div>
-							<div className="status-directory-list">
-								{(data.directories || []).map((directory) => (
-									<article key={directory.id} className="status-directory">
-										<div className="status-directory-copy">
-											<div className="status-directory-heading">
-												<strong>{directory.label}</strong>
-												{directory.exists ? (
-													<Badge variant="dot" color="green" size="compact">
-														Present
-													</Badge>
-												) : (
-													<Badge variant="dot" color="gray" size="compact">
-														Missing
-													</Badge>
-												)}
-											</div>
-											<p>{directory.description}</p>
-											<code>{directory.path}</code>
-										</div>
-										<div className="status-directory-actions">
-											<Button
-												variant="ghost"
-												size="compact"
-												leadingIcon={copied === directory.id ? Check : Copy}
-												onClick={() => copyPath(directory.id, directory.path)}
-											>
-												{copied === directory.id ? "Copied" : "Copy"}
-											</Button>
-											<Button
-												variant="secondary"
-												size="compact"
-												leadingIcon={FolderOpen}
-												loading={busy === directory.id}
-												disabled={!directory.exists || busy === directory.id}
-												onClick={() => openDirectory(directory.id)}
-											>
-												Open
-											</Button>
-										</div>
-									</article>
-								))}
-							</div>
-						</section>
-						<footer className="status-footer">
-							<Activity size={13} />
-							<span>
-								Open uses the OS file manager when available. Paths stay
-								copyable on headless hosts.
-							</span>
-						</footer>
-					</>
-				) : null}
-			</div>
-		</ShapeProvider>
+							</section>
+							<footer className="status-footer">
+								<Activity size={13} />
+								<span>
+									Open uses the OS file manager when available. Paths stay
+									copyable on headless hosts.
+								</span>
+							</footer>
+						</>
+					) : null}
+				</div>
+			</ShapeProvider>
+		</section>
 	);
-}
-
-export function initializeStatus() {
-	createRoot(document.getElementById("status")).render(<StatusApp />);
 }

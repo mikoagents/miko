@@ -1,15 +1,12 @@
+import { useNavigate } from "@tanstack/react-router";
 import { MotionConfig } from "framer-motion";
 import {
-	Activity,
 	Archive,
 	ArrowDownLeft,
-	BookOpen,
-	CalendarClock,
 	Check,
 	ChevronRight,
 	Clock3,
 	ExternalLink,
-	ListTodo,
 	Pause,
 	Play,
 	Plus,
@@ -17,9 +14,6 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
-import mikoLogo from "./assets/miko.jpg";
 import {
 	automationApi as api,
 	formatDate,
@@ -35,7 +29,7 @@ import {
 	scheduleLabel,
 	statusColors,
 } from "./automation-model.mjs";
-import { boardPageFromHash, boardPageHref } from "./board-route.mjs";
+import { useBoardSession } from "./board-session.jsx";
 import { Badge } from "./fluid/components/ui/badge";
 import { Button } from "./fluid/components/ui/button";
 import {
@@ -781,10 +775,9 @@ function AutomationActivity({
 	);
 }
 
-function AutomationsApp({ onSession }) {
-	const [page, setPage] = useState(() =>
-		boardPageFromHash(window.location.hash),
-	);
+export function SchedulesPage() {
+	const navigate = useNavigate();
+	const { selectSession } = useBoardSession();
 	const [definitions, setDefinitions] = useState([]);
 	const [options, setOptions] = useState(emptyOptions);
 	const [loading, setLoading] = useState(true);
@@ -812,11 +805,6 @@ function AutomationsApp({ onSession }) {
 		setLoading(false);
 	}, []);
 	useEffect(() => {
-		document.getElementById("tasks-page").hidden = page !== "tasks";
-		document.getElementById("automations").hidden = page !== "automations";
-		document.getElementById("status").hidden = page !== "status";
-		document.getElementById("skills").hidden = page !== "skills";
-		if (page !== "automations") return;
 		const controller = new AbortController();
 		const refresh = () =>
 			reload(controller.signal).catch((e) => {
@@ -831,10 +819,10 @@ function AutomationsApp({ onSession }) {
 			controller.abort();
 			clearInterval(timer);
 		};
-	}, [page, reload]);
+	}, [reload]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: runVersion explicitly refreshes history after a mutation.
 	useEffect(() => {
-		if (!selected || !editor?.definition || page !== "automations") {
+		if (!selected || !editor?.definition) {
 			setRuns([]);
 			return;
 		}
@@ -860,7 +848,7 @@ function AutomationsApp({ onSession }) {
 			controller.abort();
 			clearInterval(timer);
 		};
-	}, [selected, page, runVersion, editor?.definition?.id]);
+	}, [selected, runVersion, editor?.definition?.id]);
 	const matching = definitions.filter(
 		(d) =>
 			!d.archived &&
@@ -922,269 +910,184 @@ function AutomationsApp({ onSession }) {
 			setBusy("");
 		}
 	}
-	useEffect(() => {
-		const onRouteChange = () => {
-			setPage(boardPageFromHash(window.location.hash));
-			setEditor(null);
-			setConfirmation(null);
-		};
-		window.addEventListener("hashchange", onRouteChange);
-		return () => window.removeEventListener("hashchange", onRouteChange);
-	}, []);
-	useEffect(() => {
-		const titles = {
-			tasks: "Miko · Tasks & Logs",
-			automations: "Miko · Automations",
-			status: "Miko · Status",
-			skills: "Miko · Skills",
-		};
-		document.title = titles[page] || titles.tasks;
-	}, [page]);
 	const create = (kind = "daily") => setEditor({ kind });
 	const viewSession = (id) => {
 		setEditor(null);
-		window.location.hash = boardPageHref("tasks");
-		setPage("tasks");
-		onSession(id);
+		selectSession(id);
+		void navigate({ to: "/tasks" });
 	};
 	return (
-		<MotionConfig reducedMotion="user">
-			<ShapeProvider defaultShape="rounded">
-				{createPortal(
-					<div className="fluid-scope automation-navigation">
-						<a
-							className="automation-brand"
-							href="/board"
-							aria-label="Miko home"
-						>
-							<span className="automation-brand-mark" aria-hidden="true">
-								<img src={mikoLogo} alt="" />
-							</span>
-							<span>Miko</span>
-						</a>
-						<div className="automation-nav-items">
+		<section className="automation-page" aria-label="Schedules">
+			<MotionConfig reducedMotion="user">
+				<ShapeProvider defaultShape="rounded">
+					<div className="fluid-scope automation-canvas">
+						<div className="automation-toolbar">
+							<InputGroup className="automation-search" size="default">
+								<InputField
+									label="Search automations"
+									labelHidden
+									index={0}
+									type="search"
+									value={query}
+									onChange={setQuery}
+									placeholder="Search automations…"
+								/>
+							</InputGroup>
 							<Button
-								id="show-tasks"
-								variant="ghost"
-								active={page === "tasks"}
-								leadingIcon={ListTodo}
-								asChild
-								aria-current={page === "tasks" ? "page" : undefined}
+								size="default"
+								className="automation-create"
+								variant="primary"
+								aria-label="New automation"
+								title="New automation"
+								onClick={() => create()}
+								disabled={loading}
 							>
-								<a href={boardPageHref("tasks")}>Tasks & logs</a>
-							</Button>
-							<Button
-								id="show-automations"
-								variant="ghost"
-								active={page === "automations"}
-								leadingIcon={CalendarClock}
-								asChild
-								aria-current={page === "automations" ? "page" : undefined}
-							>
-								<a href={boardPageHref("automations")}>Automations</a>
-							</Button>
-							<Button
-								id="show-skills"
-								variant="ghost"
-								active={page === "skills"}
-								leadingIcon={BookOpen}
-								asChild
-								aria-current={page === "skills" ? "page" : undefined}
-							>
-								<a href={boardPageHref("skills")}>Skills</a>
-							</Button>
-							<Button
-								id="show-status"
-								variant="ghost"
-								active={page === "status"}
-								leadingIcon={Activity}
-								asChild
-								aria-current={page === "status" ? "page" : undefined}
-							>
-								<a href={boardPageHref("status")}>Status</a>
+								New automation
 							</Button>
 						</div>
-						<span className="automation-local">
-							<span />
-							Local workspace
-						</span>
-					</div>,
-					document.getElementById("board-navigation"),
-				)}
-				<div className="fluid-scope automation-canvas">
-					<div className="automation-toolbar">
-						<InputGroup className="automation-search" size="default">
-							<InputField
-								label="Search automations"
-								labelHidden
-								index={0}
-								type="search"
-								value={query}
-								onChange={setQuery}
-								placeholder="Search automations…"
-							/>
-						</InputGroup>
-						<Button
-							size="default"
-							className="automation-create"
-							variant="primary"
-							aria-label="New automation"
-							title="New automation"
-							onClick={() => create()}
-							disabled={loading}
-						>
-							New automation
-						</Button>
-					</div>
-					{(error || storeError) && (
-						<div
-							className="automation-error automation-page-error"
-							role="alert"
-						>
-							<span>{storeError || error}</span>
-							{!storeError && (
-								<Button
-									variant="ghost"
-									size="icon-compact"
-									aria-label="Dismiss error"
-									onClick={() => setError("")}
-								>
-									<X size={14} />
-								</Button>
-							)}
-						</div>
-					)}
-					<section className="automation-list" aria-label="Schedules">
-						{loading ? (
-							<div className="automation-list-empty">Loading schedules…</div>
-						) : !options.repositories.length ? (
-							<div className="automation-list-empty">
-								Connect a repository to schedule work.
+						{(error || storeError) && (
+							<div
+								className="automation-error automation-page-error"
+								role="alert"
+							>
+								<span>{storeError || error}</span>
+								{!storeError && (
+									<Button
+										variant="ghost"
+										size="icon-compact"
+										aria-label="Dismiss error"
+										onClick={() => setError("")}
+									>
+										<X size={14} />
+									</Button>
+								)}
 							</div>
-						) : !matching.length ? (
-							<div className="automation-list-empty">
-								{query
-									? "No matching schedules."
-									: "No automations yet. Create one to get started."}
-							</div>
-						) : (
-							matching.map((d) => (
-								<button
-									type="button"
-									key={d.id}
-									className="automation-row"
-									aria-label={`View ${d.name}`}
-									aria-haspopup="dialog"
-									onClick={() => {
-										setSelected(d.id);
-										setEditor({ definition: d });
-									}}
-								>
-									<span className="automation-row-name">
-										<strong>{d.name}</strong>
-										<span>
-											{d.target?.kind === "direct_ops"
-												? "No repository"
-												: options.repositories.find(
-														(r) => r.id === d.repositoryId,
-													)?.name || d.repositoryId}
-										</span>
-									</span>
-									<span className="automation-row-schedule">
-										{scheduleLabel(d)}
-										<span>{d.timezone}</span>
-									</span>
-									<span className="automation-row-next">
-										{d.nextRunAt
-											? `Next ${formatDate(d.nextRunAt, d.timezone, true)}`
-											: "No upcoming runs"}
-									</span>
-									<StatusBadge status={d.scheduleState} />
-									<ChevronRight size={15} />
-								</button>
-							))
 						)}
-					</section>
-					<footer className="automation-page-footer">
-						<ShieldCheck size={13} />
-						<span>Schedules run while Miko is online.</span>
-					</footer>
-				</div>
-				{editor && (
-					<AutomationEditor
-						key={editor.definition?.id || "new"}
-						{...editor}
-						definition={
-							editor.definition ? definition || editor.definition : undefined
-						}
-						options={options}
-						onClose={() => {
-							setEditor(null);
-							setSelected(null);
-						}}
-						onSaved={async (saved) => {
-							await reload();
-							setFilter("active");
-							setQuery("");
-							setSelected(saved.id);
-							setEditor(null);
-							setRunVersion((v) => v + 1);
+						<section className="automation-list" aria-label="Schedules">
+							{loading ? (
+								<div className="automation-list-empty">Loading schedules…</div>
+							) : !options.repositories.length ? (
+								<div className="automation-list-empty">
+									Connect a repository to schedule work.
+								</div>
+							) : !matching.length ? (
+								<div className="automation-list-empty">
+									{query
+										? "No matching schedules."
+										: "No automations yet. Create one to get started."}
+								</div>
+							) : (
+								matching.map((d) => (
+									<button
+										type="button"
+										key={d.id}
+										className="automation-row"
+										aria-label={`View ${d.name}`}
+										aria-haspopup="dialog"
+										onClick={() => {
+											setSelected(d.id);
+											setEditor({ definition: d });
+										}}
+									>
+										<span className="automation-row-name">
+											<strong>{d.name}</strong>
+											<span>
+												{d.target?.kind === "direct_ops"
+													? "No repository"
+													: options.repositories.find(
+															(r) => r.id === d.repositoryId,
+														)?.name || d.repositoryId}
+											</span>
+										</span>
+										<span className="automation-row-schedule">
+											{scheduleLabel(d)}
+											<span>{d.timezone}</span>
+										</span>
+										<span className="automation-row-next">
+											{d.nextRunAt
+												? `Next ${formatDate(d.nextRunAt, d.timezone, true)}`
+												: "No upcoming runs"}
+										</span>
+										<StatusBadge status={d.scheduleState} />
+										<ChevronRight size={15} />
+									</button>
+								))
+							)}
+						</section>
+						<footer className="automation-page-footer">
+							<ShieldCheck size={13} />
+							<span>Schedules run while Miko is online.</span>
+						</footer>
+					</div>
+					{editor && (
+						<AutomationEditor
+							key={editor.definition?.id || "new"}
+							{...editor}
+							definition={
+								editor.definition ? definition || editor.definition : undefined
+							}
+							options={options}
+							onClose={() => {
+								setEditor(null);
+								setSelected(null);
+							}}
+							onSaved={async (saved) => {
+								await reload();
+								setQuery("");
+								setSelected(saved.id);
+								setEditor(null);
+								setRunVersion((v) => v + 1);
+							}}
+						>
+							{definition && editor.definition && (
+								<AutomationActivity
+									definition={definition}
+									runs={runs}
+									loading={runsLoading}
+									onAction={perform}
+									onSession={viewSession}
+									busy={busy}
+								/>
+							)}
+						</AutomationEditor>
+					)}
+					<Dialog
+						open={!!confirmation}
+						onOpenChange={(open) => {
+							if (!open && busy !== "confirm") setConfirmation(null);
 						}}
 					>
-						{definition && editor.definition && (
-							<AutomationActivity
-								definition={definition}
-								runs={runs}
-								loading={runsLoading}
-								onAction={perform}
-								onSession={viewSession}
-								busy={busy}
-							/>
-						)}
-					</AutomationEditor>
-				)}
-				<Dialog
-					open={!!confirmation}
-					onOpenChange={(open) => {
-						if (!open && busy !== "confirm") setConfirmation(null);
-					}}
-				>
-					<DialogContent className="fluid-scope automation-confirm">
-						<DialogHeader>
-							<DialogTitle>
-								{confirmation?.action === "archive"
-									? "Archive this automation?"
-									: "Has the execution ended?"}
-							</DialogTitle>
-							<DialogDescription>
-								{confirmation?.action === "archive"
-									? "Future scheduled runs will stop. Current work continues and all run history is kept."
-									: "Only confirm after checking that the previous agent has stopped. This releases the schedule for future runs; it does not stop a running agent."}
-							</DialogDescription>
-						</DialogHeader>
-						<DialogFooter>
-							<Button
-								variant="ghost"
-								onClick={() => setConfirmation(null)}
-								disabled={busy === "confirm"}
-							>
-								Cancel
-							</Button>
-							<Button loading={busy === "confirm"} onClick={confirm}>
-								{confirmation?.action === "archive"
-									? "Archive automation"
-									: "Confirm ended"}
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
-			</ShapeProvider>
-		</MotionConfig>
-	);
-}
-
-export function initializeAutomations(onSession) {
-	createRoot(document.getElementById("automations")).render(
-		<AutomationsApp onSession={onSession} />,
+						<DialogContent className="fluid-scope automation-confirm">
+							<DialogHeader>
+								<DialogTitle>
+									{confirmation?.action === "archive"
+										? "Archive this automation?"
+										: "Has the execution ended?"}
+								</DialogTitle>
+								<DialogDescription>
+									{confirmation?.action === "archive"
+										? "Future scheduled runs will stop. Current work continues and all run history is kept."
+										: "Only confirm after checking that the previous agent has stopped. This releases the schedule for future runs; it does not stop a running agent."}
+								</DialogDescription>
+							</DialogHeader>
+							<DialogFooter>
+								<Button
+									variant="ghost"
+									onClick={() => setConfirmation(null)}
+									disabled={busy === "confirm"}
+								>
+									Cancel
+								</Button>
+								<Button loading={busy === "confirm"} onClick={confirm}>
+									{confirmation?.action === "archive"
+										? "Archive automation"
+										: "Confirm ended"}
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+				</ShapeProvider>
+			</MotionConfig>
+		</section>
 	);
 }

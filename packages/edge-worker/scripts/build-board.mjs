@@ -9,7 +9,7 @@ const root = new URL("../", import.meta.url);
 await mkdir(new URL("dist/board/", root), { recursive: true });
 await build({
 	absWorkingDir: fileURLToPath(root),
-	entryPoints: ["board/frontend.js"],
+	entryPoints: ["board/main.jsx"],
 	bundle: true,
 	jsx: "automatic",
 	minify: true,

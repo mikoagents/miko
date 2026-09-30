@@ -572,6 +572,100 @@ function LogView({
 	);
 }
 
+export function LogViewerHost({
+	logs = [],
+	follow,
+	wrap,
+	scope,
+	errorsOnly,
+	showIssue,
+	source,
+	paused,
+	refreshing,
+	taskDetail,
+	onStopFollowing,
+	onControlsChange,
+	onPause,
+	onRefresh,
+	onClearTask,
+}) {
+	const [rootElement, setRootElement] = useState(null);
+	const followRef = useRef(follow);
+	followRef.current = follow;
+	const stopFollowing = useCallback(() => {
+		if (!followRef.current) return;
+		onStopFollowing();
+	}, [onStopFollowing]);
+	useEffect(() => {
+		if (!rootElement) return;
+		const onWheel = (event) => {
+			if (event.deltaY < 0) stopFollowing();
+		};
+		const onKeyDown = (event) => {
+			if (
+				!["INPUT", "TEXTAREA"].includes(event.target.tagName) &&
+				["ArrowUp", "PageUp", "Home"].includes(event.key)
+			)
+				stopFollowing();
+		};
+		const onInput = (event) => {
+			if (
+				event.target.matches(".react-lazylog-searchbar-input") &&
+				event.target.value
+			)
+				stopFollowing();
+		};
+		const onPointerDown = (event) => {
+			const list = event.target.closest(".react-lazylog, .activity-list");
+			if (list && event.clientX >= list.getBoundingClientRect().right - 18)
+				stopFollowing();
+		};
+		rootElement.addEventListener("wheel", onWheel, { passive: true });
+		rootElement.addEventListener("keydown", onKeyDown);
+		rootElement.addEventListener("input", onInput);
+		rootElement.addEventListener("pointerdown", onPointerDown);
+		return () => {
+			rootElement.removeEventListener("wheel", onWheel);
+			rootElement.removeEventListener("keydown", onKeyDown);
+			rootElement.removeEventListener("input", onInput);
+			rootElement.removeEventListener("pointerdown", onPointerDown);
+		};
+	}, [rootElement, stopFollowing]);
+	return (
+		<section
+			className="terminal"
+			id="logs"
+			ref={setRootElement}
+			// biome-ignore lint/a11y/noNoninteractiveTabindex: log terminal stays keyboard-focusable like the previous #logs pane.
+			tabIndex={0}
+			aria-label="Log contents"
+		>
+			{rootElement ? (
+				<LogView
+					logs={logs}
+					follow={follow}
+					wrap={wrap}
+					scope={scope}
+					errorsOnly={errorsOnly}
+					showIssue={showIssue}
+					source={source}
+					paused={paused}
+					refreshing={refreshing}
+					taskDetail={taskDetail}
+					rootElement={rootElement}
+					stopFollowing={stopFollowing}
+					onControlsChange={onControlsChange}
+					onPause={onPause}
+					onRefresh={onRefresh}
+					onClearTask={onClearTask}
+				/>
+			) : (
+				<div className="empty">Connecting to logs…</div>
+			)}
+		</section>
+	);
+}
+
 export function createLogViewer(container, { onStopFollowing, ...actions }) {
 	const root = createRoot(container);
 	let current,
