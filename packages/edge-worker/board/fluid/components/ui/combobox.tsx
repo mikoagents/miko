@@ -374,11 +374,11 @@ const fieldVariants = cva(
         // Framed at rest; the fills step up on hover and focus like an
         // input field.
         bordered:
-          "ring-border bg-transparent hover:bg-muted/50 focus-within:bg-card",
+          "ring-border bg-transparent hover:bg-muted/50 focus-within:bg-card focus-within:ring-[color:var(--focus-ring,#6B97FF)]",
         // Invisible at rest — the InputGroup field ladder: muted fill +
-        // ring on hover, card fill when focused.
+        // ring on hover, card fill + focus ring when focused.
         borderless:
-          "ring-transparent bg-transparent hover:bg-muted/50 hover:ring-border focus-within:bg-card focus-within:ring-border",
+          "ring-transparent bg-transparent hover:bg-muted/50 hover:ring-border focus-within:bg-card focus-within:ring-[color:var(--focus-ring,#6B97FF)]",
       },
     },
     defaultVariants: {
@@ -517,7 +517,9 @@ const ComboboxInput = forwardRef<HTMLInputElement, ComboboxInputProps>(
             placeholder={placeholder}
             aria-invalid={!!error || undefined}
             className={cn(
-              "min-w-0 flex-1 rounded-none bg-transparent text-foreground placeholder:text-muted-foreground outline-none font-[inherit]",
+              // fluid-input-control suppresses .fluid-scope :focus-visible so the
+              // chrome ring is the only focus border (same as InputField).
+              "fluid-input-control min-w-0 flex-1 rounded-none bg-transparent text-foreground placeholder:text-muted-foreground outline-none focus:outline-none focus-visible:outline-none font-[inherit]",
               sizeClasses.text,
               // The caret is as tall as the line box (Chrome, Safari); the
               // ladder's leading keeps it in proportion to the field.
@@ -717,7 +719,7 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
                       placeholder={selected?.length ? undefined : placeholder}
                       aria-invalid={!!error || undefined}
                       className={cn(
-                        "w-full min-w-0 rounded-none bg-transparent text-foreground placeholder:text-muted-foreground outline-none font-[inherit]",
+                        "fluid-input-control w-full min-w-0 rounded-none bg-transparent text-foreground placeholder:text-muted-foreground outline-none focus:outline-none focus-visible:outline-none font-[inherit]",
                         // Line box = row height, so the caret spans the chip row.
                         compact ? "h-5 leading-5" : "h-6 leading-6",
                         sizeClasses.text

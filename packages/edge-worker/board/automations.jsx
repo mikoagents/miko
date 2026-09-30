@@ -102,19 +102,17 @@ function StatusBadge({ status }) {
 		</Badge>
 	);
 }
-function FormInput({ label, id: providedId, onChange, ...props }) {
-	const generatedId = useId();
-	const id = providedId || generatedId;
+function FormInput({ label, id: providedId, onChange, className, ...props }) {
 	return (
-		<div className="automation-field">
-			<label htmlFor={id}>{label}</label>
-			<input
-				className="automation-text-input"
-				id={id}
-				onChange={(event) => onChange(event.target.value)}
+		<InputGroup className={className || "automation-input-group w-full"} size="compact">
+			<InputField
+				id={providedId}
+				label={label}
+				index={0}
+				onChange={onChange}
 				{...props}
 			/>
-		</div>
+		</InputGroup>
 	);
 }
 function FieldSelect({
@@ -414,17 +412,15 @@ function AutomationEditor({
 						>
 							<section className="automation-form-section automation-task-section">
 								<h3 className="automation-section-label">Task</h3>
-								<div className="automation-input-group">
-									<FormInput
-										id="automation-name"
-										label="Name"
-										placeholder="e.g. Review dependencies every Monday"
-										value={form.name}
-										onChange={(value) => set("name", value)}
-										required
-										maxLength={200}
-									/>
-								</div>
+								<FormInput
+									id="automation-name"
+									label="Name"
+									placeholder="e.g. Review dependencies every Monday"
+									value={form.name}
+									onChange={(value) => set("name", value)}
+									required
+									maxLength={200}
+								/>
 								<div className="automation-field automation-instruction-field">
 									<label htmlFor={instructionsId}>Instructions</label>
 									<textarea
@@ -630,33 +626,31 @@ function AutomationEditor({
 												["cron", "Custom cron"],
 											]}
 										/>
-										<div className="automation-input-group">
-											{form.kind === "once" ? (
-												<FormInput
-													label="Date & time"
-													type="datetime-local"
-													value={form.at}
-													onChange={(value) => set("at", value)}
-													required
-												/>
-											) : form.kind === "cron" ? (
-												<FormInput
-													label="Cron expression"
-													placeholder="0 9 * * *"
-													value={form.expression}
-													onChange={(value) => set("expression", value)}
-													required
-												/>
-											) : (
-												<FormInput
-													label="Time"
-													type="time"
-													value={form.time}
-													onChange={(value) => set("time", value)}
-													required
-												/>
-											)}
-										</div>
+										{form.kind === "once" ? (
+											<FormInput
+												label="Date & time"
+												type="datetime-local"
+												value={form.at}
+												onChange={(value) => set("at", value)}
+												required
+											/>
+										) : form.kind === "cron" ? (
+											<FormInput
+												label="Cron expression"
+												placeholder="0 9 * * *"
+												value={form.expression}
+												onChange={(value) => set("expression", value)}
+												required
+											/>
+										) : (
+											<FormInput
+												label="Time"
+												type="time"
+												value={form.time}
+												onChange={(value) => set("time", value)}
+												required
+											/>
+										)}
 									</div>
 									{form.kind === "weekly" && (
 										<fieldset className="automation-weekdays">
@@ -693,15 +687,13 @@ function AutomationEditor({
 											Five fields: minute · hour · day · month · weekday.
 										</p>
 									)}
-									<div className="automation-input-group">
-										<FormInput
-											label="Timezone"
-											value={form.timezone}
-											onChange={(value) => set("timezone", value)}
-											readOnly={form.kind === "once"}
-											required
-										/>
-									</div>
+									<FormInput
+										label="Timezone"
+										value={form.timezone}
+										onChange={(value) => set("timezone", value)}
+										readOnly={form.kind === "once"}
+										required
+									/>
 									<div
 										className={`automation-preview ${preview.error ? "is-error" : ""}`}
 										aria-live="polite"
@@ -1254,30 +1246,47 @@ function AutomationsApp({ onSession }) {
 										setEditor({ definition: d });
 									}}
 								>
-									<span className="automation-row-name">
-										<strong>{d.name}</strong>
-										<span className="automation-row-meta">
-											{formatRepositoryNames(d, options.repositories)}
-										</span>
-										<span className="automation-row-model">
-											<AutomationModelIcon
-												model={resolveAutomationModel(d, options)}
-												size={12}
-											/>
-											<span>{resolveAutomationModel(d, options)}</span>
-										</span>
+									<span className="automation-row-name" title={d.name}>
+										{d.name}
 									</span>
-									<span className="automation-row-schedule">
+									<span
+										className="automation-row-meta"
+										title={formatRepositoryNames(d, options.repositories)}
+									>
+										{formatRepositoryNames(d, options.repositories)}
+									</span>
+									<span
+										className="automation-row-model"
+										title={resolveAutomationModel(d, options)}
+									>
+										<AutomationModelIcon
+											model={resolveAutomationModel(d, options)}
+											size={12}
+										/>
+										<span>{resolveAutomationModel(d, options)}</span>
+									</span>
+									<span
+										className="automation-row-schedule"
+										title={`${scheduleLabel(d)} · ${d.timezone}`}
+									>
 										{scheduleLabel(d)}
-										<span>{d.timezone}</span>
 									</span>
-									<span className="automation-row-next">
+									<span
+										className="automation-row-next"
+										title={
+											d.nextRunAt
+												? formatDate(d.nextRunAt, d.timezone, true)
+												: "No upcoming runs"
+										}
+									>
 										{d.nextRunAt
-											? `Next ${formatDate(d.nextRunAt, d.timezone, true)}`
-											: "No upcoming runs"}
+											? formatDate(d.nextRunAt, d.timezone, true)
+											: "—"}
 									</span>
-									<StatusBadge status={d.scheduleState} />
-									<ChevronRight size={15} />
+									<span className="automation-row-status">
+										<StatusBadge status={d.scheduleState} />
+									</span>
+									<ChevronRight size={15} aria-hidden />
 								</button>
 							))
 						)}
