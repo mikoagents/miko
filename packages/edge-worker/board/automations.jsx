@@ -127,7 +127,12 @@ function FieldSelect({
 			<label id={`${id}-label`} htmlFor={id}>
 				{label}
 			</label>
-			<Select value={value} onValueChange={onChange} disabled={disabled}>
+			<Select
+				value={value}
+				onValueChange={onChange}
+				disabled={disabled}
+				size="compact"
+			>
 				<SelectTrigger
 					id={id}
 					aria-labelledby={`${id}-label`}
@@ -378,7 +383,7 @@ function AutomationEditor({
 				</DialogHeader>
 				{definition && (
 					<div className="automation-editor-tabs">
-						<Tabs value={panel} onValueChange={setPanel}>
+						<Tabs value={panel} onValueChange={setPanel} size="compact">
 							<TabsList aria-label="Automation details">
 								<TabItem value="configuration" label="Configuration" />
 								<TabItem value="history" label="Run history" />
@@ -636,6 +641,7 @@ function AutomationEditor({
 													<Button
 														key={day}
 														type="button"
+														size="compact"
 														variant={
 															form.days.includes(day) ? "secondary" : "ghost"
 														}
@@ -704,6 +710,7 @@ function AutomationEditor({
 										label="Enable schedule"
 										checked={form.enabled}
 										onToggle={() => set("enabled", !form.enabled)}
+										size="compact"
 										className="automation-switch-only"
 									/>
 								</div>
@@ -720,6 +727,7 @@ function AutomationEditor({
 						<Button
 							type="button"
 							variant="ghost"
+							size="compact"
 							onClick={onClose}
 							disabled={saving}
 						>
@@ -728,6 +736,7 @@ function AutomationEditor({
 						{panel === "configuration" && !definition?.archived && (
 							<Button
 								type="submit"
+								size="compact"
 								leadingIcon={definition ? Check : Plus}
 								loading={saving}
 								disabled={
@@ -1100,6 +1109,7 @@ function AutomationsApp({ onSession }) {
 							<Button
 								id="show-tasks"
 								variant="ghost"
+								size="compact"
 								active={page === "tasks"}
 								leadingIcon={ListTodo}
 								asChild
@@ -1110,6 +1120,7 @@ function AutomationsApp({ onSession }) {
 							<Button
 								id="show-automations"
 								variant="ghost"
+								size="compact"
 								active={page === "automations"}
 								leadingIcon={CalendarClock}
 								asChild
@@ -1120,6 +1131,7 @@ function AutomationsApp({ onSession }) {
 							<Button
 								id="show-skills"
 								variant="ghost"
+								size="compact"
 								active={page === "skills"}
 								leadingIcon={BookOpen}
 								asChild
@@ -1130,6 +1142,7 @@ function AutomationsApp({ onSession }) {
 							<Button
 								id="show-status"
 								variant="ghost"
+								size="compact"
 								active={page === "status"}
 								leadingIcon={Activity}
 								asChild
@@ -1147,7 +1160,7 @@ function AutomationsApp({ onSession }) {
 				)}
 				<div className="fluid-scope automation-canvas">
 					<div className="automation-toolbar">
-						<InputGroup className="automation-search" size="default">
+						<InputGroup className="automation-search" size="compact">
 							<InputField
 								label="Search automations"
 								labelHidden
@@ -1159,7 +1172,7 @@ function AutomationsApp({ onSession }) {
 							/>
 						</InputGroup>
 						<Button
-							size="default"
+							size="compact"
 							className="automation-create"
 							variant="primary"
 							aria-label="New automation"
@@ -1302,12 +1315,17 @@ function AutomationsApp({ onSession }) {
 						<DialogFooter>
 							<Button
 								variant="ghost"
+								size="compact"
 								onClick={() => setConfirmation(null)}
 								disabled={busy === "confirm"}
 							>
 								Cancel
 							</Button>
-							<Button loading={busy === "confirm"} onClick={confirm}>
+							<Button
+								size="compact"
+								loading={busy === "confirm"}
+								onClick={confirm}
+							>
 								{confirmation?.action === "archive"
 									? "Archive automation"
 									: "Confirm ended"}
