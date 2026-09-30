@@ -44,7 +44,7 @@ async function fixture(accessToken?: string) {
 const input = {
 	name: "Scheduled task",
 	instructions: "Fix it",
-	repositoryId: "repo",
+	repositoryIds: ["repo"],
 	enabled: true,
 	timezone: "UTC",
 	schedule: { kind: "daily", time: "09:00" },

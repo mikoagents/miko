@@ -23,13 +23,15 @@ import mikoLogo from "./assets/miko.jpg";
 import {
 	automationApi as api,
 	formatDate,
+	formatRepositoryNames,
 	formFromDefinition,
-	formWithRepository,
+	formWithRepositories,
 	formWithTarget,
 	formWithTeam,
 	inputFromForm,
 	modelChoices,
 	RUNNER_LABELS,
+	resolveAutomationModel,
 	runLabels,
 	scheduleFromForm,
 	scheduleLabel,
@@ -339,20 +341,59 @@ function AutomationEditor({
 									<h3 className="automation-section-label">Execution</h3>
 									<div className="automation-form-grid">
 										{form.target !== "direct_ops" && (
-											<FieldSelect
-												label="Repository"
-												value={form.repositoryId}
-												onChange={(value) =>
-													setForm((current) =>
-														formWithRepository(
-															current,
-															options.repositories.find((r) => r.id === value),
-														),
-													)
-												}
-												items={options.repositories.map((r) => [r.id, r.name])}
-												placeholder="Choose a repository"
-											/>
+											<fieldset className="automation-repo-multi">
+												<legend>Repositories</legend>
+												<div className="automation-repo-multi-list">
+													{options.repositories.map((repository) => {
+														const checked = (form.repositoryIds || []).includes(
+															repository.id,
+														);
+														return (
+															<label
+																key={repository.id}
+																className={`automation-repo-option${checked ? " is-selected" : ""}`}
+															>
+																<input
+																	type="checkbox"
+																	checked={checked}
+																	onChange={() =>
+																		setForm((current) => {
+																			const nextIds = checked
+																				? (current.repositoryIds || []).filter(
+																						(id) => id !== repository.id,
+																					)
+																				: [
+																						...(current.repositoryIds || []),
+																						repository.id,
+																					];
+																			const selected = nextIds
+																				.map((id) =>
+																					options.repositories.find(
+																						(item) => item.id === id,
+																					),
+																				)
+																				.filter(Boolean);
+																			return formWithRepositories(
+																				current,
+																				selected,
+																			);
+																		})
+																	}
+																/>
+																<span>{repository.name}</span>
+															</label>
+														);
+													})}
+												</div>
+												{form.target === "linear_issue" &&
+													(form.repositoryIds || []).length > 1 &&
+													!form.workspaceId && (
+														<p className="automation-field-hint is-error">
+															Selected repositories must share one Linear
+															workspace.
+														</p>
+													)}
+											</fieldset>
 										)}
 										<FieldSelect
 											label="Mode"
@@ -418,10 +459,10 @@ function AutomationEditor({
 									</div>
 									<p className="automation-field-hint">
 										{form.target === "direct_repository"
-											? "An isolated worktree. Agent and model override the install defaults for this schedule."
+											? "One isolated worktree session per selected repository. Agent and model override the install defaults for this schedule."
 											: form.target === "direct_ops"
 												? "Runs in a separate workspace without cloning a repository. Use for Linear operations and other tasks outside a code repository."
-												: "Creates an issue in this repository's Linear workspace and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
+												: "Creates an issue in the selected repositories' shared Linear workspace and delegates it to your connected Miko agent. Agent and model are applied as routing tags."}
 									</p>
 									{form.target === "linear_issue" && (
 										<div className="automation-linear-fields">
@@ -435,7 +476,7 @@ function AutomationEditor({
 												disabled={teamsLoading || !form.workspaceId}
 												placeholder={
 													!form.workspaceId
-														? "Repository has no Linear workspace"
+														? "Select repositories that share a Linear workspace"
 														: teamsLoading
 															? "Loading teams…"
 															: "Choose a team"
@@ -599,7 +640,8 @@ function AutomationEditor({
 								loading={saving}
 								disabled={
 									definition?.archived ||
-									(form.target !== "direct_ops" && !form.repositoryId) ||
+									(form.target !== "direct_ops" &&
+										!(form.repositoryIds || []).length) ||
 									!preview.times.length ||
 									preview.loading ||
 									teamsLoading
@@ -1082,12 +1124,11 @@ function AutomationsApp({ onSession }) {
 								>
 									<span className="automation-row-name">
 										<strong>{d.name}</strong>
-										<span>
-											{d.target?.kind === "direct_ops"
-												? "No repository"
-												: options.repositories.find(
-														(r) => r.id === d.repositoryId,
-													)?.name || d.repositoryId}
+										<span className="automation-row-meta">
+											{formatRepositoryNames(d, options.repositories)}
+										</span>
+										<span className="automation-row-model">
+											{resolveAutomationModel(d, options)}
 										</span>
 									</span>
 									<span className="automation-row-schedule">

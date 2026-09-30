@@ -13,6 +13,7 @@ import {
 	AutomationError,
 	type AutomationInput,
 	automationInputSchema,
+	normalizeAutomationRepositories,
 } from "../src/automation/types.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -22,7 +23,7 @@ afterEach(async () => {
 const input = (overrides: Partial<AutomationInput> = {}): AutomationInput => ({
 	name: "Update documentation",
 	instructions: "Fix the outdated examples and open a PR",
-	repositoryId: "repo",
+	repositoryIds: ["repo"],
 	timezone: "Asia/Shanghai",
 	schedule: { kind: "daily", time: "09:00" },
 	target: { kind: "direct_repository" },
@@ -372,13 +373,13 @@ describe("automation input schema optional repository", () => {
 		const definition = await service.save(
 			input({
 				target: { kind: "direct_ops" },
-				repositoryId: undefined,
+				repositoryIds: undefined,
 				enabled: false,
 			}),
 		);
 		await expect(
 			store.transact((state) => {
-				state.definitions[0].repositoryId = "repo";
+				state.definitions[0].repositoryIds = ["repo"];
 			}),
 		).rejects.toThrow("Ops automations must not bind a repository");
 		await service.stop();
@@ -387,12 +388,12 @@ describe("automation input schema optional repository", () => {
 		cleanups.push(() => reopened.close());
 		expect(reopened.read().definitions).toEqual([definition]);
 	});
-	it("accepts direct_ops without repositoryId and rejects repo-backed without one", () => {
+	it("accepts direct_ops without repositoryIds and rejects repo-backed without one", () => {
 		expect(
 			automationInputSchema.parse(
 				input({
 					target: { kind: "direct_ops" },
-					repositoryId: undefined,
+					repositoryIds: undefined,
 				}),
 			).target.kind,
 		).toBe("direct_ops");
@@ -400,7 +401,7 @@ describe("automation input schema optional repository", () => {
 			automationInputSchema.parse(
 				input({
 					target: { kind: "direct_ops" },
-					repositoryId: "repo",
+					repositoryIds: ["repo"],
 				}),
 			),
 		).toThrow(/Ops automations must not bind a repository/);
@@ -408,9 +409,82 @@ describe("automation input schema optional repository", () => {
 			automationInputSchema.parse(
 				input({
 					target: { kind: "direct_repository" },
-					repositoryId: undefined,
+					repositoryIds: undefined,
 				}),
 			),
 		).toThrow(/Repository is required/);
+	});
+	it("normalizes legacy repositoryId into repositoryIds", () => {
+		const normalized = normalizeAutomationRepositories({
+			repositoryId: "legacy-repo",
+			name: "x",
+		});
+		expect(normalized).toEqual({ name: "x", repositoryIds: ["legacy-repo"] });
+		const parsed = automationInputSchema.parse({
+			...input({ repositoryIds: undefined }),
+			repositoryId: "legacy-repo",
+		});
+		expect(normalizeAutomationRepositories(parsed).repositoryIds).toEqual([
+			"legacy-repo",
+		]);
+	});
+});
+
+describe("multi-repository automation runs", () => {
+	it("fans out one run per repository for direct_repository schedules", async () => {
+		const { service, adapter } = await fixture();
+		const definition = await service.save(
+			input({
+				repositoryIds: ["repo-a", "repo-b"],
+				enabled: false,
+			}),
+		);
+		await service.setEnabled(definition.id, definition.revision, true);
+		const run = await service.runNow(definition.id, "fan-out-1");
+		await dispatched(service, definition.id);
+		const runs = service.runs(definition.id);
+		expect(runs).toHaveLength(2);
+		expect(runs.map((item) => item.snapshot.repositoryIds).sort()).toEqual([
+			["repo-a"],
+			["repo-b"],
+		]);
+		expect(adapter.dispatch).toHaveBeenCalledTimes(2);
+		expect(run.snapshot.repositoryIds).toHaveLength(1);
+	});
+	it("migrates legacy on-disk repositoryId when opening the store", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "automation-migrate-"));
+		cleanups.push(() => rm(directory, { recursive: true, force: true }));
+		await mkdir(directory, { recursive: true });
+		await writeFile(
+			join(directory, "state.json"),
+			JSON.stringify({
+				version: 1,
+				definitions: [
+					{
+						...input({ enabled: false }),
+						repositoryId: "legacy-repo",
+						id: "auto-1",
+						revision: 1,
+						createdAt: 1,
+						updatedAt: 1,
+						archived: false,
+						nextRunAt: null,
+						scheduleState: "paused",
+					},
+				],
+				runs: [],
+			}),
+		);
+		// Drop repositoryIds from the helper so only legacy field remains on disk.
+		const raw = JSON.parse(
+			await readFile(join(directory, "state.json"), "utf8"),
+		);
+		delete raw.definitions[0].repositoryIds;
+		await writeFile(join(directory, "state.json"), JSON.stringify(raw));
+		const store = new AutomationStore(directory);
+		await store.open();
+		cleanups.push(() => store.close());
+		expect(store.read().definitions[0].repositoryIds).toEqual(["legacy-repo"]);
+		expect(store.read().definitions[0]).not.toHaveProperty("repositoryId");
 	});
 });

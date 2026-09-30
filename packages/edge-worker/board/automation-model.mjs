@@ -39,6 +39,37 @@ export function parseRunnerModelFromInstructions(instructions = "") {
 		model: model || "",
 	};
 }
+/** Prefer schema model, then instruction tags, then runner default, else "Default". */
+export function resolveAutomationModel(definition, options = {}) {
+	const explicit = definition?.model?.trim();
+	if (explicit) return explicit;
+	const fromTags = parseRunnerModelFromInstructions(definition?.instructions);
+	if (fromTags.model) return fromTags.model;
+	const runner =
+		definition?.runner || fromTags.runner || options.defaultRunner || "";
+	const fallback =
+		(runner && options.defaultModels?.[runner]) ||
+		(options.defaultRunner && options.defaultModels?.[options.defaultRunner]);
+	return fallback || "Default";
+}
+export function automationRepositoryIds(definition) {
+	const fromArray = (definition?.repositoryIds || []).filter(Boolean);
+	if (fromArray.length) return [...new Set(fromArray)];
+	if (definition?.repositoryId) return [definition.repositoryId];
+	return [];
+}
+/** Compact list-row label: "A", "A, B", or "A +2". */
+export function formatRepositoryNames(definition, repositories = []) {
+	if (definition?.target?.kind === "direct_ops") return "No repository";
+	const ids = automationRepositoryIds(definition);
+	const names = ids.map(
+		(id) => repositories.find((repository) => repository.id === id)?.name || id,
+	);
+	if (!names.length) return "No repository";
+	if (names.length === 1) return names[0];
+	if (names.length === 2) return `${names[0]}, ${names[1]}`;
+	return `${names[0]} +${names.length - 1}`;
+}
 export function formatDate(value, timezone, compact = false) {
 	if (!value) return "—";
 	return new Intl.DateTimeFormat(undefined, {
@@ -58,23 +89,32 @@ export function scheduleLabel(definition) {
 export function formFromDefinition(definition, options, kind = "daily") {
 	const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 	const isOps = definition?.target?.kind === "direct_ops";
-	const repo = isOps
-		? undefined
-		: definition?.repositoryId
-			? options.repositories.find((r) => r.id === definition.repositoryId)
-			: options.repositories[0];
+	const selectedIds = isOps
+		? []
+		: automationRepositoryIds(definition).length
+			? automationRepositoryIds(definition).filter((id) =>
+					options.repositories.some((repository) => repository.id === id),
+				)
+			: options.repositories[0]
+				? [options.repositories[0].id]
+				: [];
+	const selected = selectedIds
+		.map((id) =>
+			options.repositories.find((repository) => repository.id === id),
+		)
+		.filter(Boolean);
 	const at =
 		definition?.schedule.kind === "once"
 			? new Date(definition.schedule.at)
 			: new Date(Date.now() + 3600000);
 	const fromTags = parseRunnerModelFromInstructions(definition?.instructions);
-	return formWithRepository(
+	return formWithRepositories(
 		{
 			name: definition?.name || "",
 			instructions: (definition?.instructions || "")
 				.replace(/\[(?:agent|model)\s*=[^\]]*\]\s*/gi, "")
 				.trim(),
-			repositoryId: repo?.id || "",
+			repositoryIds: selectedIds,
 			target: definition?.target.kind || "direct_repository",
 			workspaceId: definition?.target.workspaceId || "",
 			teamId: definition?.target.teamId || "",
@@ -94,19 +134,34 @@ export function formFromDefinition(definition, options, kind = "daily") {
 			runner: definition?.runner || fromTags.runner || "",
 			model: definition?.model || fromTags.model || "",
 		},
-		repo,
+		selected,
 	);
 }
-export function formWithRepository(form, repository) {
-	const workspaceId = repository?.workspaceId || "";
+/** Keep Linear workspace/team in sync with the selected repository set. */
+export function formWithRepositories(form, repositories) {
+	const selected = repositories || [];
+	const workspaceIds = [
+		...new Set(
+			selected.map((repository) => repository.workspaceId).filter(Boolean),
+		),
+	];
+	const workspaceId = workspaceIds.length === 1 ? workspaceIds[0] : "";
 	const sameWorkspace = !!workspaceId && workspaceId === form.workspaceId;
 	return {
 		...form,
-		repositoryId: repository?.id || "",
+		repositoryIds: selected.map((repository) => repository.id),
 		workspaceId,
 		teamId: sameWorkspace ? form.teamId : "",
 		projectId: sameWorkspace ? form.projectId : "",
 	};
+}
+/** @deprecated Prefer formWithRepositories; kept for call sites toggling one repo. */
+export function formWithRepository(form, repository) {
+	if (!repository) return formWithRepositories(form, []);
+	const current = new Set(form.repositoryIds || []);
+	if (current.has(repository.id) && current.size === 1)
+		return formWithRepositories(form, [repository]);
+	return formWithRepositories(form, [repository]);
 }
 export function formWithTeam(form, teamId) {
 	return {
@@ -116,13 +171,23 @@ export function formWithTeam(form, teamId) {
 	};
 }
 export function formWithTarget(form, target, options) {
-	const repository =
+	const selected =
 		target === "direct_ops"
-			? undefined
-			: form.repositoryId
-				? options.repositories.find((r) => r.id === form.repositoryId)
-				: options.repositories[0];
-	return formWithRepository({ ...form, target }, repository);
+			? []
+			: (form.repositoryIds || [])
+					.map((id) =>
+						options.repositories.find((repository) => repository.id === id),
+					)
+					.filter(Boolean);
+	const repositories =
+		target === "direct_ops"
+			? []
+			: selected.length
+				? selected
+				: options.repositories[0]
+					? [options.repositories[0]]
+					: [];
+	return formWithRepositories({ ...form, target }, repositories);
 }
 export function scheduleFromForm(form) {
 	if (form.kind === "once") {
@@ -166,8 +231,12 @@ export function inputFromForm(form) {
 		schedule: scheduleFromForm(form),
 		target,
 	};
-	if (form.target !== "direct_ops" && form.repositoryId)
-		input.repositoryId = form.repositoryId;
+	if (form.target !== "direct_ops") {
+		const repositoryIds = [
+			...new Set((form.repositoryIds || []).filter(Boolean)),
+		];
+		if (repositoryIds.length) input.repositoryIds = repositoryIds;
+	}
 	if (form.runner) input.runner = form.runner;
 	if (form.model?.trim()) input.model = form.model.trim();
 	return input;

@@ -58,7 +58,7 @@ describe("AutomationAdapters runner/model dispatch", () => {
 			snapshot: {
 				name: "Task",
 				instructions: "Do the work",
-				repositoryId: "repo",
+				repositoryIds: ["repo"],
 				target: { kind: "direct_repository" },
 				runner: "cursor",
 				model: "gemini-3.8-flash",

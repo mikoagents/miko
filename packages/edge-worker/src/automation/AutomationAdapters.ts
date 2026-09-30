@@ -9,6 +9,7 @@ import {
 	type AutomationInput,
 	type AutomationRun,
 	applyAutomationRunnerModel,
+	automationRepositoryIds,
 	type RepositoryTaskRequest,
 	type RunUpdate,
 } from "./types.js";
@@ -117,6 +118,16 @@ export class AutomationAdapters implements AutomationAdapter {
 			);
 		return error;
 	}
+	private resolveRepositories(input: AutomationInput) {
+		const ids = automationRepositoryIds(input);
+		const repositories = ids.map((id) => {
+			const repository = this.deps.repositories().find((r) => r.id === id);
+			if (!repository || repository.isActive === false)
+				throw new AutomationError("Repository is unavailable");
+			return repository;
+		});
+		return { ids, repositories };
+	}
 	private async validateTarget(input: AutomationInput) {
 		if (input.target.kind === "direct_ops") {
 			if (this.deps.repoTags(input.instructions).length)
@@ -125,11 +136,8 @@ export class AutomationAdapters implements AutomationAdapter {
 				);
 			return;
 		}
-		const repository = this.deps
-			.repositories()
-			.find((r) => r.id === input.repositoryId);
-		if (!repository || repository.isActive === false)
-			throw new AutomationError("Repository is unavailable");
+		const { ids, repositories } = this.resolveRepositories(input);
+		const selected = new Set(ids);
 		const tags = this.deps.repoTags(input.instructions);
 		if (
 			tags.some((t) => {
@@ -146,22 +154,42 @@ export class AutomationAdapters implements AutomationAdapter {
 							),
 					);
 				return (
-					t.branch || matches.length !== 1 || matches[0]?.id !== repository.id
+					t.branch ||
+					matches.length !== 1 ||
+					!matches[0] ||
+					!selected.has(matches[0].id)
 				);
 			})
 		)
 			throw new AutomationError(
-				"Task repository selectors must match the selected repository without a branch override",
+				"Task repository selectors must match a selected repository without a branch override",
 			);
 		if (input.target.kind !== "linear_issue") return;
-		if (repository.linearWorkspaceId !== input.target.workspaceId)
+		const workspaceIds = [
+			...new Set(
+				repositories
+					.map((repository) => repository.linearWorkspaceId)
+					.filter(Boolean),
+			),
+		];
+		// Linear issue creation is workspace-scoped; multi-repo is only allowed
+		// when every selected repository maps to the same Linear workspace. The
+		// first repository is the primary routing target for [repo=…] tags.
+		if (
+			workspaceIds.length !== 1 ||
+			workspaceIds[0] !== input.target.workspaceId
+		)
 			throw new AutomationError(
-				"Repository does not belong to the selected Linear workspace",
+				workspaceIds.length > 1
+					? "Selected repositories must belong to the same Linear workspace"
+					: "Repository does not belong to the selected Linear workspace",
 			);
-		if (!/^[a-zA-Z0-9_\-/.]+$/.test(repository.id))
-			throw new AutomationError(
-				"Repository ID cannot be represented as a routing selector",
-			);
+		for (const repository of repositories) {
+			if (!/^[a-zA-Z0-9_\-/.]+$/.test(repository.id))
+				throw new AutomationError(
+					"Repository ID cannot be represented as a routing selector",
+				);
+		}
 		const client = this.linear(input.target.workspaceId);
 		const viewer = await client.viewer;
 		if (!viewer.app || !viewer.supportsAgentSessions)
@@ -208,11 +236,12 @@ export class AutomationAdapters implements AutomationAdapter {
 			input.target.kind === "direct_repository" ||
 			input.target.kind === "direct_ops"
 		) {
+			const repositoryId = automationRepositoryIds(input)[0];
 			await this.deps.startTask({
 				id: run.id,
 				title: input.name,
 				instructions,
-				repositoryId: input.repositoryId,
+				repositoryId,
 				source: "automation",
 				runner,
 				model: input.model,
@@ -227,14 +256,16 @@ export class AutomationAdapters implements AutomationAdapter {
 		if (existing.nodes[0])
 			return { issueUrl: existing.nodes[0].url, status: "waiting_session" };
 		const viewer = await client.viewer;
-		const repository = this.deps
-			.repositories()
-			.find((r) => r.id === input.repositoryId);
-		if (!repository) throw new AutomationError("Repository is unavailable");
+		const { ids, repositories } = this.resolveRepositories(input);
+		if (!repositories.length)
+			throw new AutomationError("Repository is unavailable");
+		// Primary = first selected repository; additional repos are routing tags
+		// so the Linear agent can attach matching worktrees in one session.
+		const repoTags = ids.map((id) => `[repo=${id}]`).join("\n");
 		const result = await client.createIssue({
 			id: run.issueId,
 			title: input.name,
-			description: `${instructions}\n\n[repo=${repository.id}]\n\nAutomation run: ${run.id}`,
+			description: `${instructions}\n\n${repoTags}\n\nAutomation run: ${run.id}`,
 			teamId: input.target.teamId,
 			projectId: input.target.projectId,
 			delegateId: viewer.id,
