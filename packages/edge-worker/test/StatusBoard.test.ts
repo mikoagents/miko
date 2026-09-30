@@ -85,6 +85,44 @@ describe("status board snapshots", () => {
 		).toBeUndefined();
 	});
 
+	it("exposes trackerId and issueUrl for Linear and GitHub tasks", () => {
+		const linear = session("linear");
+		linear.issueContext = {
+			trackerId: "linear",
+			issueId: "issue-1",
+			issueIdentifier: "TEAM-1",
+		};
+		const github = session("github");
+		github.issue = {
+			id: "github:VioraOS/Viora-Mono#919",
+			identifier: "Viora-Mono#919",
+			title: "Board links",
+			branchName: "task",
+		};
+		github.issueContext = {
+			trackerId: "github",
+			issueId: "github:VioraOS/Viora-Mono#919",
+			issueIdentifier: "Viora-Mono#919",
+		};
+		github.repositories = [{ repositoryId: "repo-gh" }];
+		const view = new StatusBoard({
+			...options([linear, github]),
+			getLinearWorkspaceSlug: () => "nexmoe",
+			getRepositoryGithubUrl: (id) =>
+				id === "repo-gh" ? "https://github.com/VioraOS/Viora-Mono" : undefined,
+		});
+		cleanups.push(() => view.close());
+		const tasks = view.snapshot().tasks;
+		expect(tasks.find((t) => t.id === "linear")).toMatchObject({
+			trackerId: "linear",
+			issueUrl: "https://linear.app/nexmoe/issue/TEAM-1/",
+		});
+		expect(tasks.find((t) => t.id === "github")).toMatchObject({
+			trackerId: "github",
+			issueUrl: "https://github.com/VioraOS/Viora-Mono/issues/919",
+		});
+	});
+
 	it("exposes recorded reasoning effort and leaves missing effort unknown", () => {
 		const known = session("known");
 		known.metadata = {

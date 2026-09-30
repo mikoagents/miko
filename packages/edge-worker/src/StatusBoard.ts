@@ -14,6 +14,10 @@ import { registerAutomationRoutes } from "./automation/AutomationRoutes.js";
 import type { AutomationService } from "./automation/AutomationService.js";
 import { BoardHistory, type BoardTask } from "./BoardHistory.js";
 import {
+	inferBoardTrackerId,
+	resolveBoardIssueUrl,
+} from "./boardIssueLink.js";
+import {
 	type BoardDefaultsInfo,
 	type BoardRepositoryInfo,
 	type BoardWorkspaceInfo,
@@ -49,6 +53,8 @@ export interface BoardOptions {
 	getStatus(): "idle" | "busy";
 	getRepositoryName(id: string): string;
 	getLinearWorkspaceSlug?(repositoryId: string): string | undefined;
+	getRepositoryGithubUrl?(repositoryId: string): string | undefined;
+	getRepositoryGitlabUrl?(repositoryId: string): string | undefined;
 	/** Configured repositories for Status (same set Automations uses). */
 	listRepositories?(): BoardRepositoryInfo[];
 	/** Safe install defaults (runner + models) for Status. */
@@ -402,14 +408,46 @@ export class StatusBoard {
 				workspaceSlugs.size === 1
 					? [...workspaceSlugs][0]
 					: undefined;
+			const issue = bounded(
+				session.issue?.identifier ??
+					session.issueContext?.issueIdentifier ??
+					"",
+			);
+			const trackerId = inferBoardTrackerId(
+				issue,
+				session.issueContext?.trackerId,
+			);
+			const githubUrls = [
+				...new Set(
+					session.repositories
+						.map((repo) =>
+							this.options.getRepositoryGithubUrl?.(repo.repositoryId),
+						)
+						.filter((url): url is string => Boolean(url)),
+				),
+			];
+			const gitlabUrls = [
+				...new Set(
+					session.repositories
+						.map((repo) =>
+							this.options.getRepositoryGitlabUrl?.(repo.repositoryId),
+						)
+						.filter((url): url is string => Boolean(url)),
+				),
+			];
+			const issueUrl = resolveBoardIssueUrl({
+				identifier: issue,
+				trackerId,
+				linearWorkspaceSlug: workspaceSlug,
+				githubUrl: githubUrls.length === 1 ? githubUrls[0] : undefined,
+				gitlabUrl: gitlabUrls.length === 1 ? gitlabUrls[0] : undefined,
+			});
 			return {
 				id: session.id,
 				linearWorkspaceSlug: workspaceSlug ? bounded(workspaceSlug) : undefined,
-				issue: bounded(
-					session.issue?.identifier ??
-						session.issueContext?.issueIdentifier ??
-						"",
-				),
+				trackerId: trackerId ? bounded(trackerId) : undefined,
+				issueUrl: issueUrl ? bounded(issueUrl) : undefined,
+				issue,
 				title: bounded(
 					session.issue?.title ??
 						this.options.getSessionTitle?.(session.id) ??

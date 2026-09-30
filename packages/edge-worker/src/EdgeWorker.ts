@@ -1029,6 +1029,8 @@ export class EdgeWorker extends EventEmitter {
 					? this.config.linearWorkspaces?.[workspaceId]?.linearWorkspaceSlug
 					: undefined;
 			},
+			getRepositoryGithubUrl: (id) => this.repositories.get(id)?.githubUrl,
+			getRepositoryGitlabUrl: (id) => this.repositories.get(id)?.gitlabUrl,
 			listRepositories: () =>
 				buildBoardRepositories(
 					Array.from(this.repositories.values()).map((repo) => {

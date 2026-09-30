@@ -40,6 +40,7 @@ describe("board frontend snapshot rendering", () => {
 			document: {
 				getElementById: (id: string) => nodes.get(id),
 				createElement: element,
+				createElementNS: () => element(),
 			},
 			createLogViewer: () => ({ update }),
 			initializeAutomations: vi.fn(),

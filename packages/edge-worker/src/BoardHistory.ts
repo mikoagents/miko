@@ -11,6 +11,8 @@ const taskSchema = z.object({
 	id: text,
 	issue: text,
 	linearWorkspaceSlug: text.optional(),
+	trackerId: text.optional(),
+	issueUrl: text.optional(),
 	title: text,
 	status: z.enum(["running", "completed", "error", "idle"]),
 	reason: text,
@@ -99,6 +101,8 @@ export class BoardHistory {
 			task[key] = this.sanitize(task[key]);
 		if (task.linearWorkspaceSlug)
 			task.linearWorkspaceSlug = this.sanitize(task.linearWorkspaceSlug);
+		if (task.trackerId) task.trackerId = this.sanitize(task.trackerId);
+		if (task.issueUrl) task.issueUrl = this.sanitize(task.issueUrl);
 		if (task.reasoningEffort)
 			task.reasoningEffort = this.sanitize(task.reasoningEffort);
 		task.repositories = task.repositories.map(this.sanitize);
