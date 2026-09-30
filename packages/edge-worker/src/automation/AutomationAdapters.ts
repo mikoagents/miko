@@ -421,7 +421,7 @@ export class AutomationAdapters implements AutomationAdapter {
 	private async dispatchGitHubIssue(
 		run: AutomationRun,
 		instructions: string,
-		runner: string | undefined,
+		runner: AutomationInput["runner"],
 	): Promise<RunUpdate> {
 		if (!this.deps.createGitHubIssue)
 			throw new AutomationError(
