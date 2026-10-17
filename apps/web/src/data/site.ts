@@ -55,7 +55,7 @@ export const faqs = [
 	},
 ] as const;
 
-export const indexablePaths = ["/"] as const;
+export const indexablePaths = ["/", "/integrations/slack"] as const;
 
 export function absoluteUrl(origin: URL, path: string) {
 	return new URL(path, origin).href;

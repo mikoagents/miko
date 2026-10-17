@@ -1,0 +1,364 @@
+---
+import MikoBadge from "../../components/MikoBadge.astro";
+import { absoluteUrl, site } from "../../data/site";
+import Layout from "../../layouts/Layout.astro";
+
+if (!Astro.site) {
+	throw new Error("Set site in astro.config.mjs before building the website.");
+}
+
+const path = "/integrations/slack";
+const title = "Claude Code + Slack Integration";
+const description =
+	"Turn Slack messages into reviewed pull requests. Self-host Miko, connect Claude Code, keep your own API keys.";
+const repo = site.github;
+const installCommand = "npx skills add mikoagents/miko -g";
+
+const request =
+	"A retried webhook creates a second task. Reproduce it, make processing idempotent, and add a test.";
+const progress =
+	"I found the duplicate delivery path. I'm adding an idempotency check and regression coverage.";
+const prTitle = "Fix duplicate tasks on webhook retries";
+
+const faqs = [
+	{
+		question: "Can Claude Code integrate with Slack?",
+		answer:
+			"Yes. Anthropic offers Claude Code in Slack on paid Claude plans, and Claude Tag for Team and Enterprise workspaces. Both run coding sessions in Anthropic's cloud. If you want to self-host, use your own API key, and run Claude Code next to your own repositories, Miko is an open-source option. You @Miko in Slack, Claude Code works on the task, and Miko returns a pull request.",
+	},
+	{
+		question: "Can Claude Code read my Slack messages?",
+		answer:
+			"With Miko, work only starts in a conversation where someone @mentions Miko. The task context comes from that conversation and the repositories you configured. Miko does not pick up tasks from conversations where it was not mentioned.",
+	},
+	{
+		question: "How can I integrate Claude Code with Slack?",
+		answer: `Install Miko with two commands. First run ${installCommand} in your terminal. Then run /miko-setup in your coding agent, choose the Slack integration, and follow the guided setup. After that, @Miko in Slack to give it a task.`,
+	},
+	{
+		question: "What can Claude Code integrate with?",
+		answer:
+			"Through Miko, Claude Code can take tasks from Slack, Linear, GitHub, GitLab, and Zulip. Miko can also run Codex, Cursor, Gemini, or OpenCode instead of Claude Code.",
+	},
+];
+
+const pageUrl = absoluteUrl(Astro.site, path);
+const homeUrl = absoluteUrl(Astro.site, "/");
+const jsonLd = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@type": "WebPage",
+			"@id": `${pageUrl}#webpage`,
+			url: pageUrl,
+			name: `${title} | ${site.name}`,
+			description,
+			inLanguage: site.lang,
+			dateModified: "2026-09-27",
+			isPartOf: { "@id": `${homeUrl}#website` },
+			about: { "@id": `${pageUrl}#software` },
+		},
+		{
+			"@type": "SoftwareApplication",
+			"@id": `${pageUrl}#software`,
+			name: site.name,
+			applicationCategory: "DeveloperApplication",
+			url: homeUrl,
+			description:
+				"Self-hosted background coding agent that connects Slack, Linear, GitHub, GitLab, and Zulip to Claude Code, Codex, Cursor, Gemini, and OpenCode.",
+			image: absoluteUrl(Astro.site, site.image),
+			isAccessibleForFree: true,
+			license: site.license,
+			downloadUrl: repo,
+			offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+			featureList: [
+				"@Miko in Slack to start a coding task",
+				"Progress and answers in the same Slack conversation",
+				"Pull request returned for review",
+				"Each task runs in its own Git worktree",
+				"Bring your own API key or subscription",
+				"Apache 2.0 open source",
+			],
+		},
+		{
+			"@type": "FAQPage",
+			"@id": `${pageUrl}#faq`,
+			url: pageUrl,
+			mainEntity: faqs.map((item) => ({
+				"@type": "Question",
+				name: item.question,
+				acceptedAnswer: { "@type": "Answer", text: item.answer },
+			})),
+		},
+	],
+};
+---
+
+<Layout title={title} description={description} canonicalPath={path} jsonLd={jsonLd}>
+  <article class="slack-page">
+    <header class="slack-page-hero">
+      <div class="slack-page-logos" aria-hidden="true">
+        <img src="/assets/integrations/slack.webp" alt="" width="64" height="64" />
+        <span>+</span>
+        <img src="/assets/integrations/claude.webp" alt="" width="64" height="64" />
+      </div>
+      <p class="slack-page-eyebrow">Integrations · Slack</p>
+      <h1 class="font-display">Run Claude Code in Slack, on your own infrastructure</h1>
+      <p class="slack-page-lead">
+        Miko is an open-source, self-hosted background coding agent. Mention <MikoBadge /> in a Slack conversation, and Claude Code works on the task in your repository. Progress and answers come back to the same conversation, and the finished work comes back as a pull request for your team to review.
+      </p>
+      <div class="slack-page-actions">
+        <a class="slack-page-button slack-page-button-solid" href={repo}>Get started</a>
+        <a class="slack-page-button" href={repo}>Star on GitHub ↗</a>
+      </div>
+      <p class="slack-page-note">Apache 2.0 · Self-hosted · Bring your own API key · Updated <time datetime="2026-09-27">September 27, 2026</time> · By <a href="https://github.com/nexmoe">Nexmoe</a>, Miko maintainer</p>
+    </header>
+
+    <section aria-labelledby="why">
+      <h2 id="why" class="font-display">Why teams want Claude Code in Slack</h2>
+      <p class="slack-page-definition">
+        <strong>A Claude Code Slack integration</strong> lets people start Claude Code tasks by mentioning a bot in Slack. The agent works on the repository, posts progress to the same conversation, and hands back its changes for review. Miko is an open-source, self-hosted way to run one.
+      </p>
+      <p>
+        If you use Claude Code, you already know it can read a codebase, change files, and run tests. The hard part is not the coding. It is getting the task to Claude Code in the first place. On most teams, the first report of a bug does not show up in a terminal. It shows up in Slack, as a message from a teammate, a support person, or a product manager.
+      </p>
+      <p>
+        Today, someone has to copy that message, open a terminal, start a session, paste the context, and then carry the answer back to the channel. That is a small job, but it happens many times a day. It also means only the person with the terminal open can start the work.
+      </p>
+      <p>
+        Putting Claude Code in Slack removes that hand-off. The person who found the problem can hand it off right where they found it. The whole team can see the request, the progress, and the result in one conversation. When the work is done, the next step is the one your team already trusts: a pull request that a person reviews before anything is merged.
+      </p>
+      <p>
+        That is the gap Miko fills. It connects Slack to Claude Code, runs the task on a machine you control, and turns a Slack message into a branch and a pull request.
+      </p>
+    </section>
+
+    <section aria-labelledby="official">
+      <h2 id="official" class="font-display">What Miko adds over the official integration</h2>
+      <p>
+        Anthropic has its own Slack options, and for many teams they are the right choice. Claude Code in Slack works on Pro, Max, Team, and Enterprise plans, and Anthropic is moving Team and Enterprise workspaces to Claude Tag. In both, an @Claude mention starts a Claude Code session in Anthropic's cloud, and the session can create a pull request. Miko takes a different path. It is built for teams that want to run the agent themselves and keep the work inside their own repositories and accounts.
+      </p>
+      <div class="slack-page-table-wrap">
+        <table class="slack-page-table">
+          <caption class="sr-only">Anthropic's Claude Code in Slack compared with Miko</caption>
+          <thead>
+            <tr><th scope="col"></th><th scope="col">Claude Code in Slack</th><th scope="col">Miko</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Where it runs</th><td>Claude Code cloud sessions (Anthropic)</td><td>Your own machine or server</td></tr>
+            <tr><th scope="row">Access</th><td>Paid Claude plan: Pro, Max, Team, or Enterprise</td><td>Your own API key or subscription</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="slack-page-source">Anthropic details from the <a href="https://code.claude.com/docs/en/slack">Claude Code in Slack docs</a> and the <a href="https://www.anthropic.com/news/introducing-claude-tag">Claude Tag announcement</a>, checked September 27, 2026. Plans can change, so check them before you choose.</p>
+      <p>If you want a hosted setup with nothing to run, Anthropic's option is simpler. If you want the agent on your own machine, with your own key and your own review flow, Miko is built for that.</p>
+      <p>Both paths can end in a pull request. Here is what changes when you run Miko yourself.</p>
+      <h3>You host it</h3>
+      <p>
+        Miko is self-hosted. The worker that receives your Slack tasks and runs Claude Code lives on your own machine or server, next to your repositories. You decide where it runs and when it is on.
+      </p>
+      <h3>You bring your own key</h3>
+      <p>
+        Miko uses your own API key or subscription. Model usage goes to your own account, so you see it in the same place you already track it. Miko does not bundle or resell tokens.
+      </p>
+      <h3>You can read every line</h3>
+      <p>
+        Miko is open source under the Apache 2.0 license. You can read the code, change it, and run your own copy. The <a href={repo}>Miko repository on GitHub</a> has the source and the setup guides.
+      </p>
+      <h3>Tasks do not collide</h3>
+      <p>
+        Every task runs in its own Git worktree. Two teammates can @Miko with two different tasks at the same time, and each one gets a clean working directory. One task does not touch the files of another.
+      </p>
+      <h3>Pull requests in your normal review flow</h3>
+      <p>
+        When a coding task is done, Miko hands back a pull request. Your normal review, checks, and merge rules still apply. Nothing reaches your main branch until a person approves it.
+      </p>
+      <p>
+        Slack is only one entry point. The same <a href="/">self-hosted coding agent</a> also takes work from Linear, GitHub, GitLab, and Zulip, and it can run Codex, Cursor, Gemini, or OpenCode if you prefer them to Claude Code.
+      </p>
+    </section>
+
+    <section aria-labelledby="how">
+      <h2 id="how" class="font-display">How it works</h2>
+      <p>Using Claude Code through Miko in Slack takes three steps.</p>
+      <ol class="slack-page-steps">
+        <li>
+          <h3>Mention @Miko with a task</h3>
+          <p>
+            In a Slack conversation, write <MikoBadge /> and describe what you need, the same way you would ask a teammate. Add the details you would normally give: what is wrong, how to reproduce it, and what "done" looks like.
+          </p>
+        </li>
+        <li>
+          <h3>Claude Code works in its own worktree</h3>
+          <p>
+            Miko creates a separate Git worktree for the task and runs Claude Code there with your own key. It posts progress and answers back to the same Slack conversation, so everyone following the thread can see where the task stands.
+          </p>
+        </li>
+        <li>
+          <h3>Review the pull request</h3>
+          <p>
+            When the change is ready, Miko hands back a pull request. You review it like any other change from your team, then merge it or ask for more work in the same conversation.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="example">
+      <h2 id="example" class="font-display">Example task</h2>
+      <p>
+        Here is a real kind of task a team might send. A webhook provider retries a delivery, and the app creates the same task twice. The engineer who notices it asks Miko in the channel.
+      </p>
+      <figure class="slack-page-thread" aria-label="Example Slack conversation with Miko">
+        <div class="slack-page-thread-bar"><span>#</span> engineering</div>
+        <div class="slack-page-message">
+          <img class="slack-page-avatar" src="/assets/avatars/nexmoe.jpeg" alt="" width="36" height="36" loading="lazy" />
+          <div>
+            <p class="slack-page-meta"><strong>Nexmoe</strong><time>10:24 AM</time></p>
+            <p><MikoBadge /> {request}</p>
+          </div>
+        </div>
+        <div class="slack-page-message">
+          <img class="slack-page-avatar" src="/assets/avatars/miko.jpg" alt="" width="36" height="36" loading="lazy" />
+          <div>
+            <p class="slack-page-meta"><strong>Miko</strong><span class="slack-page-app">APP</span><time>10:24 AM</time></p>
+            <p>{progress}</p>
+          </div>
+        </div>
+        <div class="slack-page-message">
+          <img class="slack-page-avatar" src="/assets/avatars/miko.jpg" alt="" width="36" height="36" loading="lazy" />
+          <div>
+            <p class="slack-page-meta"><strong>Miko</strong><span class="slack-page-app">APP</span><time>10:28 AM</time></p>
+            <div class="slack-page-pr">
+              <img src="/assets/integrations/github.webp" alt="GitHub" width="18" height="18" loading="lazy" />
+              <div><strong>{prTitle}</strong><span>Ready for review · Checks passed</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption>Illustrative example. Times and names are sample content.</figcaption>
+      </figure>
+      <p>
+        Look at what the request contains. It says what goes wrong ("a retried webhook creates a second task"), what to do first ("reproduce it"), what the fix should be ("make processing idempotent"), and how to prove it ("add a test"). Clear requests like this give Claude Code a better chance of getting it right the first time.
+      </p>
+      <p>
+        Miko answers in the same conversation. It explains what it found, the duplicate delivery path, and what it is doing about it: an idempotency check and regression coverage. The team does not need to open a dashboard to know the task is moving.
+      </p>
+      <p>
+        The last message is the result: a pull request called "{prTitle}", ready for review, with checks passed. From here, the work looks like any other change. A person reads the diff, leaves comments if needed, and decides when to merge.
+      </p>
+    </section>
+
+    <section aria-labelledby="setup-title" id="setup">
+      <h2 class="font-display" id="setup-title">Quick setup</h2>
+      <p>
+        You can set up the Claude Code Slack integration in a few minutes. Miko installs with two commands, and a guided setup does the rest. Run these on the machine or server where you want Miko to live.
+      </p>
+      <ol class="slack-page-steps">
+        <li>
+          <h3>Add the Miko setup skills</h3>
+          <p>In a terminal, run:</p>
+          <pre class="slack-page-code"><code>{installCommand}</code></pre>
+        </li>
+        <li>
+          <h3>Run /miko-setup in your coding agent</h3>
+          <p>Open Claude Code (or another supported coding agent) and run:</p>
+          <pre class="slack-page-code"><code>/miko-setup</code></pre>
+          <p>The setup is guided. It walks you through connecting your integrations one step at a time.</p>
+        </li>
+        <li>
+          <h3>Choose the Slack integration</h3>
+          <p>
+            When <code>/miko-setup</code> asks which integrations you want, select Slack. Follow the prompts to connect it, and add the repository you want Miko to work in. You can also pick Linear, GitHub, or GitLab now, or run <code>/miko-setup</code> again later to add them.
+          </p>
+        </li>
+        <li>
+          <h3>Send your first task</h3>
+          <p>
+            In Slack, write <MikoBadge /> with a small task, such as a failing test or a short bug fix. Keep Miko running so new mentions can reach it. Watch the progress arrive in the conversation, then review the pull request.
+          </p>
+        </li>
+      </ol>
+      <p>
+        Setup uses your own API key or subscription for Claude Code. You sign in and approve access to your accounts during setup. For every option, see the <a href={`${repo}#self-hosted-setup`}>quick start in the Miko README</a>.
+      </p>
+      {/* <p>Want the bigger picture first? Read our guide to <a href="/blog/self-hosted-ai-agents">self-hosted AI agents</a>.</p> */}
+    </section>
+
+    <section aria-labelledby="faq">
+      <h2 id="faq" class="font-display">FAQ</h2>
+      <div class="slack-page-faq">
+        {faqs.map((item) => (
+          <details>
+            <summary><h3>{item.question}</h3></summary>
+            <p>{item.answer}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+
+    <section class="slack-page-cta" aria-labelledby="cta">
+      <h2 id="cta" class="font-display">Bring Claude Code into your Slack</h2>
+      <p>Self-host Miko, connect Slack, and turn the next bug report into a pull request.</p>
+      <div class="slack-page-actions">
+        <a class="slack-page-button slack-page-button-solid" href={repo}>Get started</a>
+        <a class="slack-page-button" href={repo}>Star on GitHub ↗</a>
+      </div>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .slack-page { max-width: 760px; margin: 0 auto; padding: 72px 16px 96px; }
+  .slack-page section { margin-top: 72px; }
+  .slack-page h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.1; letter-spacing: -0.02em; text-wrap: balance; margin: 12px 0 0; }
+  .slack-page h2 { font-size: clamp(1.6rem, 3.5vw, 2.1rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0 0 20px; text-wrap: balance; }
+  .slack-page h3 { font-size: 1.05rem; font-weight: 600; margin: 28px 0 8px; }
+  .slack-page p { font-size: 1rem; line-height: 1.75; margin: 0 0 16px; }
+  .slack-page section a:not(.slack-page-button) { text-decoration: underline; text-underline-offset: 3px; }
+  .slack-page code { font-family: var(--font-geist-mono), monospace; font-size: 0.92em; }
+  .slack-page-hero { text-align: center; }
+  .slack-page-logos { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 20px; opacity: 0.95; }
+  .slack-page-logos img { width: 56px; height: 56px; object-fit: contain; }
+  .slack-page-logos span { font-size: 20px; opacity: 0.4; }
+  .slack-page-eyebrow { font-size: 0.8rem !important; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-theme-text-muted); margin: 0 !important; }
+  .slack-page-lead { font-size: 1.1rem !important; color: var(--color-theme-text-muted); margin: 20px auto 0 !important; max-width: 640px; }
+  .slack-page-source { font-size: 0.85rem !important; color: var(--color-theme-text-muted); }
+  .slack-page-definition { padding: 16px 20px; border-left: 3px solid var(--color-theme-border); background: var(--color-theme-card-03-hex); border-radius: 0 12px 12px 0; }
+  .slack-page-note { font-size: 0.8rem !important; color: var(--color-theme-text-muted); margin-top: 16px !important; }
+  .slack-page-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 28px; }
+  .slack-page-button { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 24px; border-radius: 999px; font-size: 0.9rem; background: var(--color-theme-card-03-hex); color: var(--color-theme-text); }
+  .slack-page-button-solid { background: var(--color-theme-accent); color: var(--color-theme-accent-contrast); }
+  .slack-page-button-solid:hover { background: var(--color-theme-accent-hover); }
+  .slack-page-table-wrap { overflow-x: auto; margin: 8px 0 24px; }
+  .slack-page-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  .slack-page-table th, .slack-page-table td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--color-theme-border); vertical-align: top; }
+  .slack-page-table thead th { font-weight: 600; }
+  .slack-page-table tbody th { font-weight: 500; color: var(--color-theme-text-muted); }
+  .slack-page-steps { list-style: none; counter-reset: step; padding: 0; margin: 8px 0 16px; }
+  .slack-page-steps > li { counter-increment: step; position: relative; padding-left: 44px; }
+  .slack-page-steps > li::before { content: counter(step); position: absolute; left: 0; top: 26px; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--color-theme-border); border-radius: 50%; font-size: 12px; }
+  .slack-page-code { margin: 0 0 16px; padding: 14px 16px; background: var(--color-theme-card-03-hex); border: 1px solid var(--color-theme-border); border-radius: 12px; overflow-x: auto; font-size: 0.9rem; }
+  .slack-page-thread { margin: 24px 0 28px; border: 1px solid var(--color-theme-border); border-radius: 12px; overflow: hidden; background: var(--color-theme-bg); }
+  .slack-page-thread-bar { padding: 12px 16px; border-bottom: 1px solid var(--color-theme-border); font-weight: 600; font-size: 0.95rem; }
+  .slack-page-thread-bar span { opacity: 0.5; margin-right: 2px; }
+  .slack-page-message { display: flex; gap: 12px; padding: 14px 16px 2px; }
+  .slack-page-message p { margin: 0 0 8px; font-size: 0.95rem; line-height: 1.55; }
+  .slack-page-avatar { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+  .slack-page-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px !important; }
+  .slack-page-meta time { font-size: 0.75rem; color: var(--color-theme-text-muted); }
+  .slack-page-app { font-size: 0.6rem; font-weight: 600; padding: 1px 4px; border-radius: 3px; background: var(--color-theme-card-03-hex); color: var(--color-theme-text-muted); }
+  .slack-page-pr { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; padding: 10px 12px; border: 1px solid var(--color-theme-border); border-left: 3px solid #2da44e; border-radius: 8px; }
+  .slack-page-pr div { display: flex; flex-direction: column; font-size: 0.9rem; }
+  .slack-page-pr span { font-size: 0.8rem; color: var(--color-theme-text-muted); }
+  .slack-page-thread figcaption { padding: 8px 16px 12px; font-size: 0.75rem; color: var(--color-theme-text-muted); }
+  .slack-page-faq { border-top: 1px solid var(--color-theme-border); }
+  .slack-page-faq details { border-bottom: 1px solid var(--color-theme-border); }
+  .slack-page-faq summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0; }
+  .slack-page-faq summary::-webkit-details-marker { display: none; }
+  .slack-page-faq summary::after { content: "+"; font-size: 1.3rem; opacity: 0.5; }
+  .slack-page-faq details[open] summary::after { content: "−"; }
+  .slack-page-faq summary h3 { margin: 0; font-size: 1rem; font-weight: 500; }
+  .slack-page-faq details p { padding-bottom: 8px; }
+  .slack-page-cta { text-align: center; padding: 48px 24px; border: 1px solid var(--color-theme-border); border-radius: 16px; }
+  .slack-page-cta p { color: var(--color-theme-text-muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>

@@ -1,0 +1,126 @@
+<!doctype html>
+<!-- Source for public/og.jpg. Regenerate with scripts/og/render.sh. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+	@font-face {
+		font-family: xVf;
+		src: url(../../public/assets/XVF_Variable-s.p.2_a5y-slrzff6.woff2) format("woff2");
+		font-weight: 100 900;
+	}
+	@font-face {
+		font-family: GeistMono;
+		src: url(../../public/assets/GeistMono_Variable.p.42jdkyb02hb3d.woff2) format("woff2");
+		font-weight: 100 900;
+	}
+	:root {
+		/* Light theme tokens from the landing page */
+		--bg: hsl(0 0% 100%);
+		--fg: hsl(0 0% 4%);
+		--muted: hsl(216 4% 51%);
+		--border: hsl(222 19% 86%);
+		--badge-bg: color-mix(in srgb, #a07b68 20%, #fff);
+		--badge-fg: #7d5c4c;
+	}
+	* { box-sizing: border-box; margin: 0; padding: 0; }
+	html, body { width: 1200px; height: 630px; overflow: hidden; }
+	body {
+		position: relative;
+		background: var(--bg);
+		color: var(--fg);
+		font-family: xVf, system-ui, sans-serif;
+		-webkit-font-smoothing: antialiased;
+	}
+	/* Faint grid that fades toward the center */
+	.grid {
+		position: absolute;
+		inset: 0;
+		background-image:
+			linear-gradient(to right, hsl(222 19% 86% / 0.5) 1px, transparent 1px),
+			linear-gradient(to bottom, hsl(222 19% 86% / 0.5) 1px, transparent 1px);
+		background-size: 48px 48px;
+		background-position: center center;
+		mask-image: radial-gradient(ellipse 75% 85% at 50% 50%, transparent 35%, #000 100%);
+	}
+	.frame {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 0 120px;
+		text-align: center;
+	}
+	.logo {
+		width: 96px; height: 96px;
+		border-radius: 26%;
+		border: 1px solid var(--border);
+		box-shadow: 0 1px 2px hsl(0 0% 4% / 0.06);
+		object-fit: cover;
+	}
+	h1 {
+		margin-top: 36px;
+		max-width: 900px;
+		font-size: 60px;
+		line-height: 1.05;
+		font-weight: 500;
+		letter-spacing: -0.025em;
+		text-wrap: balance;
+	}
+	.sub {
+		margin-top: 22px;
+		font-size: 24px;
+		line-height: 1.45;
+		color: var(--muted);
+	}
+	.badge {
+		display: inline-block;
+		padding: 0 0.38em 0.04em;
+		border-radius: 999px;
+		background: var(--badge-bg);
+		color: var(--badge-fg);
+		font-weight: 500;
+		font-size: 0.92em;
+	}
+	.icons { display: flex; margin-top: 36px; }
+	.icons img {
+		width: 44px; height: 44px;
+		border-radius: 11px;
+		border: 2px solid var(--bg);
+		margin-left: -8px;
+		background: var(--bg);
+		box-shadow: 0 1px 2px hsl(0 0% 4% / 0.08);
+	}
+	.icons img:first-child { margin-left: 0; }
+	.url {
+		position: absolute;
+		bottom: 44px;
+		left: 0; right: 0;
+		text-align: center;
+		font-family: GeistMono, ui-monospace, monospace;
+		font-size: 18px;
+		color: var(--muted);
+	}
+</style>
+</head>
+<body>
+	<div class="grid"></div>
+	<div class="frame">
+		<img class="logo" src="../../public/assets/avatars/miko.jpg" alt="" />
+		<h1>Self-hosted AI coding agent for Slack, Linear and GitHub</h1>
+		<p class="sub">Assign an issue or just <span class="badge">@Miko</span>. Get pull requests back in your workflow.</p>
+		<div class="icons">
+			<img src="../../public/assets/integrations/slack.webp" alt="" />
+			<img src="../../public/assets/integrations/linear.webp" alt="" />
+			<img src="../../public/assets/integrations/github.webp" alt="" />
+			<img src="../../public/assets/integrations/gitlab.png" alt="" />
+			<img src="../../public/assets/integrations/claude.webp" alt="" />
+			<img src="../../public/assets/integrations/openai.webp" alt="" />
+			<img src="../../public/assets/integrations/cursor.webp" alt="" />
+		</div>
+	</div>
+	<div class="url">atmiko.com</div>
+</body>
+</html>
