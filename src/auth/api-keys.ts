@@ -201,9 +201,13 @@ function bearerToken(value: string | null): string | undefined {
   return token.length > 0 && token.length <= 200 ? token : undefined;
 }
 
+// Existing installations keep their original token and verifier after a product rename.
 function parseApiKey(token: string): { prefix: string; token: string } | undefined {
   const match = token.match(
-    new RegExp(`^(${API_KEY_PREFIX}[A-Za-z0-9_-]{${API_KEY_PREFIX_LENGTH}})_(.+)$`, "u"),
+    new RegExp(
+      `^((?:${API_KEY_PREFIX}|paseo_pk_)[A-Za-z0-9_-]{${API_KEY_PREFIX_LENGTH}})_(.+)$`,
+      "u",
+    ),
   );
   if (match === null || match[1] === undefined) return undefined;
   return { prefix: match[1], token };

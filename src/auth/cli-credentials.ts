@@ -137,10 +137,11 @@ function bearerToken(value: string | null): string | undefined {
   return token.length > 0 && token.length <= 200 ? token : undefined;
 }
 
+// Read stored credentials from either name; newly issued credentials use Miko.
 function parseCliCredential(token: string): { prefix: string; token: string } | undefined {
   const match = token.match(
     new RegExp(
-      `^(${CLI_CREDENTIAL_PREFIX}[A-Za-z0-9_-]{${CLI_CREDENTIAL_PREFIX_LENGTH}})_(.+)$`,
+      `^((?:${CLI_CREDENTIAL_PREFIX}|paseo_cli_)[A-Za-z0-9_-]{${CLI_CREDENTIAL_PREFIX_LENGTH}})_(.+)$`,
       "u",
     ),
   );

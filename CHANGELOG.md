@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.12.0 - 2026-11-13
+## 0.12.1 - 2026-11-13
 
 ### Added
 
@@ -26,6 +26,8 @@
 - Unhandled provider event receipts expire automatically after seven days on every instance. Receipts routed to a trigger or still referenced by a run or attachment remain available.
 
 ### Fixed
+
+- Keep existing Paseo API keys and CLI credentials valid after the Miko rename, including scope checks and revocation. New credentials use Miko prefixes.
 
 - Include the Miko command in container images so the same release can run Hub and its code runner.
 - Align source-built CLI configuration discovery with Hub’s `.miko` bundle paths.
