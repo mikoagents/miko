@@ -76,8 +76,11 @@ move `latest`. Failed publication can be retried with `workflow_dispatch` from t
 The image source and revision labels identify this repository and the exact release commit.
 Fly deployment is restricted to the upstream repository.
 
-Before announcing the release, verify the GitHub Release, anonymous access to both image tags, and
-that `npm view @mikoagents/hub dist-tags` shows the new version as `latest`. Later changes to the
+Before announcing the release, verify the GitHub Release and both image tags with the intended
+registry access. Public packages must support anonymous pulls; private packages require a reader
+with `read:packages`. Organization policy controls package visibility; the workflow does not change
+it. For the npm channel, verify that `npm view @mikoagents/hub dist-tags` shows the new version as
+`latest`. Later changes to the
 current changelog section update the existing release notes through
 [Release Notes Sync](.github/workflows/release-notes-sync.yml).
 
