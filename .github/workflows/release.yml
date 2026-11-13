@@ -1,11 +1,16 @@
 name: Release
-run-name: Release ${{ github.ref_name }}
+run-name: ${{ inputs.checks_only && 'Validate release' || 'Release' }} ${{ github.ref_name }}
 
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      checks_only:
+        description: Validate main without publishing an image or release
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -22,38 +27,76 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Require a release tag on main
+      - name: Require a release tag on main, or main for checks only
+        env:
+          CHECKS_ONLY: ${{ inputs.checks_only || false }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF" == refs/tags/v* ]] || { echo '::error::Run Release from a vX.Y.Z tag'; exit 1; }
+          if [[ "$CHECKS_ONLY" == true ]]; then
+            [[ "$GITHUB_REF" == refs/heads/main ]] || { echo '::error::Run checks-only validation from main'; exit 1; }
+          else
+            [[ "$GITHUB_REF" == refs/tags/v* ]] || { echo '::error::Run Release from a vX.Y.Z tag'; exit 1; }
+          fi
           git merge-base --is-ancestor HEAD refs/remotes/origin/main
       - name: Validate version, lockfile and changelog
         id: release
         env:
           RELEASE_NOTES_PATH: ${{ runner.temp }}/release-notes.md
-        run: node scripts/release-metadata.mjs "$GITHUB_REF_NAME" "$RELEASE_NOTES_PATH"
+          CHECKS_ONLY: ${{ inputs.checks_only || false }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if [[ "$CHECKS_ONLY" == true ]]; then
+            tag="v$(node -p "require('./package.json').version")"
+          fi
+          node scripts/release-metadata.mjs "$tag" "$RELEASE_NOTES_PATH"
+
+  ci-proof:
+    name: Verify main CI for this commit
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run_checks: ${{ steps.ci.outputs.run_checks }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Reuse or wait for the exact main CI
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-ci.mjs
 
   checks:
     name: Release checks
-    needs: metadata
+    needs: [metadata, ci-proof]
+    if: needs.ci-proof.outputs.run_checks == 'true'
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
   release:
     name: Publish GHCR image and GitHub Release
-    needs: [metadata, checks]
+    needs: [metadata, ci-proof, checks]
+    if: >-
+      always() && !cancelled() && !inputs.checks_only &&
+      needs.metadata.result == 'success' && needs.ci-proof.result == 'success' &&
+      (needs.checks.result == 'success' ||
+       (needs.checks.result == 'skipped' && needs.ci-proof.outputs.run_checks == 'false'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
       - name: Read validated release metadata

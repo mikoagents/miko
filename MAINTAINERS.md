@@ -69,12 +69,27 @@ A release is not done until all three are out.
 
 The tag must match both `package.json` and the changelog section. A tag push runs the
 [Release](.github/workflows/release.yml) workflow, which requires the release commit on `main`
-and reruns the full reusable CI suite before publishing. Failed checks stop publication. The
+and reuses successful `ci.yml` checks for that exact commit from a push to this repository's
+`main`. If those checks are running, Release waits up to 45 minutes. A failed main CI blocks
+publication. If no trusted run exists, or it was cancelled or skipped, Release runs the full
+reusable CI suite before publishing. The
 workflow publishes `ghcr.io/mikoagents/miko:<version>`, updates `latest` for stable releases, and
 creates or updates the GitHub Release from the matching changelog section. Prereleases do not
 move `latest`. Failed publication can be retried with `workflow_dispatch` from the same release tag.
 The image source and revision labels identify this repository and the exact release commit.
-Fly deployment is restricted to the upstream repository.
+Production upgrades are separate from image publication; this repository has no Fly deployment.
+
+To validate this gate without publishing, run Release manually from `main` with `checks_only`
+enabled. It validates the current version, lockfile and changelog, then reuses or runs the same
+checks. For example:
+
+```sh
+gh workflow run release.yml --ref main -f checks_only=true
+```
+
+Run `npm run test:release` to validate the release scripts locally. These tests also run in CI and
+cover trusted commits, failed and cancelled runs, bounded waiting, and preserving the published
+container digest when release notes change.
 
 Before announcing the release, verify the GitHub Release and both image tags with the intended
 registry access. Public packages must support anonymous pulls; private packages require a reader
@@ -83,6 +98,8 @@ it. For the npm channel, verify that `npm view @mikoagents/hub dist-tags` shows 
 `latest`. Later changes to the
 current changelog section update the existing release notes through
 [Release Notes Sync](.github/workflows/release-notes-sync.yml).
+The sync preserves the published image digest. API errors fail the sync; only a missing release
+is skipped.
 
 ## Update public documentation
 
