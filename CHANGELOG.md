@@ -19,7 +19,7 @@
 ### Changed
 
 - Rename the product to Miko Hub, the command to `miko`, configuration directories to `.miko`, and Hub environment variables to `MIKO_HUB_*`. Preserve existing data by pointing `MIKO_HUB_DATA_DIR` at the current directory.
-- Publish validated multi-architecture releases to `ghcr.io/mikoagents/hub` after the full CI suite passes.
+- Publish validated multi-architecture releases to `ghcr.io/mikoagents/miko` after the full CI suite passes.
 
 - Hub now requires Miko execution protocol 2.0.0 and runs the selected daemon's providers directly, removing backend selectors and forwarding to existing Paseo services. Upgrade after draining active work; old daemon registrations and continuation keys are retired by the cutover migration.
 

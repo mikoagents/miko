@@ -42,19 +42,20 @@ export function releaseMetadata({ tag, packageVersion, changelog }) {
   };
 }
 
-export function imageTags(owner, metadata) {
-  const image = `ghcr.io/${owner.toLowerCase()}/hub`;
+export function imageTags(repository, metadata) {
+  const image = `ghcr.io/${repository.toLowerCase()}`;
   const tags = [`${image}:${metadata.version}`];
   if (!metadata.prerelease) tags.push(`${image}:latest`);
   return tags;
 }
 
-function githubOutput(metadata, owner) {
+function githubOutput(metadata, repository) {
   return [
     `version=${metadata.version}`,
+    `image=ghcr.io/${repository.toLowerCase()}`,
     `prerelease=${metadata.prerelease}`,
     "image_tags<<EOF",
-    ...imageTags(owner, metadata),
+    ...imageTags(repository, metadata),
     "EOF",
     "",
   ].join("\n");
@@ -80,9 +81,9 @@ function main() {
 
   const outputPath = process.env.GITHUB_OUTPUT;
   if (!outputPath) throw new Error("GITHUB_OUTPUT is required.");
-  const owner = process.env.GITHUB_REPOSITORY_OWNER;
-  if (!owner) throw new Error("GITHUB_REPOSITORY_OWNER is required.");
-  appendFileSync(outputPath, githubOutput(metadata, owner));
+  const repository = process.env.GITHUB_REPOSITORY;
+  if (!repository) throw new Error("GITHUB_REPOSITORY is required.");
+  appendFileSync(outputPath, githubOutput(metadata, repository));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

@@ -40,12 +40,12 @@ test("marks prereleases without selecting a different changelog section", () => 
 });
 
 test("publishes latest only for stable releases", () => {
-  assert.deepEqual(imageTags("MikoAgents", { version: "0.1.0", prerelease: false }), [
-    "ghcr.io/mikoagents/hub:0.1.0",
-    "ghcr.io/mikoagents/hub:latest",
+  assert.deepEqual(imageTags("MikoAgents/Miko", { version: "0.1.0", prerelease: false }), [
+    "ghcr.io/mikoagents/miko:0.1.0",
+    "ghcr.io/mikoagents/miko:latest",
   ]);
-  assert.deepEqual(imageTags("MikoAgents", { version: "0.2.0-beta.1", prerelease: true }), [
-    "ghcr.io/mikoagents/hub:0.2.0-beta.1",
+  assert.deepEqual(imageTags("MikoAgents/Miko", { version: "0.2.0-beta.1", prerelease: true }), [
+    "ghcr.io/mikoagents/miko:0.2.0-beta.1",
   ]);
 });
 
@@ -76,7 +76,7 @@ test("release CLI checks lockfile versions before emitting publish tags", () => 
         [fileURLToPath(new URL("./release-metadata.mjs", import.meta.url)), "v0.1.0", notes],
         {
           cwd: root,
-          env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_REPOSITORY_OWNER: "MikoAgents" },
+          env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_REPOSITORY: "MikoAgents/Miko" },
           encoding: "utf8",
         },
       );
@@ -92,7 +92,7 @@ test("release CLI checks lockfile versions before emitting publish tags", () => 
       JSON.stringify({ version: "0.1.0", packages: { "": { version: "0.1.0" } } }),
     );
     assert.equal(run().status, 0);
-    assert.match(readFileSync(output, "utf8"), /ghcr.io\/mikoagents\/hub:0.1.0/u);
+    assert.match(readFileSync(output, "utf8"), /ghcr.io\/mikoagents\/miko:0.1.0/u);
     assert.match(readFileSync(notes, "utf8"), /First release/u);
   } finally {
     rmSync(root, { recursive: true, force: true });

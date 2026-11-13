@@ -73,8 +73,8 @@ Embedded mode supports one Hub process per data directory. Docker Compose contin
 You need Docker, Docker Compose, and a public HTTPS URL when connecting external providers.
 
 ```sh
-git clone https://github.com/mikoagents/hub.git
-cd hub
+git clone https://github.com/mikoagents/miko.git
+cd miko
 cp .env.example .env
 ```
 

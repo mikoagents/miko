@@ -70,7 +70,7 @@ A release is not done until all three are out.
 The tag must match both `package.json` and the changelog section. A tag push runs the
 [Release](.github/workflows/release.yml) workflow, which requires the release commit on `main`
 and reruns the full reusable CI suite before publishing. Failed checks stop publication. The
-workflow publishes `ghcr.io/mikoagents/hub:<version>`, updates `latest` for stable releases, and
+workflow publishes `ghcr.io/mikoagents/miko:<version>`, updates `latest` for stable releases, and
 creates or updates the GitHub Release from the matching changelog section. Prereleases do not
 move `latest`. Failed publication can be retried with `workflow_dispatch` from the same release tag.
 The image source and revision labels identify this repository and the exact release commit.

@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mikoagents/hub.git"
+    "url": "git+https://github.com/mikoagents/miko.git"
   },
   "bin": {
     "miko": "bin/miko.js"

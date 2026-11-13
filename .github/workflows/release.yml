@@ -93,7 +93,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES_PATH: ${{ runner.temp }}/release-notes.md
           RELEASE_TAG: ${{ github.ref_name }}
-          IMAGE: ghcr.io/${{ github.repository }}
+          IMAGE: ${{ steps.release.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
         run: |

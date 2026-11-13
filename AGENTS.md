@@ -16,10 +16,10 @@ live in `MAINTAINERS.md`.
 # Repository workflow
 
 This repository is independently maintained and is detached from GitHub’s fork network. Develop
-and integrate changes against `mikoagents/hub` and its `main` branch first; contributing selected
+and integrate changes against `mikoagents/miko` and its `main` branch first; contributing selected
 changes upstream is secondary.
 
-`origin` points to `https://github.com/mikoagents/hub.git`; `upstream` points to
+`origin` points to `https://github.com/mikoagents/miko.git`; `upstream` points to
 `https://github.com/getpaseo/hub.git`. The `upstream` remote records the original source and supports
 manual synchronization; GitHub no longer maintains a fork relationship. Upstream PRs and companion
 documentation PRs are not prerequisites for Miko-only changes. When preparing an upstream contribution, use a focused
