@@ -7,12 +7,14 @@ import { afterAll, beforeAll, describe, it } from "vitest";
 import { embeddedDatabaseRuntime, type DatabaseRuntimeBundle } from "../db/runtime/index.js";
 import { OrganizationApiKeys } from "./api-keys.js";
 import { OrganizationCliCredentials } from "./cli-credentials.js";
+import { PublicCredentialAuthenticator } from "./public-credentials.js";
 
 describe("credentials issued before the Miko rename", () => {
   let directory: string;
   let bundle: DatabaseRuntimeBundle;
   let apiKeys: OrganizationApiKeys;
   let cliCredentials: OrganizationCliCredentials;
+  let credentials: PublicCredentialAuthenticator;
 
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "miko-credential-upgrade-"));
@@ -29,6 +31,7 @@ describe("credentials issued before the Miko rename", () => {
     );
     apiKeys = new OrganizationApiKeys(bundle.runtime, bundle.locks);
     cliCredentials = new OrganizationCliCredentials(bundle.runtime);
+    credentials = new PublicCredentialAuthenticator(apiKeys, cliCredentials);
   }, 120_000);
 
   afterAll(async () => {
@@ -45,46 +48,55 @@ describe("credentials issued before the Miko rename", () => {
        values ($1, 'upgrade-org', 'retained', $2, $3, $4, 'upgrade-owner')`,
       [id, prefix, verifier(token), ["runs:dispatch"]],
     );
-    const result = await apiKeys.authorize(request(token), "runs:dispatch");
+    const result = await credentials.authorize(request(token), "runs:dispatch");
     assert.equal(result.status, "authorized");
     if (result.status === "authorized") assert.equal(result.access.organizationId, "upgrade-org");
-    assert.equal((await apiKeys.authorize(request(token), "daemons:enroll")).status, "forbidden");
     assert.equal(
-      (await apiKeys.authorize(request(`${prefix}_wrong`), "runs:dispatch")).status,
+      (await credentials.authorize(request(token), "daemons:enroll")).status,
+      "forbidden",
+    );
+    assert.equal(
+      (await credentials.authorize(request(`${prefix}_wrong`), "runs:dispatch")).status,
       "unauthorized",
     );
     await apiKeys.revoke("upgrade-org", id);
-    assert.equal((await apiKeys.authorize(request(token), "runs:dispatch")).status, "unauthorized");
+    assert.equal(
+      (await credentials.authorize(request(token), "runs:dispatch")).status,
+      "unauthorized",
+    );
   });
 
-  it("keeps a stored Paseo CLI credential valid and revocable", async () => {
-    const id = randomUUID();
-    const prefix = "paseo_cli_abcdefgh1234";
-    const token = `${prefix}_retained-secret`;
-    await bundle.runtime.query(
-      `insert into organization_cli_credentials (id, organization_id, prefix, verifier, created_by_user_id)
+  it.each(["paseo", "miko"])(
+    "keeps a stored %s CLI credential valid and revocable",
+    async (namespace) => {
+      const id = randomUUID();
+      const prefix = `${namespace}_cli_abcdefgh1234`;
+      const token = `${prefix}_retained-secret`;
+      await bundle.runtime.query(
+        `insert into organization_cli_credentials (id, organization_id, prefix, verifier, created_by_user_id)
        values ($1, 'upgrade-org', $2, $3, 'upgrade-owner')`,
-      [id, prefix, verifier(token)],
-    );
-    const result = await cliCredentials.authorize(request(token), "runs:dispatch");
-    assert.equal(result.status, "authorized");
-    if (result.status === "authorized") assert.equal(result.access.organizationId, "upgrade-org");
-    assert.equal(
-      (await cliCredentials.authorize(request(`${prefix}_wrong`), "runs:dispatch")).status,
-      "unauthorized",
-    );
-    await cliCredentials.revoke("upgrade-org", id);
-    assert.equal(
-      (await cliCredentials.authorize(request(token), "runs:dispatch")).status,
-      "unauthorized",
-    );
-  });
+        [id, prefix, verifier(token)],
+      );
+      const result = await credentials.authorize(request(token), "runs:dispatch");
+      assert.equal(result.status, "authorized");
+      if (result.status === "authorized") assert.equal(result.access.organizationId, "upgrade-org");
+      assert.equal(
+        (await credentials.authorize(request(`${prefix}_wrong`), "runs:dispatch")).status,
+        "unauthorized",
+      );
+      await cliCredentials.revoke("upgrade-org", id);
+      assert.equal(
+        (await credentials.authorize(request(token), "runs:dispatch")).status,
+        "unauthorized",
+      );
+    },
+  );
 
   it("issues new API keys with the Miko prefix", async () => {
     const key = await apiKeys.create("upgrade-org", "upgrade-owner", "new key", ["runs:dispatch"]);
     assert.match(key.secret, /^miko_pk_/u);
     assert.equal(
-      (await apiKeys.authorize(request(key.secret), "runs:dispatch")).status,
+      (await credentials.authorize(request(key.secret), "runs:dispatch")).status,
       "authorized",
     );
   });

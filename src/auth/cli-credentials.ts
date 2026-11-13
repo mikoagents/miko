@@ -6,6 +6,7 @@ import { capabilitiesFor } from "./organization-policy.js";
 import type { OperationAuthorizationResult } from "./api-keys.js";
 
 export const CLI_CREDENTIAL_PREFIX = "miko_cli_";
+export const CLI_CREDENTIAL_PREFIXES = [CLI_CREDENTIAL_PREFIX, "paseo_cli_"] as const;
 const CLI_CREDENTIAL_PREFIX_LENGTH = 12;
 const credentialRoles = ORGANIZATION_ROLES.filter((role) => capabilitiesFor(role).manageResources);
 
@@ -141,7 +142,7 @@ function bearerToken(value: string | null): string | undefined {
 function parseCliCredential(token: string): { prefix: string; token: string } | undefined {
   const match = token.match(
     new RegExp(
-      `^((?:${CLI_CREDENTIAL_PREFIX}|paseo_cli_)[A-Za-z0-9_-]{${CLI_CREDENTIAL_PREFIX_LENGTH}})_(.+)$`,
+      `^((?:${CLI_CREDENTIAL_PREFIXES.join("|")})[A-Za-z0-9_-]{${CLI_CREDENTIAL_PREFIX_LENGTH}})_(.+)$`,
       "u",
     ),
   );
