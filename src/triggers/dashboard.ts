@@ -445,7 +445,7 @@ export class TriggerDashboard {
       if (run?.triggerId !== trigger.id) throw new ProjectCommandError("run_unavailable");
       await this.triggerCode.cancel(tenant.organization.id, run.id);
     } else if (scope.action === "run") {
-      await this.triggerCode.receive(tenant.organization.id, trigger.id, {
+      await this.triggerCode.dispatchManual(tenant.organization.id, trigger.id, {
         id: randomUUID(),
         source: "manual",
         type: "run",

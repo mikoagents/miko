@@ -400,6 +400,48 @@ describe("code-authored Triggers", () => {
     });
     assert.equal(response.status, 403);
   });
+
+  it("starts an enabled Trigger on demand without a declared manual subscription", async () => {
+    const fixture = await setup();
+    const deployed = await fixture.service.deploy(
+      "org",
+      artifact("export default {run(ctx){return ctx.event.payload}}", [
+        { source: "inventory", event: "stock.low" },
+      ]),
+    );
+    const event = {
+      id: "operator-1",
+      source: "manual",
+      type: "run",
+      payload: { retry: ["lead"] },
+      receivedAt: new Date().toISOString(),
+    };
+    await assert.rejects(
+      fixture.service.receive("org", deployed.triggerId, event),
+      /declared Trigger subscription/u,
+    );
+    const started = await fixture.service.dispatchManual("org", deployed.triggerId, event);
+    assert.equal(started.created, true);
+    assert.deepEqual(started.run?.event.payload, { retry: ["lead"] });
+    assert.equal(
+      (await fixture.service.dispatchManual("org", deployed.triggerId, event)).created,
+      false,
+    );
+    await assert.rejects(
+      fixture.service.dispatchManual("org", deployed.triggerId, {
+        ...event,
+        id: "forged",
+        source: "inventory",
+        type: "stock.low",
+      }),
+      /manual run/u,
+    );
+    await fixture.service.setEnabled("org", deployed.triggerId, false);
+    await assert.rejects(
+      fixture.service.dispatchManual("org", deployed.triggerId, { ...event, id: "later" }),
+      /disabled/u,
+    );
+  });
 });
 
 function artifact(

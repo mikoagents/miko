@@ -6,7 +6,6 @@ import {
   eventRecords,
   fixedValues,
   githubAccess,
-  hasManualEntry,
   oneOf,
   orderSourceFiles,
   subscriptionListSummary,
@@ -116,19 +115,6 @@ describe("Trigger presentation", () => {
         path: false,
       },
     );
-  });
-
-  it("offers Run now only when the declared event pattern accepts its actual event", () => {
-    assert.equal(hasManualEntry(manifest), true);
-    assert.equal(
-      hasManualEntry({ ...manifest, on: [{ source: "manual", event: ["other", "r*n"] }] }),
-      true,
-    );
-    assert.equal(
-      hasManualEntry({ ...manifest, on: [{ source: "manual", event: "other" }] }),
-      false,
-    );
-    assert.equal(hasManualEntry({ ...manifest, on: [{ source: "github", event: "*" }] }), false);
   });
 
   it("lists events once per scope and never moves a repository onto another subscription", () => {

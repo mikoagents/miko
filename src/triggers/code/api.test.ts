@@ -140,6 +140,33 @@ describe("Trigger API", () => {
     assert.equal((await f.handle(`/runs/${runs[0]!.id}`, undefined, "other")).status, 404);
   });
 
+  it("starts an enabled Trigger that does not declare a manual entry", async () => {
+    const f = setup();
+    const declared = artifact();
+    const { digest: _digest, ...body } = declared;
+    const manifest = {
+      ...body.manifest,
+      on: [{ source: "inventory", event: "stock.low" }],
+    };
+    const code = { ...body, manifest, digest: artifactDigest({ ...body, manifest }) };
+    assert.equal((await f.handle("/install", { artifact: code })).status, 201);
+    const started = await f.handle("/example/run", { input: { n: 1 } });
+    assert.equal(started.status, 201);
+    assert.equal(
+      (
+        await f.handle("/example/events", {
+          id: "fake-manual",
+          source: "manual",
+          type: "run",
+          payload: {},
+        })
+      ).status,
+      403,
+    );
+    assert.equal((await f.handle("/example/enabled", { enabled: false })).status, 200);
+    assert.equal((await f.handle("/example/run", { input: { n: 2 } })).status, 409);
+  });
+
   it("publishes a valid OpenAPI contract for code and runner routes", async () => {
     const f = setup();
     const document = triggerCodeOpenApiDocument;

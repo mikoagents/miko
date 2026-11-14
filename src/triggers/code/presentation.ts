@@ -264,12 +264,6 @@ export function triggerTargetSummary(manifest: TriggerManifest): {
   };
 }
 
-export function hasManualEntry(manifest: TriggerManifest): boolean {
-  return manifest.on.some(
-    (entry) => entry.source === "manual" && matchesPattern("run", entry.event),
-  );
-}
-
 /** Prefer the recorded entrypoint, then conventional workflow files, without changing stored order. */
 export function orderSourceFiles<T extends { path: string }>(
   files: readonly T[],

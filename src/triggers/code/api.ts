@@ -280,7 +280,7 @@ async function handle(
         const result =
           path[1] === "events"
             ? await service.publishEvent(organizationId, trigger.id, event)
-            : await service.receive(organizationId, trigger.id, event);
+            : await service.dispatchManual(organizationId, trigger.id, event);
         return reply(
           { created: result.created, run: result.run === undefined ? null : publicRun(result.run) },
           result.created ? 201 : 200,

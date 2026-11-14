@@ -90,7 +90,7 @@ export const triggerCodeOpenApiDocument = {
     "/api/v1/triggers/{trigger}/run": {
       parameters: [triggerParameter],
       post: operation(
-        "Dispatch the declared manual.run subscription",
+        "Start an enabled Trigger with a manual run",
         "runs:dispatch",
         {
           type: "object",

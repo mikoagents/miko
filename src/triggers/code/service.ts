@@ -270,13 +270,34 @@ export class TriggerCodeService {
     event: TriggerEvent,
     revisionId?: string,
   ) {
+    return this.accept(organizationId, triggerId, event, revisionId, "subscribed");
+  }
+
+  /**
+   * Operator start from Run now or `POST /run`. The run is a manual event on the current
+   * revision whether or not `on` lists one. Provider, schedule, and custom intake stay on
+   * `receive` and still require a declared subscription.
+   */
+  async dispatchManual(organizationId: string, triggerId: string, event: TriggerEvent) {
+    if (event.source !== "manual" || !matchesPattern(event.type, "run"))
+      throw new TriggerCodeError("Manual dispatch only starts a manual run");
+    return this.accept(organizationId, triggerId, event, undefined, "operator");
+  }
+
+  private async accept(
+    organizationId: string,
+    triggerId: string,
+    event: TriggerEvent,
+    revisionId: string | undefined,
+    admission: "subscribed" | "operator",
+  ) {
     // Event envelopes never carry credentials; arbitrary payloads remain JSON, separate from prompts.
     bounded(event);
     const trigger = await this.trigger(organizationId, triggerId);
     if (!trigger.enabled) throw new TriggerCodeError("Trigger is disabled", 409);
     const revision = revisionId ?? trigger.activeRevisionId;
     const artifact = await this.artifact(organizationId, trigger.id, revision);
-    if (!subscribes(artifact.manifest, event))
+    if (admission === "subscribed" && !subscribes(artifact.manifest, event))
       throw new TriggerCodeError("Event does not match a declared Trigger subscription");
     return this.database.triggerCode.transaction(organizationId, (tx) =>
       this.enqueue(tx, organizationId, trigger.id, revision, artifact, event),

@@ -12,7 +12,6 @@ import { useSnapshotQuery } from "../../queries/index.js";
 import { useRouteTenant } from "../../projects/context.js";
 import { codeTriggerDetail, codeTriggerAction } from "../functions.js";
 import { TriggerRunHistory } from "../activity-panel.js";
-import { hasManualEntry } from "./presentation.js";
 import { TriggerSource } from "./source-view.js";
 import { TriggerSettings } from "./settings-view.js";
 import { TriggerFlow } from "./flow-view.js";
@@ -83,7 +82,6 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
           <TriggerActions
             enabled={data.enabled}
             busy={mutation.isPending}
-            manual={hasManualEntry(manifest)}
             onAction={mutation.mutate}
           />
         ) : null}
@@ -134,12 +132,10 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
 function TriggerActions({
   enabled,
   busy,
-  manual,
   onAction,
 }: {
   enabled: boolean;
   busy: boolean;
-  manual: boolean;
   onAction: (action: Action) => void;
 }) {
   const toggle = useCallback(() => onAction(enabled ? "disable" : "enable"), [enabled, onAction]);
@@ -149,11 +145,9 @@ function TriggerActions({
       <Button variant="outline" disabled={busy} onClick={toggle}>
         {enabled ? "Disable" : "Enable"}
       </Button>
-      {manual ? (
-        <Button disabled={!enabled || busy} onClick={run}>
-          Run now
-        </Button>
-      ) : null}
+      <Button disabled={!enabled || busy} onClick={run}>
+        Run now
+      </Button>
     </>
   );
 }
