@@ -357,6 +357,26 @@ describe("Trigger code inspection", () => {
     assert.equal(agent.startupTimeout.expression, 'ctx.event.payload.startup ?? "1m"');
   });
 
+  it("reads the continuation key that lets calls share a session", () => {
+    const result = inspectTriggerSources([
+      {
+        path: "trigger.ts",
+        content: [
+          "export default defineTrigger({ async run(ctx) {",
+          '  await ctx.agent.run("plan", { agent: { provider: "codex" }, continuation: { key: "review" } });',
+          '  await ctx.agent.run("revise", { agent: { provider: "codex" }, continuation: { key: `pr-${ctx.event.payload.number}` } });',
+          '  return ctx.agent.run("check", { agent: { provider: "codex" } });',
+          "}});",
+        ].join("\n"),
+      },
+    ]);
+    const [plan, revise, check] = result.agents;
+    assert.equal(plan?.continuation.value, "review");
+    assert.equal(revise?.continuation.status, "runtime");
+    assert.equal(revise?.continuation.expression, "`pr-${ctx.event.payload.number}`");
+    assert.equal(check?.continuation.status, "unset");
+  });
+
   it("uses the authored entrypoint and keeps malformed source from producing asserted values", () => {
     const result = inspectTriggerSources(
       [

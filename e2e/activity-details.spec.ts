@@ -11,6 +11,7 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
     password: "activity-owner-password",
   });
   await hub.createOrganization("owner", "Activity organization");
+  await hub.seedConnectedOnlyDaemon("owner", "history-daemon");
   await hub.seedLegacyTrigger(
     "owner",
     "logged-run",
@@ -45,6 +46,10 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
   await application.query(
     `update workflow_step_runs s set agent_execution_id = e.id from agent_executions e where e.workflow_step_run_id = s.id`,
   );
+  await application.query(
+    `update agent_executions set daemon_id = (select id from daemons where slug = 'history-daemon')`,
+  );
+  await application.query(`update daemons set status = 'revoked' where slug = 'history-daemon'`);
   await application.query(`insert into agent_execution_logs (execution_id, recorded_at, event)
     select e.id, now(), jsonb_build_object('type', 'timeline', 'text', 'Log entry ' || n)
     from agent_executions e cross join generate_series(0, 100) n order by n`);
@@ -78,6 +83,11 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
     .getByRole("row")
     .filter({ hasText: "logged-run" });
   const trigger = row.getByRole("button", { name: "logged-run", exact: true });
+  for (const width of [390, 1100, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(row.getByText("history-daemon", { exact: true })).toBeVisible();
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+  }
   await trigger.focus();
   await trigger.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Activity details" });
@@ -106,6 +116,7 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
     "true",
   );
   await expect(dialog.getByRole("textbox", { name: "Run prompt" })).toBeHidden();
+  await expect(dialog.locator('[data-summary="Execution target"]')).toContainText("history-daemon");
   await expect(dialog.getByText("miko agent inspect native-agent", { exact: true })).toBeHidden();
   await dialog.getByRole("combobox", { name: "Execution step" }).click();
   await page.getByRole("option", { name: /2\. skipped/u }).click();
@@ -137,6 +148,7 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
   expect(await message.evaluate((element) => element.clientHeight)).toBeGreaterThan(previewHeight);
   await dialog.getByRole("button", { name: "Show less", exact: true }).click();
   await dialog.getByRole("radio", { name: "Run details", exact: true }).click();
+  await expect(dialog.locator('[data-summary="Run overview"]')).toContainText("history-daemon");
   expect(await dialog.evaluate((element) => element.clientHeight)).toBe(dialogHeight);
   await expect(dialog.getByRole("textbox", { name: "Run prompt" })).toBeHidden();
   await dialog.getByRole("button", { name: "Prompt", exact: true }).click();
@@ -188,7 +200,7 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
   await expect(trigger).toBeFocused();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await row.getByRole("cell", { name: "On demand", exact: true }).click();
+  await row.getByRole("cell", { name: "history-daemon", exact: true }).click();
   await expect(dialog).toBeVisible();
   await expect
     .poll(() =>

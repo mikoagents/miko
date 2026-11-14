@@ -64,9 +64,11 @@ export function DetailDialog({
           role="region"
           aria-label={`${title} content`}
           tabIndex={0}
-          className="min-h-0 min-w-0 flex-auto overflow-y-auto overscroll-contain p-6"
+          className="min-h-0 min-w-0 flex-auto overflow-y-auto overscroll-contain"
         >
-          {children}
+          {/* Padding sits inside the scroller. On the scroller itself, a vertical bar steals
+              width and the full-width content overflows sideways by that bar. */}
+          <div className="min-w-0 p-6">{children}</div>
         </div>
       </DialogContent>
     </Dialog>

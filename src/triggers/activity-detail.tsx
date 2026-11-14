@@ -99,6 +99,10 @@ export function ActivityDetail({ view, ...scope }: ActivityScope & { view: strin
             />
           ) : (
             <div key={step.executionId} className="min-w-0">
+              <SummaryPanel
+                label="Execution target"
+                rows={[{ label: "Daemon", value: step.daemon ?? "—" }]}
+              />
               <SessionHistory
                 {...scope}
                 executionId={step.executionId}
@@ -137,6 +141,11 @@ function RunDetails({ activity }: { activity: Activity }) {
         label="Run overview"
         rows={[
           { label: "Source", value: `${activity.provider} · ${activity.source}` },
+          {
+            label: "Daemon",
+            value:
+              [...new Set(activity.steps.flatMap((step) => step.daemon ?? []))].join(" · ") || "—",
+          },
           { label: "Started", value: <RelativeTime value={activity.createdAt} /> },
           {
             label: "Completed",
@@ -221,6 +230,7 @@ function StepDetails({ step }: { step: Activity["steps"][number] }) {
         <SummaryPanel
           label={`${step.stepId} details`}
           rows={[
+            { label: "Daemon", value: step.daemon ?? "—" },
             {
               label: "Started",
               value: step.startedAt === null ? "—" : <RelativeTime value={step.startedAt} />,

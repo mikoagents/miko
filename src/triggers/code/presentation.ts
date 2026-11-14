@@ -249,7 +249,17 @@ export function triggerTargetSummary(manifest: TriggerManifest): {
   path: boolean;
 } {
   const targets = Object.values(manifest.grants.targets ?? {});
-  if (targets.length === 0) return { primary: `Runner: ${manifest.runner}`, path: false };
+  if (targets.length === 0)
+    return { primary: "None", secondary: `Runner: ${manifest.runner}`, path: false };
+  return executionTargetSummary(targets);
+}
+
+export function executionTargetSummary(targets: readonly { daemon: string; cwd: string }[]): {
+  primary: string;
+  secondary?: string;
+  path: boolean;
+} {
+  if (targets.length === 0) return { primary: "None", path: false };
   const unique = [
     ...new Map(
       targets.map((target) => [JSON.stringify([target.daemon, target.cwd]), target]),
@@ -258,7 +268,7 @@ export function triggerTargetSummary(manifest: TriggerManifest): {
   const first = unique[0]!;
   if (unique.length === 1) return { primary: first.daemon, secondary: first.cwd, path: true };
   return {
-    primary: `${unique.length} targets`,
+    primary: [...new Set(unique.map(({ daemon }) => daemon))].join(" · "),
     secondary: unique.map(({ daemon, cwd }) => `${daemon}: ${cwd}`).join(" · "),
     path: false,
   };
