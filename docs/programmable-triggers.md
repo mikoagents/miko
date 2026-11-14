@@ -5,7 +5,7 @@ Triggers are TypeScript/JavaScript projects deployed as immutable bundles. The e
 and its recent runs. **Source code** always shows the file list; expand individual files or inspect an earlier revision.
 The build's entry file appears first with an **Entrypoint** label when its path is recorded.
 **Configuration** summarizes **The event**, **Where it runs**, **What runs there**, and
-**GitHub access** in four rows. Expand a row to inspect its parameters and source links. You can enable or disable the Trigger and start its declared manual entry with
+**GitHub access** in four rows. Expand a row to inspect its parameters and source links. You can enable or disable the Trigger and start it on demand with
 **Run now**.
 **Activity** shows the durable operation journal, results, runner logs, and agent conversations.
 Author code locally or in a Git repository and deploy from the CLI or CI.
@@ -332,8 +332,12 @@ finish or are canceled. Redeploying a different subscription likewise preserves 
 connection/resource scope without starting new runs from a removed entry. Cancel those separately when desired.
 
 The CLI includes `list`, `run`, `event`, `runs`, `logs`, `cancel`, `enable`, and `disable`.
-Run a declared manual entry with `trigger run <name> --input-file input.json`; supply
-`--delivery-key <key>` when retrying the same dispatch. Every remote command requires
+Start an enabled Trigger on demand with `trigger run <name> --input-file input.json`; supply
+`--delivery-key <key>` when retrying the same dispatch. The run arrives as a manual event
+(`source: "manual"`, `type: "run"`) with that input, including when `on` does not list a manual
+entry. Code that should not act on an operator start checks `ctx.event.source`. Provider, schedule,
+and custom events still require a declared subscription, and the custom event endpoint cannot
+impersonate a manual run. Every remote command requires
 `--url` and `--token-file`. Source/revision details use the existing `/api/v1/triggers` family:
 
 | Method | Route                                   | Purpose                                   |

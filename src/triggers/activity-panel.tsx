@@ -42,8 +42,7 @@ const HISTORY_COLUMNS = [
 ];
 const HISTORY_EMPTY = {
   title: "No runs yet",
-  description:
-    "Runs will appear here when a matching event arrives. If this Trigger has a manual entry, choose Run now to try it.",
+  description: "Runs will appear here when an event arrives, or when someone chooses Run now.",
 };
 
 export function TriggerActivityPanel() {
