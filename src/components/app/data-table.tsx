@@ -77,7 +77,7 @@ export function DataTableSkeleton({
   rows?: number;
 }) {
   return (
-    <div aria-busy="true">
+    <div aria-busy="true" className="min-w-0">
       <TableShell label={label} columns={columns}>
         {Array.from({ length: rows }, (_, row) => (
           <DataRow key={row}>
