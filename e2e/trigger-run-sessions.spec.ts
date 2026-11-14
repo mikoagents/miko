@@ -112,12 +112,24 @@ test("shows which agent calls of a Trigger run continued one session", async ({ 
   await page.screenshot({ animations: "disabled", path: `${SCREENSHOTS}/diagnostics-desktop.png` });
 
   await dialog.getByRole("radio", { name: "Run details", exact: true }).click();
-  await page.setViewportSize({ width: 390, height: 844 });
+  const width = 390;
+  await page.setViewportSize({ width, height: 844 });
   await expect(sessions.getByRole("row").filter({ hasText: /Session 1 ·/ })).toBeVisible();
-  await expect(dialog.locator('[data-slot="detail-dialog-body"]')).toHaveJSProperty(
-    "scrollWidth",
-    await dialog.locator('[data-slot="detail-dialog-body"]').evaluate((body) => body.clientWidth),
-  );
+  const inset = width >= 640 ? 32 : 16;
+  // Visibility arrives before DialogContent's duration-200 width transition finishes.
+  // Sampling clientWidth once, then polling scrollWidth, compares different frames.
+  await expect
+    .poll(async () => {
+      const bounds = await dialog.boundingBox();
+      return bounds === null
+        ? Infinity
+        : Math.abs(bounds.width - Math.min(width - inset * 2, 1152));
+    })
+    .toBeLessThan(1);
+  const dialogBody = dialog.locator('[data-slot="detail-dialog-body"]');
+  await expect
+    .poll(() => dialogBody.evaluate((element) => element.scrollWidth - element.clientWidth))
+    .toBe(0);
   await page.screenshot({ animations: "disabled", path: `${SCREENSHOTS}/details-mobile.png` });
   await page.emulateMedia({ colorScheme: "dark" });
   await sessions.getByRole("button", { name: "plan → revise", exact: true }).click();
