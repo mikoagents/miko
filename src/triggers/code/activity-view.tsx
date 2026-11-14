@@ -118,7 +118,7 @@ export function CodeActivityDetail({
   const active = ACTIVE_STATUSES.has(run.status);
   const session = sessions.find((entry) => entry.id === sessionId) ?? initialSession(sessions);
   return (
-    <div className="grid min-w-0 gap-5">
+    <div className="grid min-w-0 grid-cols-1 gap-5">
       <SummaryPanel
         label="Trigger run"
         rows={[
@@ -228,7 +228,7 @@ function Conversation({
     );
   }
   return (
-    <div className="grid min-w-0 gap-5">
+    <div className="grid min-w-0 grid-cols-1 gap-5">
       {sessions.length > 1 ? (
         <Combobox
           id={`code-session-${scope.runId}`}
