@@ -117,21 +117,34 @@ describe("Trigger presentation", () => {
     );
   });
 
-  it("lists events once per scope and never moves a repository onto another subscription", () => {
+  it("lists each connection once with its events under the repositories they are limited to", () => {
     const daily = {
       start: "1970-01-01T00:00:00",
       timezone: "Asia/Shanghai",
       rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0",
     };
+    const review = ["pull_request.ready_for_review", "pull_request.synchronize"];
     assert.deepEqual(
       eventRecords([
         { source: "manual", event: "run" },
+        {
+          source: "github",
+          event: review,
+          connection: "vioraos-github",
+          resource: "VioraOS/Viora-Mono",
+        },
         { source: "github", event: "pull_request.opened", connection: "vioraos-github" },
         {
           source: "github",
-          event: ["pull_request.ready_for_review", "pull_request.synchronize"],
+          event: review,
           connection: "vioraos-github",
-          resource: "VioraOS/Viora-Mono",
+          resource: "VioraOS/TokenHub",
+        },
+        {
+          source: "github",
+          event: "pull_request.opened",
+          connection: "nexmoe-github",
+          resource: "nexmoe/VidBee",
         },
         {
           source: "github",
@@ -141,18 +154,46 @@ describe("Trigger presentation", () => {
         { source: "slack", event: "mention", connection: "acme-slack" },
         { source: "schedule", event: "tick", recurrence: daily },
         { source: "inventory", event: "stock.*" },
-      ]).map(({ source, primary, secondary }) => [source, primary, secondary]),
+        { source: "inventory", event: "stock.*", resource: "warehouse-1" },
+      ]).map(({ source, primary, secondary, scopes }) => [source, primary, secondary, scopes]),
       [
-        ["manual", "On demand", "When you choose Run now"],
-        ["github", "Pull request opened · Check suite completed", "GitHub · via vioraos-github"],
+        ["manual", "On demand", "When you choose Run now", undefined],
         [
           "github",
-          "Pull request ready for review · Pull request synchronize",
-          "GitHub · VioraOS/Viora-Mono · via vioraos-github",
+          "vioraos-github",
+          "GitHub connection",
+          [
+            // Events from anywhere on the connection read first, whatever order the code
+            // declares them in; a repository's own events never join them.
+            {
+              resource: "All repositories",
+              events: "Pull request opened · Check suite completed",
+            },
+            {
+              resource: "VioraOS/Viora-Mono",
+              events: "Pull request ready for review · Pull request synchronize",
+            },
+            {
+              resource: "VioraOS/TokenHub",
+              events: "Pull request ready for review · Pull request synchronize",
+            },
+          ],
         ],
-        ["slack", "Mention", "Slack · via acme-slack"],
-        ["schedule", "Every day at 09:00 (Asia/Shanghai)", "Schedule"],
-        ["inventory", "Stock events", "inventory"],
+        [
+          "github",
+          "nexmoe-github",
+          "GitHub connection",
+          [{ resource: "nexmoe/VidBee", events: "Pull request opened" }],
+        ],
+        [
+          "slack",
+          "acme-slack",
+          "Slack connection",
+          [{ resource: "All workspaces", events: "Mention" }],
+        ],
+        ["schedule", "Every day at 09:00 (Asia/Shanghai)", "Schedule", undefined],
+        ["inventory", "Stock events", "inventory", undefined],
+        ["inventory", "Stock events", "inventory · warehouse-1", undefined],
       ],
     );
   });

@@ -24,7 +24,8 @@ test("shows deployed configuration without source prompts and keeps revision bro
     'import {agent} from "./policy.js";',
     "export default defineTrigger({",
     'name:"visual-configuration",runner:"browser",',
-    'on:[{source:"github",event:"pull_request.opened",connection:"acme-inc",resource:"acme-inc/app"}],',
+    'on:[{source:"github",event:"pull_request.opened",connection:"acme-inc",resource:"acme-inc/app"},',
+    '{source:"github",event:"check_suite.completed",connection:"acme-inc"}],',
     "grants:{targets:{review:{daemon:" +
       JSON.stringify(daemon) +
       ',cwd:"/workspace/review",providers:["codex"]}},',
@@ -59,9 +60,18 @@ test("shows deployed configuration without source prompts and keeps revision bro
     await page.getByRole("link", { name: "visual-configuration", exact: true }).click();
     await expect(page.getByRole("button", { name: /^View .* source$/ })).toHaveCount(0);
     // Every group is open on arrival; only prompts fold.
-    const events = page.getByRole("list", { name: "Events", exact: true });
-    await expect(events).toContainText("Pull request opened");
-    await expect(events).toContainText("GitHub · acme-inc/app · via acme-inc");
+    // One connection is one record, said once; each repository keeps its own events under it.
+    const events = page.getByRole("list", { name: "Events", exact: true }).getByRole("listitem");
+    await expect(events).toHaveCount(1);
+    await expect(events).toContainText("acme-inc");
+    await expect(events).toContainText("GitHub connection");
+    const scopes = page.locator('[data-summary="acme-inc events"]');
+    await expect(scopes.locator('dt:text-is("All repositories") + dd')).toHaveText(
+      "Check suite completed",
+    );
+    await expect(scopes.locator('dt:text-is("acme-inc/app") + dd')).toHaveText(
+      "Pull request opened",
+    );
     const runsOn = page.getByRole("list", { name: "Runs on", exact: true });
     await expect(runsOn).toContainText("Workflow runner");
     const target = runsOn.getByRole("listitem").filter({ hasText: daemon });
