@@ -5,7 +5,16 @@ import { Maximize2 } from "lucide-react";
 import { Button } from "../ui/button.js";
 import { DetailDialog, DetailDialogTrigger } from "./detail-dialog.js";
 import { NoticeAlert } from "./failure-alert.js";
-import { LoadingLine } from "./loading.js";
+import { Skeleton } from "../ui/skeleton.js";
+
+/** SVG layout is asynchronous; reserve the diagram's own viewport rather than a text line. */
+export function FlowDiagramSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Drawing workflow">
+      <Skeleton className="h-48 w-full" />
+    </div>
+  );
+}
 
 async function render(source: string, host: HTMLElement, idPrefix: string): Promise<string> {
   const { renderAsync } = await import("pele/lazy");
@@ -95,7 +104,7 @@ function DiagramImage({
   return (
     <div ref={host} className="flow-diagram min-w-0">
       {svg === undefined ? (
-        <LoadingLine>Drawing workflow…</LoadingLine>
+        <FlowDiagramSkeleton />
       ) : (
         <div
           role="img"

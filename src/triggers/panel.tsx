@@ -1,9 +1,10 @@
+import { COLUMNS, FILTERS, DESCRIPTION, TriggersLoading } from "./panel-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop, eslint-plugin-react-perf/jsx-no-new-array-as-prop, eslint-plugin-react-perf/jsx-no-new-function-as-prop -- shared record surfaces compose their labels, facts and row navigation */
 /* oxlint-disable typescript-eslint/no-unsafe-type-assertion -- organization URLs are resolved by the server outside generated route parameter types */
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Braces, Plus } from "lucide-react";
-import { DataTable, DataRow, DataCell, DataTableSkeleton } from "../components/app/data-table.js";
+import { DataTable, DataRow, DataCell } from "../components/app/data-table.js";
 import { FailureAlert } from "../components/app/failure-alert.js";
 import { PageHeader } from "../components/app/page.js";
 import { RelativeTime } from "../components/app/relative-time.js";
@@ -21,18 +22,6 @@ import { describeTriggerEvent } from "./configuration/editor.js";
 
 type BrowserTrigger = TriggerSnapshot["triggers"][number];
 
-const COLUMNS = [
-  { header: "Trigger", fill: true },
-  { header: "Event", fill: true, className: "hidden md:table-cell" },
-  { header: "Target", fill: true, className: "hidden xl:table-cell" },
-  { header: "Last triggered", className: "hidden sm:table-cell" },
-  { header: "Status" },
-];
-const FILTERS = [
-  { value: "all", label: "All" },
-  { value: "enabled", label: "Enabled" },
-  { value: "disabled", label: "Disabled" },
-];
 const NEW_EMPTY = {
   title: "No triggers",
   description: "Start with a small script, choose when it runs, then deploy it to Hub.",
@@ -42,7 +31,6 @@ const FILTER_EMPTY = {
   enabled: { title: "No enabled triggers", description: "Choose All to view every Trigger." },
   disabled: { title: "No disabled triggers", description: "Choose All to view every Trigger." },
 };
-const DESCRIPTION = "Choose when a workflow runs and write what it does in code.";
 
 export function TriggersPanel() {
   const navigate = useNavigate();
@@ -63,16 +51,7 @@ export function TriggersPanel() {
       onChange={setFilter}
     />
   );
-  if (snapshot.status === "pending" || !ready)
-    return (
-      <>
-        <PageHeader title="Triggers" description={DESCRIPTION} />
-        <div className="grid gap-6">
-          {controls}
-          <DataTableSkeleton label="Triggers" columns={COLUMNS} />
-        </div>
-      </>
-    );
+  if (snapshot.status === "pending" || !ready) return <TriggersLoading controls={controls} />;
   if (snapshot.status === "error")
     return (
       <>

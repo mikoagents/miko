@@ -4,14 +4,16 @@ import { useServerFn } from "@tanstack/react-start";
 import { triggerActivityTimeline } from "./functions.js";
 import { useSnapshotQuery } from "../queries/index.js";
 import { Section } from "../components/app/section.js";
-import { SummaryPanel } from "../components/app/summary-panel.js";
+import { SummaryPanel, SummaryPanelSkeleton } from "../components/app/summary-panel.js";
 import { CopyField } from "../components/app/copy-field.js";
 import { Disclosure } from "../components/app/disclosure.js";
 import { CodeBlock, CopyButton } from "../components/app/copy-field.js";
-import { SessionTranscript } from "../components/app/session-transcript.js";
+import {
+  SessionTranscript,
+  SessionTranscriptSkeleton,
+} from "../components/app/session-transcript.js";
 import { EmptyState } from "../components/app/empty-state.js";
 import { FailureAlert, NoticeAlert } from "../components/app/failure-alert.js";
-import { LoadingLine } from "../components/app/loading.js";
 import { Button } from "../components/ui/button.js";
 import type { TimelineRow, TimelineState } from "../session-timelines/store.js";
 
@@ -52,7 +54,7 @@ export function SessionHistory(scope: {
     if (first !== undefined) setCursors((current) => [...current, first]);
   }, [first]);
   const later = useCallback(() => setCursors((current) => current.slice(0, -1)), []);
-  if (snapshot.status === "pending") return <LoadingLine>Loading session history…</LoadingLine>;
+  if (snapshot.status === "pending") return <SessionHistorySkeleton view={scope.view} />;
   if (snapshot.status === "error")
     return (
       <FailureAlert
@@ -122,6 +124,24 @@ export function SessionHistory(scope: {
             </div>
           ) : null}
         </>
+      )}
+    </Section>
+  );
+}
+
+const SESSION_LABELS = ["Provider", "Model", "Status", "Working directory", "Provider session"];
+
+export function SessionHistorySkeleton({ view }: { view: string }) {
+  const diagnostics = view === "diagnostics";
+  return (
+    <Section
+      title={diagnostics ? "Session details" : "Conversation"}
+      description={sessionDescription(diagnostics, null)}
+    >
+      {diagnostics ? (
+        <SummaryPanelSkeleton label="Session details" labels={SESSION_LABELS} />
+      ) : (
+        <SessionTranscriptSkeleton />
       )}
     </Section>
   );

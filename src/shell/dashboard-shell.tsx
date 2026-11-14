@@ -20,7 +20,8 @@ import { useCallback } from "react";
 import { usePageContext } from "../navigation/index.js";
 import { Page } from "../components/app/page.js";
 import { FailureAlert } from "../components/app/failure-alert.js";
-import { PanelSkeleton } from "../components/app/loading.js";
+import { RouteLoading } from "../navigation/loading.js";
+import { TabNavSkeleton } from "../components/app/tab-nav.js";
 import { ThemePicker } from "../components/app/theme-picker.js";
 import {
   Sidebar,
@@ -223,7 +224,12 @@ function PageContent({
     // Route metadata says whether the page arriving here is one of the settings sections, and
     // those carry a tab strip above their own header. Holding that rail open is the difference
     // between a page that fills in and a page that drops when the tenant resolves.
-    return <PanelSkeleton label="Loading account context" tabs={page.tabs} />;
+    return (
+      <section aria-label="Loading account context" aria-busy="true">
+        {page.tabs ? <TabNavSkeleton /> : null}
+        <RouteLoading />
+      </section>
+    );
   }
   if (status.state === "failed") {
     return <FailureAlert title={status.title} error={status.message} fallback={status.message} />;

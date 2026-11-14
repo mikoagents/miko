@@ -1,16 +1,15 @@
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-new-array-as-prop, eslint-plugin-react-perf/jsx-no-jsx-as-prop -- shared record surfaces accept composed facts and actions */
 import { useCallback, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { CodeBlock, CopyButton } from "../components/app/copy-field.js";
+import { CodeBlock, CodeBlockSkeleton, CopyButton } from "../components/app/copy-field.js";
 import { Combobox } from "../components/app/combobox.js";
-import { Disclosure } from "../components/app/disclosure.js";
+import { Disclosure, DisclosureSkeleton } from "../components/app/disclosure.js";
 import { EmptyState } from "../components/app/empty-state.js";
 import { FailureAlert } from "../components/app/failure-alert.js";
-import { LoadingLine } from "../components/app/loading.js";
 import { RelativeTime } from "../components/app/relative-time.js";
 import { Section } from "../components/app/section.js";
 import { StatusPill, statusLabel } from "../components/app/status-pill.js";
-import { SummaryPanel } from "../components/app/summary-panel.js";
+import { SummaryPanel, SummaryPanelSkeleton } from "../components/app/summary-panel.js";
 import { Button } from "../components/ui/button.js";
 import { useSnapshotQuery } from "../queries/index.js";
 import {
@@ -18,7 +17,7 @@ import {
   triggerActivityLogs,
   type TriggerActivitySnapshot,
 } from "./functions.js";
-import { SessionHistory } from "./session-history.js";
+import { SessionHistory, SessionHistorySkeleton } from "./session-history.js";
 
 interface ActivityScope {
   organizationSlug: string;
@@ -43,7 +42,7 @@ export function ActivityDetail({ view, ...scope }: ActivityScope & { view: strin
     queryFn: () => load({ data: scope }),
     refetchInterval: 5000,
   });
-  if (snapshot.status === "pending") return <LoadingLine>Loading run details…</LoadingLine>;
+  if (snapshot.status === "pending") return <ActivityDetailSkeleton view={view} />;
   if (snapshot.status === "error")
     return (
       <FailureAlert
@@ -126,6 +125,26 @@ function lastStartedStep(steps: Activity["steps"]) {
     if (step?.executionId != null) return step;
   }
   return steps[0];
+}
+
+const RUN_OVERVIEW_LABELS = ["Source", "Daemon", "Started", "Completed"];
+
+export function ActivityDetailSkeleton({ view }: { view: string }) {
+  return (
+    <div aria-busy="true" aria-label="Loading run details" className="grid min-w-0 gap-5">
+      <SummaryPanelSkeleton label="Run overview" labels={RUN_OVERVIEW_LABELS} />
+      {view === "details" ? (
+        <Section title="Steps">
+          <div className="grid gap-3">
+            <DisclosureSkeleton />
+            <DisclosureSkeleton />
+          </div>
+        </Section>
+      ) : (
+        <SessionHistorySkeleton view={view} />
+      )}
+    </div>
+  );
 }
 
 function RunDetails({ activity }: { activity: Activity }) {
@@ -282,7 +301,12 @@ function ExecutionLog({
     if (nextCursor != null) setCursors((current) => [...current, nextCursor]);
   }, [nextCursor]);
   const previous = useCallback(() => setCursors((current) => current.slice(0, -1)), []);
-  if (snapshot.status === "pending") return <LoadingLine>Loading execution log…</LoadingLine>;
+  if (snapshot.status === "pending")
+    return (
+      <Section title="Execution log">
+        <CodeBlockSkeleton label="Loading execution log" />
+      </Section>
+    );
   if (snapshot.status === "error")
     return (
       <FailureAlert

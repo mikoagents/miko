@@ -1,3 +1,4 @@
+import { BillingLoading } from "../../../../../billing/ui/panel-loading.js";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { z } from "zod";
 import { BillingPanel } from "../../../../../billing/ui/panel.js";
@@ -11,7 +12,7 @@ import { billingConfigured } from "../../../../../server/capabilities.js";
 // so it is exempted from the src/billing/ import boundary in oxlint.json, which lets the whole
 // feature (server + UI) live under src/billing/ and be deleted as one directory.
 export const Route = createFileRoute("/_shell/o/$organizationSlug/settings/billing")({
-  staticData: { breadcrumb: "Billing" },
+  staticData: { loadingComponent: BillingLoading, breadcrumb: "Billing" },
   // `?plans` arrives from surfaces that hit a plan limit — the locked invite control on Team — so
   // the picker is open on arrival instead of asking the customer to find it again.
   validateSearch: z.object({ plans: z.boolean().optional() }),

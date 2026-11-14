@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { cn } from "../../lib/utils.js";
+import { Skeleton } from "../ui/skeleton.js";
 
 export interface SegmentedOption {
   value: string;
@@ -183,4 +184,13 @@ export function nextSegmentValue(
   const next = selectable[(current + step + selectable.length) % selectable.length];
   if (next === undefined || next.value === value) return undefined;
   return next.value;
+}
+
+/** Holds the filter's control height before its stored selection is available. */
+export function FilterSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading filter">
+      <Skeleton className="h-8 w-60 max-w-full" />
+    </div>
+  );
 }

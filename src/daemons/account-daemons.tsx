@@ -1,3 +1,5 @@
+/* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop -- pending content keeps the live filter slot */
+import { DAEMON_COLUMNS, DAEMONS_DESCRIPTION, DaemonsLoading } from "./panel-loading.js";
 import { useSnapshotQuery } from "../queries/index.js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -5,13 +7,7 @@ import { BookOpen } from "lucide-react";
 import { useCallback, useState, type FormEvent } from "react";
 import { ConfirmMenuItem } from "../components/app/confirm-action.js";
 import { CopyField } from "../components/app/copy-field.js";
-import {
-  DataCell,
-  DataRow,
-  DataTable,
-  DataTableSkeleton,
-  type DataColumn,
-} from "../components/app/data-table.js";
+import { DataCell, DataRow, DataTable } from "../components/app/data-table.js";
 import { FailureAlert } from "../components/app/failure-alert.js";
 import { FormDialog } from "../components/app/form-dialog.js";
 import { FormField } from "../components/app/form-field.js";
@@ -44,17 +40,6 @@ import {
   type DaemonStatusFilter,
 } from "./status-filter.js";
 
-const DAEMON_COLUMNS: readonly DataColumn[] = [
-  { header: "Slug", fill: true },
-  { header: "ID", className: "hidden xl:table-cell" },
-  { header: "Status" },
-  { header: "Providers" },
-  { header: "Access", fill: true, className: "hidden md:table-cell" },
-  { header: "Last seen", className: "hidden lg:table-cell" },
-  { header: "Registered", className: "hidden xl:table-cell" },
-  { header: "", align: "end" },
-];
-const DAEMONS_DESCRIPTION = "Stable daemon identities registered to this organization.";
 const DAEMON_DOCS_URL = "https://paseo.sh/docs/hub/daemons";
 const DAEMONS_EMPTY = {
   title: "No daemons connected",
@@ -158,17 +143,8 @@ export function DaemonsPanel({
     setValue: setFilter,
     ready,
   } = usePersistedChoice(`miko-hub-daemon-status:${organizationId}`, DAEMON_STATUS_FILTERS, "all");
-  if (snapshot.status === "pending" || !ready) {
-    return (
-      <>
-        <PageHeader id="daemons-heading" title="Daemons" description={DAEMONS_DESCRIPTION} />
-        <div className="grid gap-6">
-          <DaemonStatusFilter value={filter} onChange={setFilter} />
-          <DataTableSkeleton label="Daemons" columns={DAEMON_COLUMNS} />
-        </div>
-      </>
-    );
-  }
+  if (snapshot.status === "pending" || !ready)
+    return <DaemonsLoading controls={<DaemonStatusFilter value={filter} onChange={setFilter} />} />;
   if (snapshot.status === "error") {
     return (
       <FailureAlert

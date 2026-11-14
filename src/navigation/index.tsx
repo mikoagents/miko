@@ -1,4 +1,5 @@
 import { trimPathRight, useMatches } from "@tanstack/react-router";
+import type { ComponentType } from "react";
 
 declare module "@tanstack/react-router" {
   interface StaticDataRouteOption {
@@ -6,6 +7,8 @@ declare module "@tanstack/react-router" {
     instance?: boolean;
     tabs?: boolean;
     projectSection?: "overview" | "configuration" | "activity" | "settings";
+    /** Presentational only, available even while the route's component chunk is downloading. */
+    loadingComponent?: ComponentType;
   }
 }
 
