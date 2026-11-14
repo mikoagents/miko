@@ -26,6 +26,7 @@ import {
   elapsed,
   formatDuration,
   initialSession,
+  operationState,
   runEventSummary,
   type AgentCall,
   type RunSession,
@@ -114,7 +115,7 @@ export function CodeActivityDetail({
       />
     );
   const { run, operations, logs } = snapshot.data;
-  const { calls, sessions } = agentSessions(operations);
+  const { calls, sessions } = agentSessions(operations, run.status);
   const active = ACTIVE_STATUSES.has(run.status);
   const session = sessions.find((entry) => entry.id === sessionId) ?? initialSession(sessions);
   return (
@@ -268,7 +269,14 @@ function Conversation({
         prompts={session.calls.flatMap((call) =>
           call.executionId === null
             ? []
-            : [{ messageId: call.executionId, text: call.agent.prompt, label: call.id }],
+            : [
+                {
+                  messageId: call.executionId,
+                  text: call.agent.prompt,
+                  label: call.id,
+                  ...(call.agent.startedAt === null ? {} : { startedAt: call.agent.startedAt }),
+                },
+              ],
         )}
       />
     </div>
@@ -326,6 +334,7 @@ function RunDetails({
               key={operation.id}
               operation={operation}
               session={sessionOf.get(operation.id) ?? null}
+              parentStatus={run.status}
               onOpen={onOpenStep}
             />
           ))}
@@ -370,15 +379,17 @@ function SessionRow({ session, onOpen }: { session: RunSession; onOpen: (id: str
 function StepRow({
   operation,
   session,
+  parentStatus,
   onOpen,
 }: {
   operation: Operation;
   session: number | null;
+  parentStatus: string;
   onOpen: (id: string) => void;
 }) {
   const open = useCallback(() => onOpen(operation.id), [onOpen, operation.id]);
   const { kind, summary } = describeOperation(operation);
-  const status = stepStatus(operation);
+  const status = stepStatus(operation, parentStatus);
   return (
     <DataRow onSelect={open}>
       <DataCell>
@@ -476,7 +487,7 @@ function Diagnostics({
               options={operations.map((operation) => ({
                 value: operation.id,
                 label: operation.id,
-                detail: `${describeOperation(operation).kind} · ${statusLabel(stepStatus(operation))}`,
+                detail: `${describeOperation(operation).kind} · ${statusLabel(stepStatus(operation, run.status))}`,
               }))}
               onChange={select}
             />
@@ -544,13 +555,9 @@ function facts(...parts: readonly (string | null)[]): string {
   return parts.filter((part) => part !== null).join(" · ");
 }
 
-/** An agent call that holds a session is working, though its operation is waiting on it. */
-function stepStatus(operation: Operation): string {
-  return operation.kind === "agent" &&
-    operation.status === "waiting" &&
-    operation.executionId !== null
-    ? "running"
-    : operation.status;
+/** An agent call that holds a session is working, unless its parent run has already ended. */
+function stepStatus(operation: Operation, parentStatus: string): string {
+  return operationState(operation, parentStatus);
 }
 
 function daemonList(records: readonly { daemons: readonly string[] }[]): string {

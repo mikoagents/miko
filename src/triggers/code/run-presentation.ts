@@ -29,7 +29,14 @@ export interface RunOperation {
   agent: RunAgent | null;
 }
 
-export type CallState = "waiting" | "running" | "completed" | "failed";
+export type CallState =
+  | "waiting"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out"
+  | "skipped";
 
 export interface AgentCall {
   id: string;
@@ -65,8 +72,15 @@ export interface RunSession {
 
 type SessionCalls = Omit<RunSession, "origin">;
 
-/** The run's agent calls in the order the code made them, and the sessions they ran in. */
-export function agentSessions(operations: readonly RunOperation[]): {
+/**
+ * The run's agent calls in the order the code made them, and the sessions they ran in.
+ * `parentStatus` is the durable run status. Cancel, timeout, failure and skip stop the child
+ * without rewriting a waiting journal entry, so a terminal parent is part of the projection.
+ */
+export function agentSessions(
+  operations: readonly RunOperation[],
+  parentStatus?: string,
+): {
   calls: AgentCall[];
   sessions: RunSession[];
 } {
@@ -82,7 +96,7 @@ export function agentSessions(operations: readonly RunOperation[]): {
       id: operation.id,
       agent,
       executionId,
-      state: callState(operation),
+      state: operationState(operation, parentStatus),
       daemons: operation.daemons,
       session: sessionId === null ? null : (session?.number ?? sessions.size + 1),
     };
@@ -97,7 +111,7 @@ export function agentSessions(operations: readonly RunOperation[]): {
         });
       else {
         session.calls.push(call);
-        session.state = call.state;
+        session.state = dominantState(session.state, call.state);
         session.executionId = executionId;
       }
     }
@@ -112,10 +126,46 @@ export function agentSessions(operations: readonly RunOperation[]): {
   };
 }
 
-function callState(operation: RunOperation): CallState {
+/** A parent that has ended. Cleanup cancels children and leaves their journal entries waiting. */
+const PARENT_END: Record<string, CallState> = {
+  cancelled: "cancelled",
+  timed_out: "timed_out",
+  failed: "failed",
+  skipped: "skipped",
+};
+
+/**
+ * How a step or agent call reads. A started agent is running only while its parent run is still
+ * live; an execution id left behind by cancel, timeout, failure or skip is not liveness.
+ */
+export function operationState(
+  operation: { status: string; executionId: string | null; kind?: string },
+  parentStatus?: string,
+): CallState {
   if (operation.status === "completed") return "completed";
   if (operation.status === "failed") return "failed";
-  return operation.executionId === null ? "waiting" : "running";
+  const ended = parentStatus === undefined ? undefined : PARENT_END[parentStatus];
+  if (ended !== undefined && (operation.status === "waiting" || operation.status === "running"))
+    return ended;
+  if (operation.status === "running") return "running";
+  const started =
+    operation.executionId !== null && (operation.kind === undefined || operation.kind === "agent");
+  return operation.status === "waiting" && started ? "running" : "waiting";
+}
+
+/** A session stays running until every call in it has finished. */
+const STATE_RANK: readonly CallState[] = [
+  "completed",
+  "skipped",
+  "cancelled",
+  "timed_out",
+  "failed",
+  "waiting",
+  "running",
+];
+
+function dominantState(current: CallState, next: CallState): CallState {
+  return STATE_RANK.indexOf(current) >= STATE_RANK.indexOf(next) ? current : next;
 }
 
 /**

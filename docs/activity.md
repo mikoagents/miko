@@ -37,7 +37,10 @@ Each started step also opens the associated session conversation. User and assis
 are readable in order; reasoning and tool calls expand to show commands, inputs, output, errors
 and original details. Session diagnostics include provider, model, working directory, native
 agent and provider session references, plus copyable `miko agent inspect` and `miko agent logs`
-commands. A continued session includes previous executions' conversation history.
+commands. A continued session includes previous executions' conversation history. The session stays
+running until every call in it has finished, and cancelling, timing out, failing, or skipping the
+run ends calls whose journal entry is still waiting. A repeated prompt names the messages from
+that call; an earlier round with the same text keeps its own name.
 
 Hub reads bounded canonical pages through Miko execution protocol 2.1.0, saves a redacted copy
 and uses epoch/sequence cursors to retrieve missed rows after reconnect. Older messages load

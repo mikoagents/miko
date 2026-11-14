@@ -53,4 +53,28 @@ describe("the name a transcript gives each message", () => {
 
     assert.deepEqual(headers(rows, PROMPTS), ["Assistant"]);
   });
+
+  it("keeps an earlier round's name when this run sends the same prompt again", () => {
+    const prompts: readonly TranscriptPrompt[] = [
+      {
+        messageId: "execution-current",
+        text: "Plan the review.",
+        label: "review",
+        startedAt: "2026-11-14T12:00:00.000Z",
+      },
+    ];
+    const rows = [
+      row(1, { type: "user_message", text: "Plan the review.", messageId: "previous-execution" }),
+      {
+        ...row(2, {
+          type: "user_message",
+          text: "Plan the review.",
+          messageId: "daemon-id",
+        }),
+        timestamp: "2026-11-14T12:00:01.000Z",
+      },
+    ];
+
+    assert.deepEqual(headers(rows, prompts), ["User", "review"]);
+  });
 });

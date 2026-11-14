@@ -6,6 +6,7 @@ import {
   elapsed,
   formatDuration,
   initialSession,
+  operationState,
   runEventSummary,
   type RunAgent,
   type RunOperation,
@@ -141,6 +142,61 @@ describe("Trigger run presentation", () => {
     );
     assert.equal(initialSession(sessions)?.id, "fresh");
     assert.equal(initialSession([]), undefined);
+  });
+
+  it("keeps a shared session running until every parallel call has finished", () => {
+    const { calls, sessions } = agentSessions([
+      agentOperation(
+        "a",
+        { continuationKey: "shared", sessionId: "shared" },
+        { status: "waiting" },
+      ),
+      agentOperation("check", { sessionId: "other" }, { status: "completed" }),
+      agentOperation(
+        "b",
+        { continuationKey: "shared", sessionId: "shared", sessionAction: "continued" },
+        { status: "completed" },
+      ),
+    ]);
+    assert.deepEqual(
+      calls.map(({ id, state }) => ({ id, state })),
+      [
+        { id: "a", state: "running" },
+        { id: "check", state: "completed" },
+        { id: "b", state: "completed" },
+      ],
+    );
+    assert.deepEqual(
+      sessions.map(({ id, state }) => ({ id, state })),
+      [
+        { id: "shared", state: "running" },
+        { id: "other", state: "completed" },
+      ],
+    );
+    assert.equal(initialSession(sessions)?.id, "shared");
+  });
+
+  it("does not treat a surviving execution id as running after the parent ends", () => {
+    const waiting = agentOperation("review", { sessionId: "live" }, { status: "waiting" });
+    for (const parentStatus of ["cancelled", "timed_out", "failed", "skipped"] as const) {
+      const { calls, sessions } = agentSessions([waiting], parentStatus);
+      assert.equal(calls[0]?.state, parentStatus);
+      assert.equal(sessions[0]?.state, parentStatus);
+      assert.equal(operationState(waiting, parentStatus), parentStatus);
+      assert.equal(
+        operationState({ ...waiting, kind: "agent" }, parentStatus),
+        parentStatus,
+        parentStatus,
+      );
+    }
+    const finished = agentOperation("review", { sessionId: "live" }, { status: "completed" });
+    assert.equal(agentSessions([finished], "cancelled").sessions[0]?.state, "completed");
+    assert.equal(operationState({ ...waiting, executionId: null }, "cancelled"), "cancelled");
+    assert.equal(operationState(waiting, "running"), "running");
+    assert.equal(
+      operationState({ ...waiting, kind: "sleep", executionId: null }, "running"),
+      "waiting",
+    );
   });
 
   it("takes a session's origin from the call that created it and never guesses one", () => {
