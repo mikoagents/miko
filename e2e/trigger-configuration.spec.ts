@@ -10,6 +10,8 @@ test("shows deployed configuration without source prompts and keeps revision bro
   hub,
   page,
 }) => {
+  // Forty letters and no break, the case that used to push the event column off a phone.
+  const longRepository = `acme-inc/${"a".repeat(40)}`;
   await hub.signUpAs("owner", {
     name: "Code Configuration Owner",
     email: "configuration-owner@example.com",
@@ -17,7 +19,10 @@ test("shows deployed configuration without source prompts and keeps revision bro
   });
   await hub.createOrganization("owner", "Code Configuration");
   const daemon = await hub.connectProviderDaemon("owner", "Code Configuration");
-  await hub.seedGitHubConnection("Code Configuration", "acme-inc", "acme-inc/app");
+  await hub.seedGitHubConnection("Code Configuration", "acme-inc", [
+    "acme-inc/app",
+    longRepository,
+  ]);
   const directory = await mkdtemp(join(tmpdir(), "hub-visual-configuration-"));
   const source = [
     'import {defineTrigger} from "@mikoagents/hub/triggers";',
@@ -25,6 +30,7 @@ test("shows deployed configuration without source prompts and keeps revision bro
     "export default defineTrigger({",
     'name:"visual-configuration",runner:"browser",',
     'on:[{source:"github",event:"pull_request.opened",connection:"acme-inc",resource:"acme-inc/app"},',
+    `{source:"github",event:"issues.opened",connection:"acme-inc",resource:${JSON.stringify(longRepository)}},`,
     '{source:"github",event:"check_suite.completed",connection:"acme-inc"}],',
     "grants:{targets:{review:{daemon:" +
       JSON.stringify(daemon) +
@@ -71,6 +77,9 @@ test("shows deployed configuration without source prompts and keeps revision bro
     );
     await expect(scopes.locator('dt:text-is("acme-inc/app") + dd')).toHaveText(
       "Pull request opened",
+    );
+    await expect(scopes.locator(`dt:text-is("${longRepository}") + dd`)).toHaveText(
+      "Issues opened",
     );
     const runsOn = page.getByRole("list", { name: "Runs on", exact: true });
     await expect(runsOn).toContainText("Workflow runner");
@@ -161,6 +170,36 @@ test("shows deployed configuration without source prompts and keeps revision bro
       0,
     );
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+    // A long repository wraps inside its column. The event beside it stays on screen, and a short
+    // repository still sits on the same row as its event.
+    const shortName = scopes.locator('dt:text-is("acme-inc/app")');
+    const shortEvents = scopes.locator('dt:text-is("acme-inc/app") + dd');
+    const longName = scopes.locator(`dt:text-is("${longRepository}")`);
+    const longEvents = scopes.locator(`dt:text-is("${longRepository}") + dd`);
+    // The events sit below the fold on a phone. Scroll them up, then require the whole row on screen.
+    await longName.scrollIntoViewIfNeeded();
+    await expect(longName).toBeInViewport({ ratio: 1 });
+    await expect(longEvents).toBeInViewport({ ratio: 1 });
+    const [shortNameBox, shortEventsBox, longNameBox, longEventsBox] = await Promise.all([
+      shortName.boundingBox(),
+      shortEvents.boundingBox(),
+      longName.boundingBox(),
+      longEvents.boundingBox(),
+    ]);
+    expect(shortNameBox).not.toBeNull();
+    expect(shortEventsBox).not.toBeNull();
+    expect(longNameBox).not.toBeNull();
+    expect(longEventsBox).not.toBeNull();
+    // Baseline alignment, not a shared top: the name is text-xs and the event is text-sm.
+    expect(Math.abs(shortNameBox!.y - shortEventsBox!.y)).toBeLessThan(12);
+    expect(longEventsBox!.y).toBeLessThan(longNameBox!.y + 12);
+    expect(longEventsBox!.width).toBeGreaterThan(0);
+    expect(longEventsBox!.x + longEventsBox!.width).toBeLessThanOrEqual(391);
+    expect(longNameBox!.height).toBeGreaterThan(shortNameBox!.height + 4);
+    expect(await longName.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+    expect(await longEvents.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(
+      0,
+    );
     await agent.getByRole("button", { name: /^Prompt/ }).click();
     await expect(page.getByRole("textbox", { name: "review prompt", exact: true })).toContainText(
       "Review this PR.",
