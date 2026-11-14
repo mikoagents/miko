@@ -1,8 +1,15 @@
+import {
+  ACTIVITY_COLUMNS,
+  ACTIVITY_DESCRIPTION,
+  HISTORY_COLUMNS,
+  ActivityLoading,
+  TriggerRunHistorySkeleton,
+} from "./activity-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop -- each record composes its shared dialog trigger and table row */
 import { useSnapshotQuery } from "../queries/index.js";
 import { useCallback, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { DataCell, DataRow, DataTable, DataTableSkeleton } from "../components/app/data-table.js";
+import { DataCell, DataRow, DataTable } from "../components/app/data-table.js";
 import { FailureAlert } from "../components/app/failure-alert.js";
 import { PageHeader } from "../components/app/page.js";
 import { RelativeTime } from "../components/app/relative-time.js";
@@ -18,7 +25,6 @@ import { ACTIVITY_VIEWS, ActivityDetail } from "./activity-detail.js";
 import { CodeActivityDetail } from "./code/activity-view.js";
 import { triggerSourceLabel } from "./code/presentation.js";
 import { triggerRunHistory } from "./functions.js";
-import { LoadingLine } from "../components/app/loading.js";
 import {
   ACTIVITY_STATUS_FILTERS,
   ACTIVITY_STATUS_FILTER_OPTIONS,
@@ -27,19 +33,6 @@ import {
   type ActivityStatusFilter,
 } from "./activity-filter.js";
 
-const ACTIVITY_COLUMNS = [
-  { header: "Trigger", fill: true },
-  { header: "Provider" },
-  { header: "Source" },
-  { header: "Status", fill: true },
-  { header: "Received" },
-];
-const ACTIVITY_DESCRIPTION = "Workflow runs, results and logs from your triggers.";
-const HISTORY_COLUMNS = [
-  { header: "Started", fill: true },
-  { header: "Event", fill: true, className: "hidden sm:table-cell" },
-  { header: "Status" },
-];
 const HISTORY_EMPTY = {
   title: "No runs yet",
   description: "Runs will appear here when an event arrives, or when someone chooses Run now.",
@@ -62,17 +55,10 @@ export function TriggerActivityPanel() {
     ACTIVITY_STATUS_FILTERS,
     "all",
   );
-  if (snapshot.status === "pending" || !ready) {
+  if (snapshot.status === "pending" || !ready)
     return (
-      <>
-        <PageHeader title="Activity" description={ACTIVITY_DESCRIPTION} />
-        <div className="grid gap-6">
-          <ActivityStatusFilter value={filter} onChange={setFilter} />
-          <DataTableSkeleton label="Trigger activity" columns={ACTIVITY_COLUMNS} />
-        </div>
-      </>
+      <ActivityLoading controls={<ActivityStatusFilter value={filter} onChange={setFilter} />} />
     );
-  }
   if (snapshot.status === "error") {
     return (
       <FailureAlert
@@ -125,7 +111,7 @@ export function TriggerRunHistory({
     queryFn: () => load({ data: { organizationSlug, triggerId } }),
     refetchInterval: 3000,
   });
-  if (snapshot.status === "pending") return <LoadingLine>Loading runs…</LoadingLine>;
+  if (snapshot.status === "pending") return <TriggerRunHistorySkeleton />;
   if (snapshot.status === "error")
     return (
       <FailureAlert

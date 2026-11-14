@@ -1,4 +1,22 @@
+/* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop -- records compose their status slots */
 import type { ReactNode } from "react";
+import { ContentSkeleton } from "./loading.js";
+import { StatusPill } from "./status-pill.js";
+import { TwoLine } from "./two-line.js";
+
+export function RecordListSkeleton({ label, rows = 3 }: { label: string; rows?: number }) {
+  return (
+    <ContentSkeleton loading label={`Loading ${label}`}>
+      <RecordList label={label}>
+        {Array.from({ length: rows }, (_, row) => (
+          <RecordRow key={row} status={<StatusPill tone="neutral">Pending</StatusPill>}>
+            <TwoLine primary="Workflow record" secondary="Latest activity and details" />
+          </RecordRow>
+        ))}
+      </RecordList>
+    </ContentSkeleton>
+  );
+}
 
 /**
  * A short list of records inside a card, for the times a table would be wrong: the records are

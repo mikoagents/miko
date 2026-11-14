@@ -18,6 +18,8 @@ export interface DataColumn {
   fill?: boolean;
   /** Responsive visibility for the column, header and cells alike. */
   className?: string;
+  /** The row's content anatomy, shared by every loading state using these columns. */
+  skeleton?: { secondary?: boolean; icon?: boolean; pill?: boolean };
 }
 
 /** The columns of the table a cell is drawn in, and which of them the cell sits under. */
@@ -81,7 +83,21 @@ export function DataTableSkeleton({
           <DataRow key={row}>
             {columns.map((column, index) => (
               <DataCell key={columnKey(column, index)}>
-                <Skeleton className={cn("h-4", placeholderWidth(columns, index))} />
+                <div className="flex min-w-0 items-center gap-3">
+                  {column.skeleton?.icon ? <Skeleton className="size-8 shrink-0" /> : null}
+                  <div className={cn("grid min-w-0 gap-1", column.align === "end" && "ml-auto")}>
+                    <Skeleton
+                      className={cn(
+                        "h-4 max-w-full",
+                        column.skeleton?.pill && "h-5 rounded-full",
+                        placeholderWidth(columns, index),
+                      )}
+                    />
+                    {column.skeleton?.secondary ? (
+                      <Skeleton className="h-4 w-24 max-w-full" />
+                    ) : null}
+                  </div>
+                </div>
               </DataCell>
             ))}
           </DataRow>
@@ -97,7 +113,7 @@ export function DataTableSkeleton({
  */
 function placeholderWidth(columns: readonly DataColumn[], index: number): string {
   const column = columns[index];
-  if (column?.header === "" && index === columns.length - 1) return "ml-auto size-8";
+  if (column?.header === "" && index === columns.length - 1) return "size-8";
   return column?.fill === true ? "w-48" : "w-16";
 }
 

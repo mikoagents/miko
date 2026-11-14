@@ -2,18 +2,17 @@
 import { useState, useCallback, useId } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useSnapshotQuery } from "../../queries/index.js";
-import { CodeBlock } from "../../components/app/copy-field.js";
+import { CodeBlock, CodeBlockSkeleton } from "../../components/app/copy-field.js";
 import { FailureAlert } from "../../components/app/failure-alert.js";
-import { LoadingLine } from "../../components/app/loading.js";
 import { EmptyState } from "../../components/app/empty-state.js";
 import { Section } from "../../components/app/section.js";
-import { Disclosure } from "../../components/app/disclosure.js";
-import { SummaryPanel } from "../../components/app/summary-panel.js";
+import { Disclosure, DisclosureSkeleton } from "../../components/app/disclosure.js";
+import { SummaryPanel, SummaryPanelSkeleton } from "../../components/app/summary-panel.js";
 import { StatusPill, statusLabel } from "../../components/app/status-pill.js";
 import { RelativeTime } from "../../components/app/relative-time.js";
 import { Combobox } from "../../components/app/combobox.js";
 import { codeTriggerRunDetail } from "../functions.js";
-import { SessionHistory } from "../session-history.js";
+import { SessionHistory, SessionHistorySkeleton } from "../session-history.js";
 
 export function CodeActivityDetail({
   view,
@@ -33,7 +32,7 @@ export function CodeActivityDetail({
     queryFn: () => load({ data: scope }),
     refetchInterval: 3000,
   });
-  if (snapshot.status === "pending") return <LoadingLine>Loading Trigger run…</LoadingLine>;
+  if (snapshot.status === "pending") return <CodeActivityDetailSkeleton view={view} />;
   if (snapshot.status === "error")
     return (
       <FailureAlert
@@ -144,6 +143,36 @@ export function CodeActivityDetail({
           </Disclosure>
         </>
       )}
+    </div>
+  );
+}
+
+const RUN_LABELS = ["Status", "Started", "Deadline"];
+
+export function CodeActivityDetailSkeleton({ view }: { view: string }) {
+  return (
+    <div aria-busy="true" aria-label="Loading Trigger run" className="grid min-w-0 gap-5">
+      <SummaryPanelSkeleton label="Trigger run" labels={RUN_LABELS} />
+      {view === "conversation" ? <SessionHistorySkeleton view={view} /> : null}
+      {view === "diagnostics" ? (
+        <Section title="Runner log">
+          <CodeBlockSkeleton label="Loading runner log" />
+        </Section>
+      ) : null}
+      {view === "details" ? (
+        <>
+          <Section title="Result">
+            <CodeBlockSkeleton label="Loading Trigger result" />
+          </Section>
+          <Section title="Steps">
+            <div className="grid gap-3">
+              <DisclosureSkeleton />
+              <DisclosureSkeleton />
+            </div>
+          </Section>
+          <DisclosureSkeleton />
+        </>
+      ) : null}
     </div>
   );
 }

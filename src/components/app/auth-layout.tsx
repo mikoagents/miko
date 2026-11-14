@@ -45,6 +45,7 @@ export function AuthCard({
   descriptionRole,
   children,
   titleId,
+  focusOnMount = true,
 }: {
   title: string;
   description?: string;
@@ -52,12 +53,16 @@ export function AuthCard({
   descriptionRole?: "status";
   children: ReactNode;
   titleId?: string;
+  /** Loading content must not move focus to an unavailable heading. */
+  focusOnMount?: boolean;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   // Each of these cards is a whole screen, and they replace one another in place. Taking focus
   // on arrival is what tells a screen reader the screen changed and puts a keyboard user at the
   // top of the new card instead of back on the document body.
-  useEffect(() => heading.current?.focus(), []);
+  useEffect(() => {
+    if (focusOnMount) heading.current?.focus();
+  }, [focusOnMount]);
   return (
     <section
       className="grid gap-6 rounded-xl border bg-card p-6"

@@ -1,3 +1,9 @@
+import {
+  CONNECTIONS_DESCRIPTION,
+  CONNECTION_PROVIDERS,
+  providerLabel,
+  ConnectionsLoading,
+} from "./connections-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-new-array-as-prop, eslint-plugin-react-perf/jsx-no-new-function-as-prop, eslint-plugin-react-perf/jsx-no-new-object-as-prop, eslint-plugin-react-perf/jsx-no-jsx-as-prop, typescript-eslint/no-unsafe-type-assertion -- route links and mutation controls are intentionally scoped to each rendered tenant snapshot */
 import { useSnapshotQuery } from "../queries/index.js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -6,7 +12,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { type FormEvent, type ReactNode } from "react";
 import { CONNECTION_MUTATION_KEY } from "../auth/tenant-mutation.js";
 import { useActiveAccount } from "../auth/active-account.js";
-import { Card, CardSkeleton } from "../components/app/card.js";
+import { Card } from "../components/app/card.js";
 import { ConfirmAction, ConfirmMenuItem } from "../components/app/confirm-action.js";
 import { CodeBlock } from "../components/app/copy-field.js";
 import { DataCell, DataRow, DataTable } from "../components/app/data-table.js";
@@ -50,22 +56,7 @@ import {
   type ProjectSnapshot,
 } from "./panel-state.js";
 import { archiveProject, activityRunSnapshot, updateProjectSlug } from "./functions.js";
-const CONNECTIONS_DESCRIPTION = "Organization provider connections.";
-const CONNECTION_PROVIDERS = ["github", "discord", "slack", "linear"] as const;
 type ConnectionProviderName = (typeof CONNECTION_PROVIDERS)[number];
-
-function ConnectionsLoading() {
-  return (
-    <>
-      <PageHeader title="Connections" description={CONNECTIONS_DESCRIPTION} />
-      <Section>
-        {CONNECTION_PROVIDERS.map((provider) => (
-          <CardSkeleton key={provider} lines={2} />
-        ))}
-      </Section>
-    </>
-  );
-}
 
 export function OrganizationConnectionsPanel() {
   const tenant = useRouteTenant();
@@ -717,11 +708,6 @@ function connectionRows(data: OrganizationSnapshot) {
         : ("connected" as const),
     })),
   ];
-}
-function providerLabel(provider: ConnectionProviderName) {
-  if (provider === "github") return "GitHub";
-  if (provider === "discord") return "Discord";
-  return provider === "slack" ? "Slack" : "Linear";
 }
 
 /** The one connection status a sentence-cased machine value gets wrong. */

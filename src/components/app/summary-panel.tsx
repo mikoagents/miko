@@ -1,6 +1,8 @@
+/* oxlint-disable eslint-plugin-react-perf/jsx-no-new-array-as-prop -- a skeleton builds the same labelled rows as its summary */
 import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils.js";
+import { Skeleton } from "../ui/skeleton.js";
 
 export interface SummaryRow {
   label: string;
@@ -81,5 +83,28 @@ export function SummaryPanel({
         </div>
       ))}
     </dl>
+  );
+}
+
+export function SummaryPanelSkeleton({
+  label,
+  labels,
+  layout = "grid",
+}: {
+  label: string;
+  labels: readonly string[];
+  layout?: keyof typeof LAYOUTS;
+}) {
+  return (
+    <div aria-busy="true" aria-label={`Loading ${label}`}>
+      <SummaryPanel
+        label={label}
+        layout={layout}
+        rows={labels.map((name) => ({
+          label: name,
+          value: <Skeleton className="h-5 w-32 max-w-full" />,
+        }))}
+      />
+    </div>
   );
 }

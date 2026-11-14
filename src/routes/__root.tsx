@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { Button } from "../components/ui/button.js";
 import { ThemePicker } from "../components/app/theme-picker.js";
+import { SkeletonProvider } from "../components/app/skeleton-provider.js";
 import { ThemeProvider, themeScript } from "../theme.js";
 import "../styles.entry.js";
 
@@ -62,7 +63,9 @@ function Document({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <SkeletonProvider>{children}</SkeletonProvider>
+        </ThemeProvider>
         <Scripts />
       </body>
     </html>

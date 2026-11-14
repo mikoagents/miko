@@ -1,6 +1,7 @@
 import { useSnapshotQuery } from "../queries/index.js";
 import { useServerFn } from "@tanstack/react-start";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { forgetShapes } from "skullet";
 import { accountState } from "./functions.js";
 import { DaemonHandoffEntry } from "../daemons/handoff.js";
 import { AccountEntry, InvitationEntry, OrganizationGate } from "./account-entry.js";
@@ -34,6 +35,10 @@ function AccountApplication() {
     queryKey: ["account", invitation],
     queryFn: () => loadAccount({ data: invitation === undefined ? {} : { invitation } }),
   });
+  const signedOut = account.status === "success" && account.data.status === "signedOut";
+  useEffect(() => {
+    if (signedOut) forgetShapes();
+  }, [signedOut]);
   if (account.status === "pending") return <LoadingEntry />;
   if (account.status === "error") {
     return (

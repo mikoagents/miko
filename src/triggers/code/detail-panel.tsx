@@ -1,10 +1,10 @@
+import { TriggerDetailSkeleton } from "./detail-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop -- workflow cards compose their source and status controls */
 import { useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "../../components/app/card.js";
 import { FailureAlert, NoticeAlert } from "../../components/app/failure-alert.js";
-import { LoadingLine } from "../../components/app/loading.js";
 import { PageHeader } from "../../components/app/page.js";
 import { Section } from "../../components/app/section.js";
 import { Button } from "../../components/ui/button.js";
@@ -52,13 +52,7 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
       ]);
     },
   });
-  if (source.status === "pending")
-    return (
-      <>
-        <PageHeader title="Trigger" />
-        <LoadingLine>Loading Trigger…</LoadingLine>
-      </>
-    );
+  if (source.status === "pending") return <TriggerDetailSkeleton />;
   if (source.status === "error")
     return (
       <>

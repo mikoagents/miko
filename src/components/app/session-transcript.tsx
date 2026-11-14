@@ -10,6 +10,32 @@ import { Disclosure } from "./disclosure.js";
 import { RelativeTime } from "./relative-time.js";
 import { StatusPill } from "./status-pill.js";
 import { Section } from "./section.js";
+import { ContentSkeleton } from "./loading.js";
+
+// The real transcript renderer owns message spacing, typography, and wrapping on a phone.
+const SAMPLE_MESSAGES: readonly TimelineRow[] = [
+  {
+    seq: 1,
+    timestamp: "2026-01-01T00:00:00Z",
+    item: { type: "user_message", text: "Review the changes and summarize the result." },
+  },
+  {
+    seq: 2,
+    timestamp: "2026-01-01T00:00:01Z",
+    item: {
+      type: "assistant_message",
+      text: "I will inspect the changed files, check the relevant behavior, and report the result with the supporting details.\nThe review includes the workflow and its execution steps.",
+    },
+  },
+];
+
+export function SessionTranscriptSkeleton() {
+  return (
+    <ContentSkeleton loading label="Loading session messages">
+      <SessionTranscript rows={SAMPLE_MESSAGES} />
+    </ContentSkeleton>
+  );
+}
 
 export function SessionTranscript({ rows }: { rows: readonly TimelineRow[] }) {
   return (

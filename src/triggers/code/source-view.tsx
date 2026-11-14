@@ -1,3 +1,4 @@
+import { SourceFilesSkeleton } from "./source-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-new-array-as-prop -- source controls derive their options from the selected immutable revision */
 import { useCallback, useId, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -6,7 +7,6 @@ import { Card } from "../../components/app/card.js";
 import { CodeBlock, CopyBlock } from "../../components/app/copy-field.js";
 import { Disclosure } from "../../components/app/disclosure.js";
 import { FailureAlert, NoticeAlert } from "../../components/app/failure-alert.js";
-import { LoadingLine } from "../../components/app/loading.js";
 import { StatusPill } from "../../components/app/status-pill.js";
 import { useSnapshotQuery } from "../../queries/index.js";
 import { codeTriggerDetail, type CodeTriggerDetail } from "../functions.js";
@@ -78,9 +78,7 @@ function SourceFiles({
           }))}
         />
       </div>
-      {revisionId !== null && snapshot.status === "pending" ? (
-        <LoadingLine>Loading source…</LoadingLine>
-      ) : null}
+      {revisionId !== null && snapshot.status === "pending" ? <SourceFilesSkeleton /> : null}
       {revisionId !== null && snapshot.status === "error" ? (
         <FailureAlert
           title="Source unavailable"

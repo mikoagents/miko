@@ -1,12 +1,15 @@
+import {
+  LIMITS_TITLE,
+  LIMITS_DESCRIPTION,
+  HISTORY_TITLE,
+  HISTORY_DESCRIPTION,
+  LIMIT_COLUMNS,
+  HISTORY_COLUMNS,
+  UsageLoading,
+} from "./panel-loading.js";
 import { useSnapshotQuery } from "../queries/index.js";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  DataCell,
-  DataRow,
-  DataTable,
-  DataTableSkeleton,
-  type DataColumn,
-} from "../components/app/data-table.js";
+import { DataCell, DataRow, DataTable } from "../components/app/data-table.js";
 import { FailureAlert, WarningAlert } from "../components/app/failure-alert.js";
 import { PageHeader } from "../components/app/page.js";
 import { RelativeTime } from "../components/app/relative-time.js";
@@ -20,21 +23,6 @@ import { overLimit } from "./limits.js";
 
 type Snapshot = Awaited<ReturnType<UsageDashboard["snapshot"]>>;
 
-const LIMITS_TITLE = "Limits";
-const LIMITS_DESCRIPTION = "What this organization is allowed, and how much is in use.";
-const HISTORY_TITLE = "History";
-const HISTORY_DESCRIPTION = "Every change to this organization's limits, most recent first.";
-const LIMIT_COLUMNS: readonly DataColumn[] = [
-  { header: "Resource", fill: true },
-  { header: "Limit" },
-  { header: "In use", align: "end" },
-];
-const HISTORY_COLUMNS: readonly DataColumn[] = [
-  { header: "Change" },
-  { header: "Reason", fill: true },
-  { header: "Who" },
-  { header: "When", align: "end" },
-];
 const HISTORY_EMPTY = {
   title: "No changes yet",
   description: "Limit changes to this organization appear here.",
@@ -159,18 +147,4 @@ function limitLabel(limit: number | null): string {
 
 function measureUsage(measure: UsageMeasure): string {
   return measure.limit === null ? String(measure.used) : `${measure.used}/${measure.limit}`;
-}
-
-function UsageLoading({ name }: { name: string }) {
-  return (
-    <>
-      <PageHeader title="Usage" description={`Limits and usage for ${name}.`} />
-      <Section title={LIMITS_TITLE} description={LIMITS_DESCRIPTION}>
-        <DataTableSkeleton label="Limits" columns={LIMIT_COLUMNS} />
-      </Section>
-      <Section title={HISTORY_TITLE} description={HISTORY_DESCRIPTION}>
-        <DataTableSkeleton label="History" columns={HISTORY_COLUMNS} rows={2} />
-      </Section>
-    </>
-  );
 }
