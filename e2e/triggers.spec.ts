@@ -110,9 +110,12 @@ test("deploys code, runs a real worker, shows Activity results and retains ident
   await expect(page.getByRole("textbox", { name: "Trigger result", exact: true })).toContainText(
     '"version": "first"',
   );
-  await expect(page.getByRole("textbox", { name: "process result", exact: true })).toBeHidden();
-  await page.getByRole("button", { name: /^process\b/ }).click();
-  await expect(page.getByRole("textbox", { name: "process result", exact: true })).toContainText(
+  const steps = page.getByRole("table", { name: "Steps" });
+  await expect(steps.getByRole("row").filter({ hasText: "process" })).toContainText("Code step");
+  await expect(page.getByRole("table", { name: "Agent sessions" })).toHaveCount(0);
+  await steps.getByRole("button", { name: "process", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Diagnostics", exact: true })).toBeChecked();
+  await expect(page.getByRole("textbox", { name: "process data", exact: true })).toContainText(
     '"version": "first"',
   );
   await page.getByRole("button", { name: "Close", exact: true }).click();

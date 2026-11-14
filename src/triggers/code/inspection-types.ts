@@ -29,6 +29,8 @@ export interface InspectedAgent {
   thinking: CodeField;
   prompt: CodeField;
   github: CodeField;
+  /** `continuation.key`: calls that share it continue one agent session. */
+  continuation: CodeField;
   maxRuntime: CodeField;
   idleTimeout: CodeField;
   startupTimeout: CodeField;

@@ -8,11 +8,12 @@ import { SummaryPanel } from "../components/app/summary-panel.js";
 import { CopyField } from "../components/app/copy-field.js";
 import { Disclosure } from "../components/app/disclosure.js";
 import { CodeBlock, CopyButton } from "../components/app/copy-field.js";
-import { SessionTranscript } from "../components/app/session-transcript.js";
+import { SessionTranscript, type TranscriptPrompt } from "../components/app/session-transcript.js";
 import { EmptyState } from "../components/app/empty-state.js";
 import { FailureAlert, NoticeAlert } from "../components/app/failure-alert.js";
 import { LoadingLine } from "../components/app/loading.js";
 import { Button } from "../components/ui/button.js";
+import { agentProviderLabel } from "../components/app/agent-provider-logos.js";
 import type { TimelineRow, TimelineState } from "../session-timelines/store.js";
 
 export function SessionHistory(scope: {
@@ -22,6 +23,8 @@ export function SessionHistory(scope: {
   executionId: string;
   running: boolean;
   view: string;
+  /** The prompts Hub submitted to this session, named in the conversation by what sent them. */
+  prompts?: readonly TranscriptPrompt[];
 }) {
   const load = useServerFn(triggerActivityTimeline);
   const [cursors, setCursors] = useState<number[]>([]);
@@ -99,7 +102,7 @@ export function SessionHistory(scope: {
           {diagnostics ? (
             <SessionDiagnostics executionId={scope.executionId} state={state} rows={rows} />
           ) : (
-            <SessionMessages rows={rows} />
+            <SessionMessages rows={rows} prompts={scope.prompts} />
           )}
           {hasOlder || cursors.length > 0 ? (
             <div className="flex items-center justify-between gap-2">
@@ -130,12 +133,18 @@ export function SessionHistory(scope: {
 function sessionDescription(diagnostics: boolean, state: TimelineState | null): string {
   if (diagnostics) return "Provider and runtime information for this session.";
   if (state === null) return "Messages from this agent session.";
-  return [state.agent.provider, state.agent.model].filter(Boolean).join(" · ");
+  return [agentProviderLabel(state.agent.provider), state.agent.model].filter(Boolean).join(" · ");
 }
 
-function SessionMessages({ rows }: { rows: TimelineRow[] }) {
+function SessionMessages({
+  rows,
+  prompts,
+}: {
+  rows: TimelineRow[];
+  prompts: readonly TranscriptPrompt[] | undefined;
+}) {
   if (rows.length === 0) return <EmptyState title="No session messages" />;
-  return <SessionTranscript rows={rows} />;
+  return <SessionTranscript rows={rows} {...(prompts === undefined ? {} : { prompts })} />;
 }
 
 function SessionDiagnostics({

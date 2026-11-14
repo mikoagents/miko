@@ -91,7 +91,11 @@ describe("Trigger presentation", () => {
   });
 
   it("keeps daemon and directory pairs together and identifies runner-only code", () => {
-    assert.deepEqual(triggerTargetSummary(manifest), { primary: "Runner: local", path: false });
+    assert.deepEqual(triggerTargetSummary(manifest), {
+      primary: "None",
+      secondary: "Runner: local",
+      path: false,
+    });
     const target = { daemon: "macbook-local", cwd: "/workspace/review", providers: ["codex"] };
     assert.deepEqual(
       triggerTargetSummary({
@@ -111,7 +115,7 @@ describe("Trigger presentation", () => {
         },
       }),
       {
-        primary: "2 targets",
+        primary: "macbook-local · build-server",
         secondary: "macbook-local: /workspace/review · build-server: /srv/build",
         path: false,
       },
