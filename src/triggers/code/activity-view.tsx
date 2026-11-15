@@ -6,20 +6,24 @@ import {
   AgentProviderMark,
   agentProviderLabel,
 } from "../../components/app/agent-provider-logos.js";
-import { CodeBlock, CopyButton } from "../../components/app/copy-field.js";
+import { CodeBlock, CodeBlockSkeleton, CopyButton } from "../../components/app/copy-field.js";
 import { Combobox } from "../../components/app/combobox.js";
-import { DataCell, DataRow, DataTable } from "../../components/app/data-table.js";
+import {
+  DataCell,
+  DataRow,
+  DataTable,
+  DataTableSkeleton,
+} from "../../components/app/data-table.js";
 import { EmptyState } from "../../components/app/empty-state.js";
 import { FailureAlert, NoticeAlert } from "../../components/app/failure-alert.js";
-import { LoadingLine } from "../../components/app/loading.js";
 import { RelativeTime } from "../../components/app/relative-time.js";
 import { Section } from "../../components/app/section.js";
 import { StatusPill, statusLabel } from "../../components/app/status-pill.js";
-import { SummaryPanel } from "../../components/app/summary-panel.js";
+import { SummaryPanel, SummaryPanelSkeleton } from "../../components/app/summary-panel.js";
 import { TwoLine } from "../../components/app/two-line.js";
 import { Button } from "../../components/ui/button.js";
 import { codeTriggerRunDetail, type CodeTriggerRun } from "../functions.js";
-import { SessionHistory } from "../session-history.js";
+import { SessionHistory, SessionHistorySkeleton } from "../session-history.js";
 import {
   agentSessions,
   describeOperation,
@@ -104,7 +108,7 @@ export function CodeActivityDetail({
     queryFn: () => load({ data: scope }),
     refetchInterval: 3000,
   });
-  if (snapshot.status === "pending") return <LoadingLine>Loading Trigger run…</LoadingLine>;
+  if (snapshot.status === "pending") return <CodeActivityDetailSkeleton view={view} />;
   if (snapshot.status === "error")
     return (
       <FailureAlert
@@ -170,6 +174,32 @@ export function CodeActivityDetail({
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+const RUN_LABELS = ["Status", "Started", "Event", "Daemon"];
+
+export function CodeActivityDetailSkeleton({ view }: { view: string }) {
+  return (
+    <div aria-busy="true" aria-label="Loading Trigger run" className="grid min-w-0 gap-5">
+      <SummaryPanelSkeleton label="Trigger run" labels={RUN_LABELS} />
+      {view === "conversation" ? <SessionHistorySkeleton view={view} /> : null}
+      {view === "diagnostics" ? (
+        <Section title="Run">
+          <CodeBlockSkeleton label="Loading runner diagnostics" />
+        </Section>
+      ) : null}
+      {view === "details" ? (
+        <>
+          <Section title="Agent sessions">
+            <DataTableSkeleton label="Agent sessions" columns={SESSION_COLUMNS} rows={2} />
+          </Section>
+          <Section title="Steps">
+            <DataTableSkeleton label="Steps" columns={STEP_COLUMNS} rows={4} />
+          </Section>
+        </>
+      ) : null}
     </div>
   );
 }

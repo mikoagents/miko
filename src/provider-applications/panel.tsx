@@ -1,3 +1,4 @@
+import { APPS_DESCRIPTION, OverviewLoading } from "./panel-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-new-function-as-prop -- open/close handlers are bound per rendered provider section */
 import { useSnapshotQuery } from "../queries/index.js";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +16,7 @@ import { connectionReturnCopy } from "../connections/result-contract.js";
 import { useConnectionReturn } from "../connections/result.js";
 import { PROVIDER_GUIDES } from "./guides.js";
 import { providerApplicationsOverview } from "./functions.js";
-import { ProviderSection, ProviderSectionLoading } from "./provider-section.js";
+import { ProviderSection } from "./provider-section.js";
 import type { Provider, ProviderApplicationOverview, ProviderApplicationSurface } from "./index.js";
 
 const OVERVIEW_KEY = ["provider-applications"] as const;
@@ -94,16 +95,6 @@ function ProviderApplications({
               : { returned: undefined })}
           />
         </div>
-      ))}
-    </div>
-  );
-}
-
-function OverviewLoading() {
-  return (
-    <div aria-label="Loading your apps" aria-busy="true" className="grid gap-3">
-      {PROVIDER_GUIDES.map((guide) => (
-        <ProviderSectionLoading key={guide.provider} guide={guide} open={false} />
       ))}
     </div>
   );
@@ -190,10 +181,7 @@ export function AppsPanel() {
   const account = useActiveAccount();
   return (
     <>
-      <PageHeader
-        title="Apps"
-        description="The GitHub, Slack, Discord, and Linear apps Hub uses to reach your workspaces."
-      />
+      <PageHeader title="Apps" description={APPS_DESCRIPTION} />
       <ProviderApplications surface="apps" organizationId={account.organization.id} />
     </>
   );

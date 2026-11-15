@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { PROVIDER_GUIDES } from "./guides.js";
-import { ProviderSectionLoading } from "./provider-section.js";
+import { ProviderSectionLoading } from "./provider-section-loading.js";
 
 function loadingMarkup(): string {
   return renderToStaticMarkup(

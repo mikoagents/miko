@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Card, CardSkeleton } from "../components/app/card.js";
+import { Card } from "../components/app/card.js";
 import { FormField } from "../components/app/form-field.js";
 import { CopyBlock, CopyField } from "../components/app/copy-field.js";
 import { Disclosure } from "../components/app/disclosure.js";
@@ -17,7 +17,6 @@ import { StatusPill } from "../components/app/status-pill.js";
 import { SummaryPanel, type SummaryRow } from "../components/app/summary-panel.js";
 import { Button } from "../components/ui/button.js";
 import { FieldSet } from "../components/ui/field.js";
-import { Skeleton } from "../components/ui/skeleton.js";
 import { ProviderGlyph } from "../connections/provider-glyph.js";
 import type { Result } from "../contract/respond.js";
 import { cn } from "../lib/utils.js";
@@ -416,26 +415,6 @@ function SectionBody({
 }
 
 /** Static setup guidance remains useful while only persisted status and credentials are loading. */
-export function ProviderSectionLoading({ guide, open }: { guide: ProviderGuide; open: boolean }) {
-  return (
-    <div aria-busy="true">
-      <Disclosure
-        id={guide.provider}
-        open={open}
-        onOpenChange={ignoreLoadingDisclosureChange}
-        media={<ProviderGlyph provider={guide.provider} />}
-        title={guide.name}
-        description={guide.summary}
-        status={<Skeleton className="h-5 w-24 rounded-full" />}
-      >
-        {/* The page being waited for is a card of instructions beside a card of fields. */}
-        <CardSkeleton />
-      </Disclosure>
-    </div>
-  );
-}
-
-function ignoreLoadingDisclosureChange(): void {}
 
 /**
  * What the app is and what it is doing, once there is something to say. Every fact is one

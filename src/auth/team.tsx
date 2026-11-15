@@ -1,9 +1,10 @@
+import { MEMBER_COLUMNS, INVITATION_COLUMNS } from "./team-loading.js";
 import { Plus } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { ConfirmMenuItem } from "../components/app/confirm-action.js";
-import { DataCell, DataRow, DataTable, type DataColumn } from "../components/app/data-table.js";
+import { DataCell, DataRow, DataTable } from "../components/app/data-table.js";
 import { PageHeader } from "../components/app/page.js";
 import { RowActions } from "../components/app/row-actions.js";
 import { FailureAlert } from "../components/app/failure-alert.js";
@@ -58,20 +59,10 @@ const ORGANIZATION_ROLE_LABELS = {
 } satisfies Record<OrganizationRole, string>;
 type ActiveAccount = ActiveAccountState & { busy: boolean };
 
-const MEMBER_COLUMNS: readonly DataColumn[] = [
-  { header: "Member", fill: true },
-  { header: "Role" },
-  { header: "", align: "end" },
-];
 const MEMBERS_EMPTY = {
   title: "No members",
   description: "This organization has no members yet.",
 };
-const INVITATION_COLUMNS: readonly DataColumn[] = [
-  { header: "Invitee", fill: true },
-  { header: "Role" },
-  { header: "", align: "end" },
-];
 const INVITATIONS_EMPTY = {
   title: "No pending invitations",
   description: "New invitations appear here.",

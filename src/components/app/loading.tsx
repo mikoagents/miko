@@ -5,6 +5,9 @@ import { DataTableSkeleton, type DataColumn } from "./data-table.js";
 import { PageHeaderSkeleton } from "./page.js";
 import { TabNavSkeleton } from "./tab-nav.js";
 
+/** Measure presentational content only: samples must not fetch data, focus, or perform actions. */
+export { Skeleton as ContentSkeleton } from "skullet/react";
+
 /**
  * Pending states.
  *

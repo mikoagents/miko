@@ -172,12 +172,22 @@ function TypedInput({
  * box a real field occupies. It mirrors `FormField`, so a form waiting on a read is the same
  * grid it will be, and nothing moves when the values land.
  */
-export function FieldSkeleton({ description = true }: { description?: boolean }) {
+export function FieldSkeleton({
+  label,
+  description = true,
+}: {
+  label?: string;
+  description?: boolean;
+}) {
   return (
-    <div className="grid gap-2">
-      <Skeleton className="h-4 w-28" />
+    <div aria-busy="true" className="grid gap-2">
+      {label === undefined ? (
+        <Skeleton className="h-4 w-28" />
+      ) : (
+        <span className="text-sm">{label}</span>
+      )}
       <Skeleton className="h-8 w-full" />
-      {description ? <Skeleton className="h-4 w-48" /> : null}
+      {description ? <Skeleton className="h-4 w-48 max-w-full" /> : null}
     </div>
   );
 }

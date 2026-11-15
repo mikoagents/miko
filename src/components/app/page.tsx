@@ -89,15 +89,16 @@ export function PageHeader({
  * of prose reads as the page arriving rather than as two grey bars, and nothing reflows when
  * the title lands on top of it.
  */
-export function PageHeaderSkeleton({ description }: { description?: string }) {
+export function PageHeaderSkeleton({ description }: { description?: string | false }) {
   return (
     <header className="mb-6 grid gap-1">
       <Skeleton className="h-7 w-48" />
-      {description === undefined ? (
-        <Skeleton className="h-5 w-80 max-w-full" />
-      ) : (
-        <p className="max-w-prose text-sm text-balance text-muted-foreground">{description}</p>
-      )}
+      {description !== false &&
+        (description === undefined ? (
+          <Skeleton className="h-5 w-80 max-w-full" />
+        ) : (
+          <p className="max-w-prose text-sm text-balance text-muted-foreground">{description}</p>
+        ))}
     </header>
   );
 }

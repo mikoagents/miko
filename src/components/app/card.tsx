@@ -55,12 +55,29 @@ export function Card({
 }
 
 /** The same box before its contents are known, so nothing moves when they land. */
-export function CardSkeleton({ lines = 3 }: { lines?: number }) {
+export function CardSkeleton({
+  title,
+  description,
+  lines = 3,
+}: {
+  title?: string;
+  description?: string;
+  lines?: number;
+}) {
   return (
-    <div aria-busy="true" className="grid min-w-0 gap-3 rounded-xl border bg-card p-6">
-      {Array.from({ length: lines }, (_, line) => (
-        <Skeleton key={line} className={cn("h-4", line === 0 ? "w-40" : "w-full")} />
-      ))}
-    </div>
+    <Card
+      {...(title === undefined ? {} : { title })}
+      {...(description === undefined ? {} : { description })}
+    >
+      <div
+        aria-busy="true"
+        aria-label={`Loading ${title ?? "card"}`}
+        className="grid min-w-0 gap-3"
+      >
+        {Array.from({ length: lines }, (_, line) => (
+          <Skeleton key={line} className={cn("h-4", line === 0 ? "w-40" : "w-full")} />
+        ))}
+      </div>
+    </Card>
   );
 }

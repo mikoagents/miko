@@ -1,3 +1,4 @@
+import { RECIPIENT_LABEL, EXPIRY_LABEL, CliLoginLoading } from "./approval-loading.js";
 import { useSnapshotQuery } from "../queries/index.js";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -14,8 +15,6 @@ import type { Result } from "../contract/respond.js";
 import { decideCliAuthorization, inspectCliAuthorization } from "./functions.js";
 
 /** What the reader is deciding about: who gets in, and how long they have to decide. */
-const RECIPIENT_LABEL = "Organization receiving access";
-const EXPIRY_LABEL = "Request expires";
 
 export function CliLoginApproval({ accountId, organizationId }: ApprovalIdentity) {
   const [code, setCode] = useState(() =>
@@ -71,7 +70,7 @@ export function CliLoginApproval({ accountId, organizationId }: ApprovalIdentity
     [expiresAt, organizationName],
   );
 
-  if (code !== undefined && snapshot.status === "pending") return <Loading rows={facts} />;
+  if (code !== undefined && snapshot.status === "pending") return <CliLoginLoading rows={facts} />;
   if (snapshot.status === "error") {
     return (
       <Centered>
@@ -183,33 +182,6 @@ function CodeEntry({ onCode }: { onCode: (code: string) => void }) {
           </FormActions>
         </form>
       </AuthCard>
-    </Centered>
-  );
-}
-
-/**
- * The approval card before the request is known. The card, its heading, and the label on the one
- * fact it is waiting for are already known, so only that fact and the decision buttons are
- * placeholders.
- */
-function Loading({ rows }: { rows: readonly SummaryRow[] }) {
-  return (
-    <Centered>
-      <div aria-busy="true">
-        <AuthCard
-          titleId="approval-loading-heading"
-          title="Approve CLI login"
-          description="Grant this terminal durable access to one organization."
-        >
-          <SummaryPanel label="CLI login" rows={rows} />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-          <FormActions>
-            <Skeleton className="h-8 w-20" />
-            <Skeleton className="h-8 w-40" />
-          </FormActions>
-        </AuthCard>
-      </div>
     </Centered>
   );
 }

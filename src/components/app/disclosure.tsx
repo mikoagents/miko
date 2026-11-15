@@ -1,8 +1,29 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
+import { ContentSkeleton } from "./loading.js";
 
 import { cn } from "../../lib/utils.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js";
+
+/** Trace a collapsed record without exposing a placeholder toggle to the keyboard. */
+export function DisclosureSkeleton({ variant = "section" }: { variant?: "section" | "file" }) {
+  const id = useId();
+  return (
+    <ContentSkeleton loading label={variant === "file" ? "Loading source file" : "Loading step"}>
+      <Disclosure
+        id={id}
+        variant={variant}
+        title={variant === "file" ? "trigger.ts" : "Workflow step"}
+        open={false}
+        onOpenChange={ignoreSkeletonToggle}
+      >
+        {null}
+      </Disclosure>
+    </ContentSkeleton>
+  );
+}
+
+function ignoreSkeletonToggle() {}
 
 /**
  * A bordered card whose header is the whole open/close target, or — inside a surface that

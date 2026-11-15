@@ -1,3 +1,4 @@
+import { HOME_DESCRIPTION, HomeLoading } from "./panel-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-new-function-as-prop, eslint-plugin-react-perf/jsx-no-new-object-as-prop, eslint-plugin-react-perf/jsx-no-jsx-as-prop -- one screen binds one snapshot; a row's action and status are that row's own slots */
 /* oxlint-disable typescript-eslint/no-unsafe-type-assertion -- generated routes cannot express server-resolved organization URLs */
 import { useSnapshotQuery } from "../queries/index.js";
@@ -7,12 +8,11 @@ import { Cpu, History, Sparkles } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { useActiveAccount } from "../auth/active-account.js";
-import { CardSkeleton } from "../components/app/card.js";
 import { CopyField } from "../components/app/copy-field.js";
 import { Disclosure } from "../components/app/disclosure.js";
 import { EmptyState } from "../components/app/empty-state.js";
 import { WarningAlert } from "../components/app/failure-alert.js";
-import { PageHeader, PageHeaderSkeleton } from "../components/app/page.js";
+import { PageHeader } from "../components/app/page.js";
 import { RecordList, RecordRow } from "../components/app/record-list.js";
 import { RelativeTime } from "../components/app/relative-time.js";
 import { Section, SectionGrid } from "../components/app/section.js";
@@ -26,7 +26,6 @@ import { useRouteTenant } from "../projects/context.js";
 import { deriveChecklist, type Checklist, type ChecklistStep } from "./checklist.js";
 import { homeSnapshot, type HomeSnapshot } from "./functions.js";
 
-const HOME_DESCRIPTION = "What to do next, and what has run.";
 const RECENT_RUNS_SHOWN = 5;
 
 export function HomePanel() {
@@ -162,18 +161,6 @@ export function HomePanel() {
         </Section>
       </SectionGrid>
     </>
-  );
-}
-
-function HomeLoading() {
-  return (
-    <div aria-busy="true" aria-label="Loading overview">
-      <PageHeaderSkeleton description={HOME_DESCRIPTION} />
-      <div className="grid gap-6">
-        <CardSkeleton lines={4} />
-        <CardSkeleton lines={2} />
-      </div>
-    </div>
   );
 }
 

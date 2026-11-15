@@ -1,10 +1,12 @@
+/* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop -- pending content keeps the live page header slot */
+import { TABLE_COLUMNS, CLI_COLUMNS, CLI_LOGINS, ApiKeysLoading } from "./api-key-loading.js";
 import { useSnapshotQuery } from "../queries/index.js";
 import { KeyRound } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ConfirmMenuItem } from "../components/app/confirm-action.js";
-import { DataCell, DataRow, DataTable, DataTableSkeleton } from "../components/app/data-table.js";
+import { DataCell, DataRow, DataTable } from "../components/app/data-table.js";
 import { EmptyState } from "../components/app/empty-state.js";
 import { FailureAlert, WarningAlert, failureMessage } from "../components/app/failure-alert.js";
 import { FormActions } from "../components/app/form-actions.js";
@@ -92,16 +94,6 @@ const SCOPE_OPTIONS = [
   },
 ] as const;
 
-const TABLE_COLUMNS = [
-  { header: "Name", fill: true },
-  { header: "Prefix" },
-  { header: "Scopes", fill: true },
-  { header: "Created" },
-  { header: "Last used" },
-  { header: "Status" },
-  { header: "", align: "end" as const },
-];
-
 const EMPTY_TABLE = {
   title: "No API keys",
   description:
@@ -110,18 +102,6 @@ const EMPTY_TABLE = {
 const EMPTY_CLI_TABLE = {
   title: "No CLI logins",
   description: "Run miko hub login to create one.",
-};
-const CLI_COLUMNS = [
-  { header: "Prefix", fill: true },
-  { header: "Created" },
-  { header: "Last used" },
-  { header: "Status" },
-  { header: "", align: "end" as const },
-];
-
-const CLI_LOGINS = {
-  title: "CLI logins",
-  description: "Durable terminal credentials created through browser approval.",
 };
 
 export function ApiKeys() {
@@ -220,19 +200,7 @@ export function ApiKeys() {
       </>
     );
   }
-  if (snapshot.status === "pending") {
-    return (
-      <>
-        {header}
-        <Section>
-          <DataTableSkeleton label="API keys" columns={TABLE_COLUMNS} />
-        </Section>
-        <Section title={CLI_LOGINS.title} description={CLI_LOGINS.description}>
-          <DataTableSkeleton label="CLI logins" columns={CLI_COLUMNS} rows={1} />
-        </Section>
-      </>
-    );
-  }
+  if (snapshot.status === "pending") return <ApiKeysLoading header={header} />;
   if (snapshot.status === "error") {
     return (
       <>

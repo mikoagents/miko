@@ -1,3 +1,4 @@
+import { OperatorLoading } from "../../operator/panel-loading.js";
 import { createFileRoute } from "@tanstack/react-router";
 import { OperatorEntitlementsPage } from "../../operator/panel.js";
 
@@ -7,6 +8,6 @@ import { OperatorEntitlementsPage } from "../../operator/panel.js";
 // route sees only "You don't have operator access." The nav entry is gated separately as
 // presentation.
 export const Route = createFileRoute("/_shell/operator")({
-  staticData: { breadcrumb: "Operator", instance: true },
+  staticData: { loadingComponent: OperatorLoading, breadcrumb: "Operator", instance: true },
   component: OperatorEntitlementsPage,
 });

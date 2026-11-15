@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { Button } from "../ui/button.js";
 import { Field, FieldDescription, FieldLabel } from "../ui/field.js";
+import { ContentSkeleton } from "./loading.js";
 
 const CONFIRMATION_MS = 2000;
 
@@ -115,6 +116,18 @@ export function CodeBlock({ label, children }: { label?: string; children: strin
     >
       {children}
     </pre>
+  );
+}
+
+export function CodeBlockSkeleton({ label = "Loading code" }: { label?: string }) {
+  return (
+    <ContentSkeleton loading label={label}>
+      <CodeBlock>
+        {
+          '{\n  "step": "workflow",\n  "status": "running",\n  "result": {\n    "message": "Workflow output"\n  }\n}'
+        }
+      </CodeBlock>
+    </ContentSkeleton>
   );
 }
 

@@ -1,3 +1,9 @@
+import {
+  PICKER_TITLE,
+  PICKER_DESCRIPTION,
+  OrganizationPickerLoading,
+  OPERATOR_DESCRIPTION,
+} from "./panel-loading.js";
 import { useSnapshotQuery } from "../queries/index.js";
 import { useCallback, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select.js";
-import { Skeleton } from "../components/ui/skeleton.js";
 import type { EntitlementChangeSource } from "../db/types.js";
 import type { EntitlementPatch, OverrideKey } from "../entitlements/catalog.js";
 import type { OperatorConsole } from "./console.js";
@@ -45,8 +50,6 @@ type OverrideTarget =
   | { kind: "canInviteMembers"; key: OverrideKey; hasOverride: boolean; value: boolean }
   | { kind: "executionsMonthly"; key: OverrideKey; hasOverride: boolean; limit: number | null };
 
-const PICKER_TITLE = "Organization";
-const PICKER_DESCRIPTION = "Pick an organization to manage its entitlements.";
 const AUDIT_TITLE = "Audit trail";
 const AUDIT_DESCRIPTION = "Every provisioning, plan stamp, and override, most recent first.";
 const ENTITLEMENT_COLUMNS: readonly DataColumn[] = [
@@ -78,10 +81,7 @@ export function OperatorEntitlementsPage() {
   const [slug, setSlug] = useState<string | null>(null);
   return (
     <>
-      <PageHeader
-        title="Operator"
-        description="View and edit any organization's entitlements. Instance operators only."
-      />
+      <PageHeader title="Operator" description={OPERATOR_DESCRIPTION} />
       <OrganizationPicker slug={slug} onSelect={setSlug} />
       {slug !== null && <OperatorOrganization slug={slug} />}
     </>
@@ -521,14 +521,6 @@ function meterLimitLabel(limit: number | null): string {
 
 function meterUsageLabel(usage: Snapshot["usage"]): string {
   return usage.limit === null ? String(usage.used) : `${usage.used}/${usage.limit}`;
-}
-
-function OrganizationPickerLoading() {
-  return (
-    <Section title={PICKER_TITLE} description={PICKER_DESCRIPTION}>
-      <Skeleton aria-busy="true" className="h-9 w-full max-w-sm" />
-    </Section>
-  );
 }
 
 function OperatorOrganizationLoading() {

@@ -1,14 +1,15 @@
+import { BillingLoading } from "./panel-loading.js";
+import { PlanIdentity } from "./plan-identity.js";
 /* oxlint-disable typescript-eslint/no-unsafe-type-assertion -- the generated route type cannot express a server-resolved organization slug */
 import { useSnapshotQuery } from "../../queries/index.js";
 import { useCallback, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Card, CardSkeleton } from "../../components/app/card.js";
+import { Card } from "../../components/app/card.js";
 import { FailureAlert } from "../../components/app/failure-alert.js";
 import { PageHeader } from "../../components/app/page.js";
 import { Section } from "../../components/app/section.js";
-import { StatusPill } from "../../components/app/status-pill.js";
 import { Button } from "../../components/ui/button.js";
 import { executionMeterLabel, useExecutionMeter } from "../../entitlements/ui/index.js";
 import { useRouteTenant } from "../../projects/context.js";
@@ -17,11 +18,9 @@ import { billingOverview, billingPortal } from "./functions.js";
 import { PlanDialog } from "./plan-dialog.js";
 import {
   FeatureList,
-  NO_PLAN,
   planFeatures,
   purchasablePlans,
   subscriptionSummary,
-  type SubscriptionSummary,
 } from "./presentation.js";
 
 type PortalResult = Awaited<ReturnType<typeof billingPortal>>;
@@ -127,38 +126,6 @@ function planPickerAction({
   return subscription.manageable ? "Change plan" : "Upgrade";
 }
 
-function PlanIdentity({
-  summary,
-  action,
-  onOpenPicker,
-}: {
-  summary: SubscriptionSummary;
-  action: string | null;
-  onOpenPicker: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="grid min-w-0 gap-2">
-        {/* The pill is wrapped because a bare inline-flex stretches to the full grid track. */}
-        {summary.status !== null && (
-          <div>
-            <StatusPill tone={summary.status.tone}>{summary.status.label}</StatusPill>
-          </div>
-        )}
-        <p className="text-2xl">{summary.planName ?? NO_PLAN}</p>
-        {summary.detail !== null && (
-          <p className="text-sm text-muted-foreground">{summary.detail}</p>
-        )}
-      </div>
-      {action !== null && (
-        <Button type="button" onClick={onOpenPicker}>
-          {action}
-        </Button>
-      )}
-    </div>
-  );
-}
-
 /** What the organization is actually entitled to right now: the plan's figures, then its words. */
 function PlanIncludes({ plan }: { plan: PublicBillingPlan }) {
   return <FeatureList features={planFeatures(plan)} className="sm:grid-cols-2 sm:gap-x-6" />;
@@ -206,15 +173,4 @@ function PortalBand({ slug }: { slug: string }) {
 /** A web-only dashboard, so a plain navigation to the Stripe (or fixture) URL is correct. */
 function redirectTo(url: string): void {
   window.location.assign(url);
-}
-
-function BillingLoading({ name }: { name: string }) {
-  return (
-    <>
-      <PageHeader title="Billing" description={`Plan and billing for ${name}.`} />
-      <Section title="Plan">
-        <CardSkeleton lines={4} />
-      </Section>
-    </>
-  );
 }
