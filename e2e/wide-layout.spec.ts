@@ -58,18 +58,25 @@ test("uses wide screens for overview columns and records while keeping narrow la
   for (const width of WIDTHS) {
     await test.step(`records at ${width}px`, async () => {
       await page.setViewportSize({ width, height: 1000 });
-      const mainBox = await box(page.getByRole("main"));
-      const tableBox = await box(table);
-      const inset = width >= 768 ? 32 : 16;
-      const expectedWidth = Math.min(mainBox.width - inset * 2, 1600);
-      // The table's border accounts for the two pixels outside its own bounds.
-      expect(Math.abs(tableBox.width + 2 - expectedWidth)).toBeLessThan(2);
-      expect(
-        Math.abs(tableBox.x + tableBox.width / 2 - (mainBox.x + mainBox.width / 2)),
-      ).toBeLessThan(1);
-      expect(await table.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-        true,
-      );
+      // Read both boxes in one frame while the sidebar changes the available page width.
+      await expect
+        .poll(() =>
+          table.evaluate((element) => {
+            const main = element.closest("main");
+            if (main === null) return false;
+            const mainBox = main.getBoundingClientRect();
+            const tableBox = element.getBoundingClientRect();
+            const inset = window.innerWidth >= 768 ? 32 : 16;
+            const expectedWidth = Math.min(mainBox.width - inset * 2, 1600);
+            // The table's border accounts for the two pixels outside its own bounds.
+            return (
+              Math.abs(tableBox.width + 2 - expectedWidth) < 2 &&
+              Math.abs(tableBox.x + tableBox.width / 2 - (mainBox.x + mainBox.width / 2)) < 1 &&
+              element.scrollWidth <= element.clientWidth
+            );
+          }),
+        )
+        .toBe(true);
       await expectContained(page);
       if (width === 1920) {
         await page.screenshot({ path: testInfo.outputPath("triggers-1920.png"), fullPage: true });
