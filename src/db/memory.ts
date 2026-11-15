@@ -3322,6 +3322,7 @@ class MemoryDatabase implements Database {
         return [
           {
             id: run.id,
+            triggerId: trigger?.id ?? null,
             triggerName: trigger?.name ?? run.configuredTriggerName,
             provider: receipt.provider,
             source: receipt.source,

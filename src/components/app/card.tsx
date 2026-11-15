@@ -16,6 +16,7 @@ export function Card({
   action,
   children,
   className,
+  density = "default",
 }: {
   /** A glyph identifying what the card is about, beside its title. */
   icon?: ReactNode;
@@ -27,10 +28,18 @@ export function Card({
   children?: ReactNode;
   /** Placement in a parent grid only. Never used to change how the card looks. */
   className?: string;
+  /** Compact cards group settings under a heading outside the surface. */
+  density?: "default" | "compact";
 }) {
   const titled = title !== undefined || description !== undefined || action !== undefined;
   return (
-    <section className={cn("grid min-w-0 gap-4 rounded-xl border bg-card p-6", className)}>
+    <section
+      className={cn(
+        "grid min-w-0 gap-4 rounded-xl border bg-card",
+        density === "compact" ? "p-4" : "p-6",
+        className,
+      )}
+    >
       {titled ? (
         <div className="flex min-w-0 items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-2.5">

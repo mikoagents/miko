@@ -46,6 +46,8 @@ export interface ProviderEventReceiptSummary {
 /** One run as an organization overview reads it: what fired, what happened, and which agent ran. */
 export interface OrganizationRunRecord {
   id: string;
+  /** Null for historical runs whose Trigger has been removed. */
+  triggerId: string | null;
   /** The trigger's name as the user wrote it, never the internal name of one of its events. */
   triggerName: string;
   provider: ProviderEventReceiptRecord["provider"];

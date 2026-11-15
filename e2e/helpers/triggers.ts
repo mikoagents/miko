@@ -1,3 +1,4 @@
+import { testPipeline } from "../../src/test-utils/pipeline.js";
 import { expect, type Page } from "@playwright/test";
 import { artifactDigest, type TriggerArtifact } from "../../src/triggers/code/contract.js";
 
@@ -33,6 +34,7 @@ export function manualTriggerArtifact(name: string, daemon?: string): TriggerArt
   const body = {
     format: "trigger-code-v1" as const,
     manifest: {
+      pipeline: testPipeline(),
       name,
       runner: "browser",
       on: [{ source: "manual", event: "run" }],

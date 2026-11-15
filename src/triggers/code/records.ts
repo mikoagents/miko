@@ -44,6 +44,19 @@ export interface CodeOperation {
   childRunId: string | null;
   leaseHash: string;
   createdAt: string;
+  /** When Hub recorded the outcome. Absent while the operation is open, and on older journals. */
+  completedAt?: string;
+}
+/** The fields a run's shape is drawn from, without the inputs and outputs it carries. */
+export interface CodeOperationSummary {
+  runId: string;
+  id: string;
+  kind: string;
+  status: CodeOperation["status"];
+  createdAt: string;
+  completedAt?: string;
+  /** The event wait group, which joins one `ctx.waitFor` across its sources. */
+  group?: string;
 }
 export interface CodeRunner {
   id: string;
@@ -82,6 +95,8 @@ export interface TriggerCodeTransaction {
   getOperation(runId: string, id: string): Promise<CodeOperation | undefined>;
   putOperation(operation: CodeOperation): Promise<void>;
   operations(runId: string): Promise<CodeOperation[]>;
+  /** Every operation of these runs, oldest first, without their inputs and outputs. */
+  operationSummaries(runIds: readonly string[]): Promise<CodeOperationSummary[]>;
   appendEvent(triggerId: string, event: TriggerEvent): Promise<boolean>;
   events(triggerId: string, after: number, since: string): Promise<CodeEvent[]>;
   getState(triggerId: string, kind: CodeState["kind"], key: string): Promise<CodeState | undefined>;

@@ -1,3 +1,4 @@
+import { testPipeline } from "../src/test-utils/pipeline.js";
 import { expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -50,7 +51,7 @@ test("deploys code, runs a real worker, shows Activity results and retains ident
   const triggers = new OrganizationTriggers(page);
   await triggers.open();
   await page.getByRole("link", { name: "code-workflow", exact: true }).click();
-  await expect(page.getByRole("img", { name: "Workflow for code-workflow" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Pipeline for code-workflow" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Source code", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Source code" })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Code revision" })).toBeVisible();
@@ -105,11 +106,16 @@ test("deploys code, runs a real worker, shows Activity results and retains ident
 
   const history = page.getByRole("table", { name: "Run history" });
   await expect(history.getByRole("row").filter({ hasText: "Succeeded" })).toHaveCount(1);
-  await history.getByRole("button", { name: /^Open run from / }).click();
+  await history.getByRole("link", { name: /^Open run from / }).click();
   await expect(page.getByRole("radio", { name: "Run details", exact: true })).toBeChecked();
   await expect(page.getByRole("textbox", { name: "Trigger result", exact: true })).toContainText(
     '"version": "first"',
   );
+  const runUrl = page.url();
+  const runPipeline = page.getByRole("region", { name: "Run pipeline" });
+  await expect(runPipeline.locator("[data-pipeline-node]")).toHaveCount(3);
+  await expect(runPipeline.locator('[data-pipeline-node="step-0"]')).toContainText("Process first");
+  await expect(runPipeline.locator('[data-pipeline-node="step-0"]')).toContainText("Completed");
   const steps = page.getByRole("table", { name: "Steps" });
   await expect(steps.getByRole("row").filter({ hasText: "process" })).toContainText("Code step");
   await expect(page.getByRole("table", { name: "Agent sessions" })).toHaveCount(0);
@@ -118,21 +124,30 @@ test("deploys code, runs a real worker, shows Activity results and retains ident
   await expect(page.getByRole("textbox", { name: "process data", exact: true })).toContainText(
     '"version": "first"',
   );
-  await page.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("link", { name: "Activity", exact: true }).click();
   const row = page.getByRole("row").filter({ hasText: "code-workflow" });
   await expect(row).toContainText("Succeeded");
-  await row.getByRole("button", { name: "code-workflow", exact: true }).click();
+  await row.getByRole("link", { name: "code-workflow", exact: true }).click();
   await page.getByRole("radio", { name: "Run details", exact: true }).click();
   await expect(page.getByText('"version": "first"', { exact: false }).first()).toBeVisible();
   await page.getByRole("radio", { name: "Diagnostics", exact: true }).click();
   await expect(page.getByText("Processed code workflow", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Close", exact: true }).click();
 
   const updated = await hub.deployCodeTrigger("owner", artifact("second"));
   expect(updated.triggerId).toBe(deployed.triggerId);
   expect(updated.version).toBe(2);
+  await page.goto(runUrl);
+  await expect(page.getByRole("region", { name: "Run pipeline" })).toContainText("Process first");
+  await expect(page.getByRole("region", { name: "Run pipeline" })).not.toContainText(
+    "Process second",
+  );
+  await page.getByRole("button", { name: "Expand pipeline", exact: true }).click();
+  const expandedPipeline = page.getByRole("dialog", { name: "Pipeline", exact: true });
+  await expandedPipeline.getByRole("button", { name: /Process first/u }).click();
+  await expect(expandedPipeline).not.toBeVisible();
+  await expect(page.getByRole("radio", { name: "Diagnostics", exact: true })).toBeChecked();
+  await expect(page.getByRole("region", { name: "Run pipeline" })).toBeVisible();
   await triggers.open();
   await page.getByRole("link", { name: "code-workflow", exact: true }).click();
   await policyFile.click();
@@ -155,167 +170,192 @@ test("deploys code, runs a real worker, shows Activity results and retains ident
   await expect(page.getByRole("button", { name: "Run now" })).toBeDisabled();
 });
 
-test("shows authored branches and loops in an expandable diagram in both palettes and on a phone", async ({
+test("shows explicit branches and loops in a shared Pipeline in both palettes and on a phone", async ({
   hub,
   page,
 }) => {
   await hub.signUpAs("owner", owner);
-  await hub.createOrganization("owner", "Workflow diagrams");
-  await hub.deployCodeTrigger(
-    "owner",
-    diagramArtifact(
-      "review-flow",
-      `flowchart LR
-    event([Incoming event]) --> review[Review]
-    review --> ready{Ready?}
-    ready -->|No| repair[Repair]
-    repair --> review
-    ready -->|Yes| done[Publish result]`,
-    ),
-  );
+  await hub.createOrganization("owner", "Workflow pipelines");
+  const base = artifact("pipeline");
+  const pipeline: import("../src/triggers/code/sdk.js").TriggerPipeline = {
+    nodes: [
+      { id: "event", kind: "event", label: "Incoming event", description: "Receive a PR event." },
+      {
+        id: "review",
+        kind: "step",
+        label: "Review",
+        description: "Review the current head.",
+        operations: ["process"],
+      },
+      { id: "ready", kind: "decision", label: "Ready?", description: "Check unresolved findings." },
+      {
+        id: "repair",
+        kind: "agent",
+        label: "Repair",
+        description: "Repair findings and push a new head.",
+        operations: ["repair:*"],
+      },
+      {
+        id: "done",
+        kind: "outcome",
+        label: "Publish result",
+        description: "Return the verified Review.",
+      },
+    ],
+    edges: [
+      { from: "event", to: "review" },
+      { from: "review", to: "ready" },
+      { from: "ready", to: "repair", label: "Findings remain" },
+      { from: "ready", to: "done", label: "No findings" },
+      { from: "repair", to: "review", label: "New head", loop: true },
+    ],
+  };
+  const { digest: _digest, ...body } = {
+    ...base,
+    manifest: { ...base.manifest, name: "review-flow", pipeline },
+  };
+  await hub.deployCodeTrigger("owner", { ...body, digest: artifactDigest(body) });
   const triggers = new OrganizationTriggers(page);
   await triggers.open();
   await page.getByRole("link", { name: "review-flow", exact: true }).click();
-  const graph = page.getByRole("img", { name: "Workflow for review-flow" });
-  await expect(graph).toContainText("Repair");
-  await expect(graph.locator("svg.pele-flowchart")).toHaveCount(1);
-  await page.getByRole("button", { name: "Expand diagram", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Workflow diagram" });
-  await expect(dialog.getByRole("img", { name: "Workflow for review-flow" })).toContainText(
-    "Publish result",
+  const graph = page.getByRole("region", { name: "Pipeline for review-flow" });
+  await expect(graph.locator("[data-pipeline-node]")).toHaveCount(5);
+  await expect(graph.locator("[data-pipeline-edge]")).toHaveCount(5);
+  await expect
+    .poll(() => graph.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeLessThanOrEqual(1);
+  const expand = page.getByRole("button", { name: "Expand pipeline", exact: true });
+  await expect
+    .poll(() =>
+      expand.evaluate((button) => {
+        const card = button.closest("section")!;
+        const viewport = card.querySelector('[role="region"]')!;
+        const bounds = button.getBoundingClientRect();
+        const surface = card.getBoundingClientRect();
+        return (
+          bounds.top - surface.top <= 20 &&
+          surface.right - bounds.right <= 20 &&
+          surface.height - viewport.getBoundingClientRect().height <= 35
+        );
+      }),
+    )
+    .toBe(true);
+  const entry = graph.locator('[data-pipeline-node="event"]');
+  await expect
+    .poll(async () => {
+      const first = await entry.boundingBox();
+      const next = await graph.locator('[data-pipeline-node="review"]').boundingBox();
+      return first !== null && next !== null && next.x > first.x;
+    })
+    .toBe(true);
+  await expect(graph.getByRole("list", { name: "Pipeline connections" })).toContainText(
+    "Repair → Review: New head (loop)",
   );
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  const color = await graph
-    .locator(".pele-node rect")
-    .first()
-    .evaluate((node) => getComputedStyle(node).fill);
+  const node = graph.locator('[data-pipeline-node="review"] > div');
+  await expect(node).not.toContainText("Review the current head.");
+  await expect(node).toHaveCSS("height", "44px");
+  await node.hover();
+  await expect(page.getByRole("tooltip")).toContainText("Review the current head.");
+  await page.mouse.move(0, 0);
+  await node.focus();
+  await expect(page.getByRole("tooltip")).toContainText("Review the current head.");
+  await page.keyboard.press("Escape");
+  const color = await node.evaluate((element) => getComputedStyle(element).backgroundColor);
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
   await page.getByRole("radio", { name: "Dark", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect
-    .poll(() =>
-      graph
-        .locator(".pele-node rect")
-        .first()
-        .evaluate((node) => getComputedStyle(node).fill),
-    )
+    .poll(() => node.evaluate((element) => getComputedStyle(element).backgroundColor))
     .not.toBe(color);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(graph).toBeVisible();
   await expect
-    .poll(() =>
-      graph
-        .locator(".pele-node rect")
-        .first()
-        .evaluate((node) => node.getBoundingClientRect().height),
-    )
-    .toBeGreaterThan(24);
-  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
-  await page.getByRole("button", { name: "Expand diagram", exact: true }).click();
-  await expect(dialog.getByRole("img", { name: "Workflow for review-flow" })).toBeVisible();
-  await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
-});
-
-test("renders Pele mindmaps with readable mobile labels and an expanded view", async ({
-  hub,
-  page,
-}) => {
-  await hub.signUpAs("owner", owner);
-  await hub.createOrganization("owner", "Mindmap diagrams");
-  await hub.deployCodeTrigger(
-    "owner",
-    diagramArtifact(
-      "review-map",
-      `mindmap
-  root((Review workflow))
-    When
-      Pull request opened
-      CI completed
-    Review
-      Check the latest head
-      Repair findings
-    Result
-      Publish formal review`,
-    ),
-  );
-  const triggers = new OrganizationTriggers(page);
-  await triggers.open();
-  await page.getByRole("link", { name: "review-map", exact: true }).click();
-  const graph = page.getByRole("img", { name: "Workflow for review-map" });
-  await expect(graph.locator("svg.pele-mindmap")).toHaveCount(1);
-  await expect(graph).toContainText("Publish formal review");
-  const color = await graph
-    .locator(".pele-root circle")
-    .evaluate((node) => getComputedStyle(node).fill);
-  await page.getByRole("button", { name: "Appearance", exact: true }).click();
-  await page.getByRole("radio", { name: "Dark", exact: true }).click();
-  await page.keyboard.press("Escape");
-  await expect
-    .poll(() => graph.locator(".pele-root circle").evaluate((node) => getComputedStyle(node).fill))
-    .not.toBe(color);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(graph).toBeVisible();
-  await expect(graph.locator(".pele-root .pele-label")).toHaveCSS("font-size", "13px");
+    .poll(() => graph.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeLessThanOrEqual(1);
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
   await graph.focus();
   await page.keyboard.press("ArrowRight");
-  await expect.poll(() => graph.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Expand diagram", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Workflow diagram" });
-  await expect(dialog.locator("svg.pele-mindmap")).toHaveCount(1);
-  await expect(dialog).toContainText("Repair findings");
+  await expect.poll(() => graph.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await page.screenshot({
+    path: "e2e/screenshots/pipeline/trigger-mobile-dark.png",
+    animations: "disabled",
+  });
+  await page.getByRole("button", { name: "Expand pipeline", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Pipeline", exact: true });
+  await expect(dialog.locator("[data-pipeline-node]")).toHaveCount(5);
+  await expect
+    .poll(() =>
+      dialog.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return (
+          Math.abs(bounds.left) < 1 &&
+          Math.abs(bounds.top) < 1 &&
+          Math.abs(bounds.width - window.innerWidth) < 1 &&
+          Math.abs(bounds.height - window.innerHeight) < 1
+        );
+      }),
+    )
+    .toBe(true);
+  await expect(dialog).toContainText("Publish result");
+  await dialog.getByRole("button", { name: "Fit pipeline", exact: true }).click();
+  const expandedGraph = dialog.getByRole("region", { name: "Pipeline for review-flow" });
+  await expect
+    .poll(() =>
+      expandedGraph.evaluate((element) => element.clientHeight >= window.innerHeight - 180),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      expandedGraph.evaluate((element) =>
+        Math.max(
+          element.scrollHeight - element.clientHeight,
+          element.scrollWidth - element.clientWidth,
+        ),
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await dialog.getByRole("button", { name: "Reset zoom", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Reset zoom", exact: true })).toHaveText("100%");
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await graph.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  await page.screenshot({
+    path: "e2e/screenshots/pipeline/trigger-desktop-dark.png",
+    animations: "disabled",
+  });
+  await expand.click();
+  await expect
+    .poll(() =>
+      dialog.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return (
+          Math.abs(bounds.left) < 1 &&
+          Math.abs(bounds.top) < 1 &&
+          Math.abs(bounds.width - window.innerWidth) < 1 &&
+          Math.abs(bounds.height - window.innerHeight) < 1
+        );
+      }),
+    )
+    .toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(expand).toBeFocused();
 });
-
-test("keeps malformed diagrams and embedded HTML from taking over the Trigger page", async ({
-  hub,
-  page,
-}) => {
-  await hub.signUpAs("owner", owner);
-  await hub.createOrganization("owner", "Diagram failures");
-  await hub.deployCodeTrigger(
-    "owner",
-    diagramArtifact(
-      "safe-diagram",
-      `flowchart LR
-    A["<img src=x onerror=alert(1)>"] --> B[Done]
-    click A "javascript:alert(1)"
-    click B "https://example.com"
-    B --> C@{ img: "https://example.com/diagram.png", label: "External image" }`,
-    ),
-  );
-  await hub.deployCodeTrigger(
-    "owner",
-    diagramArtifact("broken-diagram", "flowchart LR\n A[unfinished"),
-  );
-  const triggers = new OrganizationTriggers(page);
-  await triggers.open();
-  await page.getByRole("link", { name: "safe-diagram", exact: true }).click();
-  const graph = page.getByRole("img", { name: "Workflow for safe-diagram" });
-  await expect(graph.locator("svg")).toHaveCount(1);
-  await expect(
-    graph.locator("script, img, image, foreignObject, a[href], a[*|href], [onerror], [onload]"),
-  ).toHaveCount(0);
-  await triggers.open();
-  await page.getByRole("link", { name: "broken-diagram", exact: true }).click();
-  await expect(page.getByText("Diagram unavailable", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Run now", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "trigger.ts Entrypoint", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "trigger.ts value" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Run history", exact: true })).toBeVisible();
-});
-
-function diagramArtifact(name: string, diagram: string) {
-  const { digest: _digest, ...body } = artifact("diagram");
-  const updated = { ...body, manifest: { ...body.manifest, name, diagram } };
-  return { ...updated, digest: artifactDigest(updated) };
-}
 
 function artifact(version: string) {
   const code = `export default {async run(ctx) { const result = await ctx.step("process", null, async () => ({version:${JSON.stringify(version)}})); await ctx.log("Processed code workflow", result); return result; }};`;
   const body = {
     format: "trigger-code-v1" as const,
     manifest: {
+      pipeline: {
+        ...testPipeline("process"),
+        nodes: testPipeline("process").nodes.map((node) =>
+          node.id === "step-0" ? { ...node, label: "Process " + version } : node,
+        ),
+      },
       name: "code-workflow",
       runner: "browser",
       description: "A code-defined workflow",

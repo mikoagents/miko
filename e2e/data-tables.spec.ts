@@ -1,3 +1,4 @@
+import { testPipeline } from "../src/test-utils/pipeline.js";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./app.js";
 import { projectApp } from "./helpers/projects/index.js";
@@ -186,6 +187,7 @@ function triggerArtifact(trigger: SeededTrigger, daemon: string): TriggerArtifac
   const body = {
     format: "trigger-code-v1" as const,
     manifest: {
+      pipeline: testPipeline(),
       name: trigger.name,
       description: `Operator-owned project with configuration under ${WORKSPACES}/platform/infrastructure-runbooks`,
       runner: "local",

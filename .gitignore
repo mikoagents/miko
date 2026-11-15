@@ -10,3 +10,6 @@ e2e/screenshots/
 node_modules/
 AGENTS.override.md
 CLAUDE.local.md
+
+# Local design prototypes and preview artifacts.
+/output/

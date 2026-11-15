@@ -1,22 +1,27 @@
+import { testPipeline } from "../../test-utils/pipeline.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
   agentModelSummary,
   codeLine,
+  eventAccessRecords,
   eventRecords,
+  eventScopeGroups,
   fixedValues,
   githubAccess,
   oneOf,
+  permissionBands,
+  sharedGrantRepositories,
   orderSourceFiles,
   subscriptionListSummary,
   subscriptionSummary,
   triggerTargetSummary,
 } from "./presentation.js";
 import { inspectTriggerSources } from "./inspection.js";
-import { triggerFlowDiagram } from "./flow.js";
 import type { TriggerManifest } from "./sdk.js";
 
 const manifest: TriggerManifest = {
+  pipeline: testPipeline(),
   name: "example",
   runner: "local",
   grants: {},
@@ -25,6 +30,69 @@ const manifest: TriggerManifest = {
 };
 
 describe("Trigger presentation", () => {
+  it("joins a connection's events and grants while keeping their repository scopes independent", () => {
+    const records = eventAccessRecords({
+      ...manifest,
+      on: [
+        { source: "github", event: "issues.opened", connection: "acme", resource: "acme/intake" },
+        { source: "github", event: "check_suite.completed", connection: "acme" },
+      ],
+      grants: {
+        github: {
+          publish: {
+            connection: "acme",
+            repositories: ["acme/output"],
+            permissions: { issues: "write" },
+          },
+        },
+      },
+    });
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.primary, "acme");
+    assert.deepEqual(records[0]?.scopes, [
+      { resource: "All repositories", events: "Check suite completed" },
+      { resource: "acme/intake", events: "Issues opened" },
+    ]);
+    assert.deepEqual(records[0]?.access?.grants, [
+      { alias: "publish", repositories: ["acme/output"] },
+    ]);
+    assert.equal(records[0]?.access?.permissions[0]?.shared, "Write");
+  });
+
+  it("retains access-only connections and never matches a different provider with the same name", () => {
+    const records = eventAccessRecords({
+      ...manifest,
+      on: [
+        { source: "manual", event: "run" },
+        { source: "slack", event: "mention", connection: "acme" },
+        { source: "github", event: "issues.opened", connection: "intake-only" },
+      ],
+      grants: {
+        github: {
+          read: {
+            connection: "acme",
+            repositories: ["acme/output"],
+            permissions: { contents: "read" },
+          },
+        },
+      },
+    });
+    assert.deepEqual(
+      records.map(({ source, primary, access }) => ({
+        source,
+        primary,
+        grant: access?.connection ?? null,
+      })),
+      [
+        { source: "manual", primary: "On demand", grant: null },
+        { source: "slack", primary: "acme", grant: null },
+        { source: "github", primary: "intake-only", grant: null },
+        { source: "github", primary: "acme", grant: "acme" },
+      ],
+    );
+    assert.equal(new Set(records.map(({ key }) => key)).size, records.length);
+  });
+
   it("shows event labels with their connections and schedule timezones in the list", () => {
     assert.deepEqual(subscriptionListSummary(manifest.on), { primary: "Manual run" });
     assert.deepEqual(
@@ -286,6 +354,87 @@ describe("Trigger presentation", () => {
     );
   });
 
+  it("says a repeated scope once and groups permissions that share a level", () => {
+    const opened = "Pull request opened";
+    const ready = "Pull request ready for review · Pull request synchronize";
+    assert.deepEqual(
+      eventScopeGroups([
+        { resource: "All repositories", events: "Check suite completed" },
+        { resource: "VioraOS/Viora-Mono", events: ready },
+        { resource: "VioraOS/TokenHub", events: ready },
+      ]),
+      [
+        { resources: "All repositories", events: "Check suite completed" },
+        { resources: "VioraOS/Viora-Mono, VioraOS/TokenHub", events: ready },
+      ],
+    );
+    assert.deepEqual(
+      eventScopeGroups([
+        { resource: "All repositories", events: "Check suite completed" },
+        { resource: "acme/app", events: opened },
+      ]),
+      [
+        { resources: "All repositories", events: "Check suite completed" },
+        { resources: "acme/app", events: opened },
+      ],
+    );
+    assert.deepEqual(eventScopeGroups([{ resource: "acme/app", events: opened }]), [
+      { resources: "acme/app", events: opened },
+    ]);
+    assert.equal(
+      sharedGrantRepositories([
+        { alias: "autofix", repositories: ["VioraOS/Viora-Mono", "VioraOS/TokenHub"] },
+        { alias: "snapshot", repositories: ["VioraOS/Viora-Mono", "VioraOS/TokenHub"] },
+      ]),
+      "VioraOS/Viora-Mono, VioraOS/TokenHub",
+    );
+    assert.equal(
+      sharedGrantRepositories([
+        { alias: "reviews", repositories: ["acme/app"] },
+        { alias: "triage", repositories: ["acme/other"] },
+      ]),
+      null,
+    );
+    assert.equal(sharedGrantRepositories([{ alias: "reviews", repositories: ["acme/app"] }]), null);
+    // The same repositories declared in another order are a different list, so both stay.
+    assert.equal(
+      sharedGrantRepositories([
+        { alias: "reviews", repositories: ["acme/app", "acme/other"] },
+        { alias: "triage", repositories: ["acme/other", "acme/app"] },
+      ]),
+      null,
+    );
+    assert.equal(
+      sharedGrantRepositories([
+        { alias: "a", repositories: [] },
+        { alias: "b", repositories: [] },
+      ]),
+      "",
+    );
+    const read = [
+      { alias: "autofix", level: "Read" },
+      { alias: "snapshot", level: "Read" },
+    ];
+    const split = [
+      { alias: "autofix", level: "Write" },
+      { alias: "snapshot", level: "Read" },
+    ];
+    assert.deepEqual(
+      permissionBands([
+        { label: "Actions", shared: "Read", levels: read },
+        { label: "Checks", shared: "Read", levels: read },
+        { label: "Contents", shared: null, levels: split },
+        { label: "Issues", shared: null, levels: split },
+        { label: "Pull requests", shared: null, levels: split },
+        { label: "Statuses", shared: "Read", levels: read },
+      ]).map(({ labels, shared }) => [labels, shared]),
+      [
+        [["Actions", "Checks", "Statuses"], "Read"],
+        [["Contents", "Issues", "Pull requests"], null],
+      ],
+    );
+  });
+
   it("reads code settings as their fixed values or the alternatives they pick between", () => {
     const field = { value: null, values: [], expression: null, source: null };
     assert.deepEqual(fixedValues({ ...field, status: "known", value: "max" }), ["max"]);
@@ -341,14 +490,5 @@ describe("Trigger presentation", () => {
       orderSourceFiles([...files, { path: "src/main.ts" }], "src/main.ts").map((file) => file.path),
       ["src/main.ts", "trigger.ts", "policy.ts", "package.json"],
     );
-  });
-
-  it("documents only known event routing unless the author supplies a workflow diagram", () => {
-    const diagram = triggerFlowDiagram(manifest);
-    assert.match(diagram, /On demand/u);
-    assert.match(diagram, /Result and logs/u);
-    assert.match(triggerFlowDiagram(manifest, "TB"), /^flowchart TB/u);
-    const authored = "flowchart TD\n check{Ready?} -->|No| check\n check -->|Yes| done[Complete]";
-    assert.equal(triggerFlowDiagram({ ...manifest, diagram: authored }), authored);
   });
 });

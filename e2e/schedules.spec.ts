@@ -1,3 +1,4 @@
+import { testPipeline } from "../src/test-utils/pipeline.js";
 import { expect } from "@playwright/test";
 import { test } from "./app.js";
 import { OrganizationTriggers } from "./helpers/triggers.js";
@@ -57,7 +58,9 @@ test("deploys a code schedule, receives a real clock tick, and inspects edited c
         .filter({ hasText: "periodic-scan" }),
     ).toContainText(summary);
     await page.getByRole("link", { name: "periodic-scan", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Events", exact: true })).toContainText(summary);
+    await expect(page.getByRole("list", { name: "Events and access", exact: true })).toContainText(
+      summary,
+    );
     await page.reload();
     await page.getByRole("button", { name: "trigger.ts", exact: true }).click();
     await expect(
@@ -75,6 +78,7 @@ test("deploys a code schedule, receives a real clock tick, and inspects edited c
 });
 function scheduled(rule: string, start: string): TriggerArtifact {
   const manifest = {
+    pipeline: testPipeline(),
     name: "periodic-scan",
     runner: "browser",
     on: [

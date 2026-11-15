@@ -44,7 +44,7 @@ test("draws provider cards and real table columns while their first reads are de
     await expect(
       activity.getByRole("columnheader", { name: "Trigger", exact: true }),
     ).toBeVisible();
-    await expect(activity.getByRole("columnheader", { name: "Status", exact: true })).toBeVisible();
+    await expect(activity.getByRole("columnheader", { name: "Daemon", exact: true })).toBeVisible();
     await expect(activity.locator("[data-slot=skeleton]").first()).toBeVisible();
     await expect(page.getByText("No activity yet", { exact: true })).toBeHidden();
     expect(
@@ -70,20 +70,25 @@ test("uses the app palette and keeps skeletons still under reduced motion", asyn
     await data.requested;
     const bone = page.locator("[data-slot=skeleton] [skullet-bar]").first();
     await expect(bone).toBeVisible();
-    const appearance = await bone.evaluate((element) => {
-      const probe = document.createElement("span");
-      probe.style.backgroundColor = "var(--accent)";
-      document.body.append(probe);
-      const expected = getComputedStyle(probe).backgroundColor;
-      probe.remove();
-      return {
-        actual: getComputedStyle(element).backgroundColor,
-        expected,
-        animations: element.getAnimations().length,
-      };
-    });
-    expect(appearance.actual).toBe(appearance.expected);
-    expect(appearance.animations).toBe(0);
+    // Skullet can replace a measured bar between resolving a locator and evaluating it.
+    // Read the current node and both theme values in the same browser task.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const element = document.querySelector("[data-slot=skeleton] [skullet-bar]");
+          if (!element) return null;
+          const probe = document.createElement("span");
+          probe.style.backgroundColor = "var(--accent)";
+          document.body.append(probe);
+          const expected = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return {
+            matchesTheme: getComputedStyle(element).backgroundColor === expected,
+            animations: element.getAnimations().length,
+          };
+        }),
+      )
+      .toEqual({ matchesTheme: true, animations: 0 });
   } finally {
     await data.release();
   }

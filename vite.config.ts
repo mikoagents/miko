@@ -11,6 +11,7 @@ export default defineConfig(({ command, isPreview }) => {
   return {
     build: { outDir: ".output" },
     envDir: false,
+    optimizeDeps: { include: ["elkjs/lib/elk.bundled.js"] },
     resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
     plugins: [tanstackStart({ server: { entry: "./start-server.ts" } }), tailwindcss(), react()],
   };

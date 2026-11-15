@@ -1,3 +1,4 @@
+import { testPipeline } from "../src/test-utils/pipeline.js";
 import { expect } from "@playwright/test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -28,6 +29,7 @@ test("shows deployed configuration without source prompts and keeps revision bro
     'import {defineTrigger} from "@mikoagents/hub/triggers";',
     'import {agent} from "./policy.js";',
     "export default defineTrigger({",
+    `pipeline:${JSON.stringify(testPipeline("review", "recheck"))},`,
     'name:"visual-configuration",runner:"browser",',
     'on:[{source:"github",event:"pull_request.opened",connection:"acme-inc",resource:"acme-inc/app"},',
     `{source:"github",event:"issues.opened",connection:"acme-inc",resource:${JSON.stringify(longRepository)}},`,
@@ -67,7 +69,8 @@ test("shows deployed configuration without source prompts and keeps revision bro
     await expect(page.getByRole("button", { name: /^View .* source$/ })).toHaveCount(0);
     // Every group is open on arrival; only prompts fold.
     // One connection is one record, said once; each repository keeps its own events under it.
-    const events = page.getByRole("list", { name: "Events", exact: true }).getByRole("listitem");
+    const connections = page.getByRole("list", { name: "Events and access", exact: true });
+    const events = connections.getByRole("listitem");
     await expect(events).toHaveCount(1);
     await expect(events).toContainText("acme-inc");
     await expect(events).toContainText("GitHub connection");
@@ -112,22 +115,24 @@ test("shows deployed configuration without source prompts and keeps revision bro
     await expect(page.getByRole("textbox", { name: "recheck prompt", exact: true })).toHaveText(
       "ctx.event.payload.prompt",
     );
-    // Both grants use one connection: one record, each grant's repositories, and each
-    // permission once, split by grant only where the grants differ.
-    const access = page.getByRole("list", { name: "Access", exact: true }).getByRole("listitem");
+    // Both grants use one connection and reach the same repository, so that repository is said
+    // once. A permission is said once too, and split by grant only where the grants differ.
+    const access = connections.getByRole("listitem");
     await expect(access).toHaveCount(1);
     await expect(access).toContainText("acme-inc");
     await expect(access).toContainText("GitHub connection");
     const grants = page.locator('[data-summary="acme-inc grants"]');
-    await expect(grants.locator('dt:text-is("reviews") + dd')).toHaveText("acme-inc/app");
-    await expect(grants.locator('dt:text-is("triage") + dd')).toHaveText("acme-inc/app");
+    await expect(grants.locator("dt")).toHaveText("reviews, triage");
+    await expect(grants.locator("dd")).toHaveText("acme-inc/app");
     const permissions = page.locator('[data-summary="acme-inc permissions"]');
+    // Intake scope and grants share one connection record without widening either scope.
+    await expect(events.locator('[data-summary="acme-inc events"]')).toBeVisible();
+    await expect(events.locator('[data-summary="acme-inc grants"]')).toBeVisible();
+    await expect(events.locator('[data-summary="acme-inc permissions"]')).toBeVisible();
     const level = (label: string) => permissions.locator(`dt:text-is("${label}") + dd`);
     await expect(level("Contents")).toHaveText("Read");
-    await expect(level("Pull requests")).toHaveText("reviews Write triage None", {
-      useInnerText: true,
-    });
-    await expect(level("Issues")).toHaveText("reviews None triage Write", { useInnerText: true });
+    await expect(level("Pull requests")).toHaveText("reviews Write · triage None");
+    await expect(level("Issues")).toHaveText("reviews None · triage Write");
     await expect(page.getByRole("textbox", { name: "policy.ts value", exact: true })).toHaveCount(
       0,
     );
@@ -176,8 +181,9 @@ test("shows deployed configuration without source prompts and keeps revision bro
     const shortEvents = scopes.locator('dt:text-is("acme-inc/app") + dd');
     const longName = scopes.locator(`dt:text-is("${longRepository}")`);
     const longEvents = scopes.locator(`dt:text-is("${longRepository}") + dd`);
-    // The events sit below the fold on a phone. Scroll them up, then require the whole row on screen.
+    // Bring both cells into view before requiring the whole row to fit on a phone.
     await longName.scrollIntoViewIfNeeded();
+    await longEvents.scrollIntoViewIfNeeded();
     await expect(longName).toBeInViewport({ ratio: 1 });
     await expect(longEvents).toBeInViewport({ ratio: 1 });
     const [shortNameBox, shortEventsBox, longNameBox, longEventsBox] = await Promise.all([

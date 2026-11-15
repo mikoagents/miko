@@ -1,3 +1,4 @@
+import { testPipeline } from "../test-utils/pipeline.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { AuthServer } from "../auth/server.js";
@@ -38,12 +39,12 @@ describe("trigger dashboard read model", () => {
       const body = {
         format: "trigger-code-v1" as const,
         manifest: {
+          pipeline: testPipeline(),
           name,
           runner: "local",
           on: [{ source: "manual", event: "run" }],
           grants: {},
           limits: { maxRuntime: "10m" },
-          diagram: "flowchart LR\n A[Event] --> B[Result]",
         },
         code: "export default {async run(){ return null }};",
         sources: [{ path: "trigger.ts", content: "export default {async run(){ return null }};" }],
@@ -76,6 +77,41 @@ describe("trigger dashboard read model", () => {
       history.map((run) => run.id),
       [first.run?.id],
     );
+    // Only the runs a list asks to draw read their journals.
+    assert.equal(history[0]?.pipeline, null);
+    const quietRun = first.run;
+    assert.ok(quietRun);
+    const journal = (
+      id: string,
+      kind: string,
+      status: "completed" | "waiting",
+      offset: number,
+    ) => ({
+      runId: quietRun.id,
+      id,
+      kind,
+      input: {},
+      inputHash: "",
+      status,
+      output: null,
+      error: null,
+      wakeAt: null,
+      childRunId: null,
+      leaseHash: "",
+      createdAt: new Date(Date.parse(startedAt) + offset).toISOString(),
+    });
+    await database.triggerCode.transaction("org-1", async (tx) => {
+      await tx.putOperation(journal("load", "state.get", "completed", 0));
+      await tx.putOperation(journal("review", "agent", "waiting", 1000));
+    });
+    const drawn = await dashboard.triggerHistory(request, "acme", quiet.triggerId, 5);
+    const [stage, ...later] = drawn[0]?.pipeline?.stages ?? [];
+    assert.deepEqual(later, []);
+    assert.equal(stage?.steps, 1);
+    assert.deepEqual(
+      stage.milestones.map((milestone) => `${milestone.id} ${milestone.state}`),
+      ["review waiting"],
+    );
     const snapshot = await dashboard.snapshot(request, "acme");
     assert.equal(
       snapshot.triggers.find((trigger) => trigger.id === quiet.triggerId)?.lastTriggered?.status,
@@ -86,10 +122,9 @@ describe("trigger dashboard read model", () => {
       (await dashboard.codeDetail(request, "acme", quiet.triggerId)).artifact?.entrypoint,
       "trigger.ts",
     );
-    assert.match(
-      (await dashboard.codeDetail(request, "acme", quiet.triggerId)).artifact?.manifest.diagram ??
-        "",
-      /A\[Event\]/u,
+    assert.deepEqual(
+      (await dashboard.codeDetail(request, "acme", quiet.triggerId)).artifact?.manifest.pipeline,
+      testPipeline(),
     );
     await assert.rejects(
       dashboard.triggerHistory(request, "acme", "another-trigger"),

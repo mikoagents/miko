@@ -35,7 +35,7 @@ export async function reviewPullRequest(ctx: TriggerContext) {
   return ctx.withLock("pull-request", `pr:${policy.repository}:${number}`, async () => {
     let previousHead: string | null = null;
     for (let round = 0; round <= policy.maxFixRounds; round++) {
-      const pull = await readPull(ctx, `${round}:pull`, number);
+      const pull = await readPull(ctx, `candidate:${round}`, number);
       eligible(ctx, pull);
       const head = pull.head.sha;
       if (round === 0 && eventHead(ctx.event) !== null && eventHead(ctx.event) !== head)
@@ -44,16 +44,16 @@ export async function reviewPullRequest(ctx: TriggerContext) {
       if (!(await ctx.claim(`review:${policy.version}:${number}:${head}:${pull.base.sha}`)))
         ctx.skip("This PR head and review policy already have a durable owner");
       if (pull.labels?.some((label) => label.name === policy.completeLabel))
-        await ctx.github.request(`${round}:clear-label`, "review", {
+        await ctx.github.request(`clear-label:${round}`, "review", {
           method: "DELETE",
           path: `${path}/issues/${number}/labels/${encodeURIComponent(policy.completeLabel)}`,
         });
-      const failedCi = await waitForCi(ctx, number, head, `${round}:ci`);
+      const failedCi = await waitForCi(ctx, number, head, `ci:${round}`);
       if (failedCi.length > 0) {
         if (round === policy.maxFixRounds)
           throw new Error("Configured CI repair round limit reached");
-        await enforceCommitLimit(ctx, head, `${round}:ci-budget`);
-        await ctx.agent.run(`${round}:ci-repair`, {
+        await enforceCommitLimit(ctx, head, `budget:ci:${round}`);
+        await ctx.agent.run(`repair:ci:${round}`, {
           target: "repository",
           agent: policy.agent,
           github: "repair",
@@ -65,8 +65,8 @@ export async function reviewPullRequest(ctx: TriggerContext) {
         previousHead = head;
         continue;
       }
-      let receipt = await review(ctx, number, head, `${round}:review`);
-      let published = await verifyReceipt(ctx, number, head, receipt, `${round}:receipt`);
+      let receipt = await review(ctx, number, head, `review:${round}`);
+      let published = await verifyReceipt(ctx, number, head, receipt, `receipt:${round}`);
       for (let verification = 0; published.body.includes(policy.incompleteMarker); verification++) {
         if (verification >= policy.maxVerificationRounds)
           throw new Error("Validation remains incomplete after the configured verification rounds");
@@ -74,13 +74,13 @@ export async function reviewPullRequest(ctx: TriggerContext) {
           ctx,
           number,
           head,
-          `${round}:verification:${verification}:ci`,
+          `ci:verification:${round}:${verification}`,
         );
         if (failures.length > 0)
           throw new Error(
             "Supplemental verification CI failed; a new repair candidate is required",
           );
-        const result = await ctx.agent.run<ReviewReceipt>(`${round}:verification:${verification}`, {
+        const result = await ctx.agent.run<ReviewReceipt>(`verification:${round}:${verification}`, {
           target: "repository",
           agent: policy.agent,
           github: "review",
@@ -100,19 +100,19 @@ export async function reviewPullRequest(ctx: TriggerContext) {
           number,
           head,
           receipt,
-          `${round}:verified:${verification}`,
+          `receipt:verification:${round}:${verification}`,
         );
       }
-      const current = await readPull(ctx, `${round}:after-review`, number);
+      const current = await readPull(ctx, `after-review:${round}`, number);
       if (current.head.sha !== head || current.base.sha !== pull.base.sha)
         ctx.skip("PR changed while the review was running; the new event owns the new candidate");
       if (receipt.inline_comments === 0 && published.state !== "CHANGES_REQUESTED") {
-        await ctx.state.set(`${round}:save`, `result:${number}`, {
+        await ctx.state.set(`save:${round}`, `result:${number}`, {
           head,
           base: pull.base.sha,
           review: receipt.url,
         });
-        await ctx.github.request(`${round}:complete-label`, "review", {
+        await ctx.github.request(`complete-label:${round}`, "review", {
           method: "POST",
           path: `${path}/issues/${number}/labels`,
           body: { labels: [policy.completeLabel] },
@@ -121,8 +121,8 @@ export async function reviewPullRequest(ctx: TriggerContext) {
         return { head, review: receipt.url };
       }
       if (round === policy.maxFixRounds) throw new Error("Configured repair round limit reached");
-      await enforceCommitLimit(ctx, head, `${round}:repair-budget`);
-      await ctx.agent.run(`${round}:repair`, {
+      await enforceCommitLimit(ctx, head, `budget:review:${round}`);
+      await ctx.agent.run(`repair:review:${round}`, {
         target: "repository",
         agent: policy.agent,
         github: "repair",

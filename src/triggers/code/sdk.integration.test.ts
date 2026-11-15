@@ -1,3 +1,4 @@
+import { testPipeline } from "../../test-utils/pipeline.js";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -102,7 +103,7 @@ it("uses the packaged author API across JSONB recovery, a transient read failure
       entry,
       `import {defineTrigger,GitHubRequestError} from "@mikoagents/hub/triggers";
 export default defineTrigger({
- name:"sdk-client",runner:"test",on:[{source:"manual",event:"run"}],limits:{maxRuntime:"10m"},
+ pipeline: ${JSON.stringify(testPipeline())}, name:"sdk-client",runner:"test",on:[{source:"manual",event:"run"}],limits:{maxRuntime:"10m"},
  grants:{github:{repo:{connection:"github",repositories:["example/project"],permissions:{issues:"write"}}},targets:{worker:{daemon:"devbox",cwd:"/workspace/test",providers:["codex"]}}},
  async run(ctx){
   const repo=ctx.github.repo("repo","example/project");

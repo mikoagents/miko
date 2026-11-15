@@ -1,3 +1,5 @@
+import type { TimelineSpan, TimelineTone } from "../../lib/timeline.js";
+import { formatDuration } from "../../lib/duration.js";
 import { subscriptionSummary } from "./presentation.js";
 
 /** How Hub gave an agent call its session: a new agent, the live one, or an archived one. */
@@ -24,6 +26,8 @@ export interface RunOperation {
   input: unknown;
   error: string | null;
   createdAt: string;
+  /** When Hub recorded the outcome; null while open, and on journals that predate it. */
+  completedAt: string | null;
   executionId: string | null;
   daemons: readonly string[];
   agent: RunAgent | null;
@@ -240,32 +244,242 @@ export function describeOperation(operation: RunOperation): { kind: string; summ
   }
 }
 
+/**
+ * An operation as a run's shape reads it: when it opened, whether and when it settled, and how.
+ * The history list builds these from the journal alone; a run's detail also knows its agents.
+ */
+export interface JournalEntry {
+  id: string;
+  kind: string;
+  state: CallState;
+  createdAt: string;
+  /** When it settled; null while open, and on journals that predate finish times. */
+  completedAt: string | null;
+  /** The `ctx.waitForEvent` an event operation belongs to; its retries share it. */
+  group: string | null;
+}
+
+/** An agent call, a wait, or a failure: the points a run's shape is drawn through. */
+export interface Milestone {
+  /** What the code called it. An event wait's retries share the id the code gave the wait. */
+  id: string;
+  /** The operation a reader opens: for an event wait, its latest retry. */
+  operationId: string;
+  kind: string;
+  state: CallState;
+  /** It held up the run without doing work: an event, a timer, or another run's lock. */
+  wait: boolean;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface RunStage {
+  /** Operations since the stage before that are not milestones: reads, requests, code steps. */
+  steps: number;
+  /** Milestones that were open at the same time. Calls made together share a stage. */
+  milestones: Milestone[];
+}
+
+/** The order a run went through its agent calls and waits, and the steps between them. */
+export interface RunShape {
+  stages: RunStage[];
+  /** Steps after the last stage. */
+  trailing: number;
+}
+
+const MILESTONE_KINDS = new Set(["agent", "event", "sleep"]);
+const WAIT_KINDS = new Set(["event", "sleep", "lock"]);
+/** A lock taken at once is a step; one the run had to wait for is a wait like any other. */
+const LOCK_WAIT = 1000;
+
+/**
+ * Stages in the order they opened. A milestone that opened while the stage before it was still
+ * open joins that stage, so calls a run made together read as one stage rather than a sequence.
+ */
+export function runShape(entries: readonly JournalEntry[], now: number): RunShape {
+  const stages: (RunStage & { start: number; end: number })[] = [];
+  const milestones = milestonesOf(entries, now).toSorted(
+    (left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt),
+  );
+  for (const milestone of milestones) {
+    const start = Date.parse(milestone.startedAt);
+    const end = settledEnd(milestone, now) ?? start;
+    const last = stages.at(-1);
+    if (last !== undefined && start < last.end) {
+      last.milestones.push(milestone);
+      last.end = Math.max(last.end, end);
+    } else stages.push({ steps: 0, milestones: [milestone], start, end });
+  }
+  let trailing = 0;
+  for (const entry of entries) {
+    if (isMilestone(entry, now)) continue;
+    const opened = Date.parse(entry.createdAt);
+    const next = stages.find((stage) => stage.start > opened);
+    if (next === undefined) trailing += 1;
+    else next.steps += 1;
+  }
+  return {
+    stages: stages.map((stage) => ({ steps: stage.steps, milestones: stage.milestones })),
+    trailing,
+  };
+}
+
+function milestonesOf(entries: readonly JournalEntry[], now: number): Milestone[] {
+  const milestones: Milestone[] = [];
+  const waits = new Map<string, Milestone>();
+  for (const entry of entries) {
+    if (!isMilestone(entry, now)) continue;
+    const group = entry.kind === "event" ? entry.group : null;
+    const retried = group === null ? undefined : waits.get(group);
+    if (retried !== undefined) {
+      // The code saw an event it was not waiting for and waited again: one wait, which ends
+      // how its latest retry ends.
+      retried.operationId = entry.id;
+      retried.state = entry.state;
+      retried.completedAt = entry.completedAt;
+      continue;
+    }
+    const milestone: Milestone = {
+      id: group ?? entry.id,
+      operationId: entry.id,
+      kind: entry.kind,
+      state: entry.state,
+      wait: WAIT_KINDS.has(entry.kind),
+      startedAt: entry.createdAt,
+      completedAt: entry.completedAt,
+    };
+    milestones.push(milestone);
+    if (group !== null) waits.set(group, milestone);
+  }
+  return milestones;
+}
+
+function isMilestone(entry: JournalEntry, now: number): boolean {
+  if (MILESTONE_KINDS.has(entry.kind) || entry.state === "failed") return true;
+  if (entry.kind !== "lock") return false;
+  const end = settledEnd(entry, now);
+  return end !== null && end - Date.parse(entry.createdAt) >= LOCK_WAIT;
+}
+
+/** When something open runs until now; something settled at a time a journal did not record, null. */
+function settledEnd(
+  value: { state: CallState; completedAt: string | null },
+  now: number,
+): number | null {
+  if (value.state === "running" || value.state === "waiting") return now;
+  return value.completedAt === null ? null : Date.parse(value.completedAt);
+}
+
+/** A milestone drawn as a timeline draws the same stretch. */
+export function milestoneTone(milestone: Milestone): TimelineTone {
+  if (milestone.state === "failed") return "failed";
+  if (milestone.wait) return "waiting";
+  return milestone.state === "completed" ? "complete" : "running";
+}
+
+/** How a milestone went and how long it took, or has taken so far. */
+export function milestoneDetail(milestone: Milestone, now: number): string {
+  if (milestone.state === "cancelled") return "Cancelled";
+  if (milestone.state === "skipped") return "Skipped";
+  if (milestone.state === "timed_out") return "Timed out";
+  const end = settledEnd(milestone, now);
+  const took = end === null ? "" : formatDuration(end - Date.parse(milestone.startedAt));
+  if (milestone.state === "failed") return took === "" ? "Failed" : `Failed after ${took}`;
+  if (milestone.state === "running") return `Running ${took}`;
+  // An agent call waits for a daemon to give it a session; anything else waits on the world.
+  if (milestone.state === "waiting") return `${milestone.wait ? "Waiting" : "Queued"} ${took}`;
+  if (milestone.wait) return took === "" ? "Waited" : `Waited ${took}`;
+  return took === "" ? "Completed" : took;
+}
+
+/** A run's shape as one sentence, for whoever cannot see it drawn. */
+export function shapeSummary(shape: RunShape, now: number): string {
+  if (shape.stages.length === 0) return stepCount(shape.trailing);
+  return shape.stages
+    .map((stage) =>
+      stage.milestones
+        .map((milestone) => `${milestone.id}: ${milestoneDetail(milestone, now)}`)
+        .join(" and "),
+    )
+    .join(", then ");
+}
+
+/** Steps as a count a reader says aloud: "1 step", "3 steps", "No steps". */
+export function stepCount(count: number): string {
+  if (count === 0) return "No steps";
+  return `${String(count)} ${count === 1 ? "step" : "steps"}`;
+}
+
+/** An operation of a run's detail as its shape reads it. */
+export function journalEntry(operation: RunOperation, parentStatus?: string): JournalEntry {
+  return {
+    id: operation.id,
+    kind: operation.kind,
+    state: operationState(operation, parentStatus),
+    createdAt: operation.createdAt,
+    completedAt: settledAt(operation),
+    group: operation.kind === "event" ? text(record(operation.input)["group"]) || null : null,
+  };
+}
+
+/** An agent call ended when its agent did; Hub records the outcome on its next pass. */
+function settledAt(operation: RunOperation): string | null {
+  return operation.agent?.completedAt ?? operation.completedAt;
+}
+
+/**
+ * How long an operation took, or has taken so far; null when it settled at a time the journal
+ * did not record.
+ */
+export function operationDuration(
+  operation: RunOperation,
+  now: number,
+  parentStatus?: string,
+): number | null {
+  const end = settledEnd(
+    { state: operationState(operation, parentStatus), completedAt: settledAt(operation) },
+    now,
+  );
+  return end === null ? null : Math.max(0, end - Date.parse(operation.createdAt));
+}
+
+/**
+ * The stretches an operation drew on a run's clock. An agent call waited for a daemon before it
+ * worked, so its time before the agent started is a wait.
+ */
+export function operationSpans(
+  operation: RunOperation,
+  now: number,
+  parentStatus?: string,
+): TimelineSpan[] {
+  const state = operationState(operation, parentStatus);
+  const from = Date.parse(operation.createdAt);
+  const to = settledEnd({ state, completedAt: settledAt(operation) }, now);
+  if (to === null) return [];
+  const tone = spanTone(operation.kind, state);
+  const started = operation.agent?.startedAt == null ? null : Date.parse(operation.agent.startedAt);
+  if (started === null || started <= from || started >= to) return [{ from, to, tone }];
+  return [
+    { from, to: started, tone: "waiting" },
+    { from: started, to, tone },
+  ];
+}
+
+function spanTone(kind: string, state: CallState): TimelineTone {
+  if (state === "failed" || state === "timed_out") return "failed";
+  if (WAIT_KINDS.has(kind) || state === "waiting") return "waiting";
+  return state === "running" ? "running" : "complete";
+}
+
 /** The event that started a run, worded as the Trigger's configuration words its events. */
 export function runEventSummary(event: { source: string; type: string }): string {
   if (event.source === "schedule") return "Schedule";
   return subscriptionSummary({ source: event.source, event: event.type });
 }
 
-/** How long something took, to the precision a reader compares runs by. */
-export function formatDuration(milliseconds: number): string {
-  if (!Number.isFinite(milliseconds) || milliseconds < 0) return "";
-  const seconds = Math.round(milliseconds / 1000);
-  if (seconds < 1) return "under 1s";
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return pair(minutes, "m", seconds % 60, "s");
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return pair(hours, "h", minutes % 60, "m");
-  return pair(Math.floor(hours / 24), "d", hours % 24, "h");
-}
-
 /** The time between two instants, or until now while the second has not happened yet. */
 export function elapsed(from: string, to: string | null, now = Date.now()): number {
   return (to === null ? now : Date.parse(to)) - Date.parse(from);
-}
-
-function pair(major: number, majorUnit: string, minor: number, minorUnit: string): string {
-  return minor === 0 ? `${major}${majorUnit}` : `${major}${majorUnit} ${minor}${minorUnit}`;
 }
 
 const EMPTY: Record<string, unknown> = {};

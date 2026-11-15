@@ -1,4 +1,4 @@
-import { queryOptions, useQuery, type QueryKey } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions, useQuery, type QueryKey } from "@tanstack/react-query";
 import { useCallback } from "react";
 import type { Result } from "../contract/respond.js";
 
@@ -24,11 +24,20 @@ interface SnapshotQueryOptions<T> {
   staleTime?: number;
   /** A route's server-resolved snapshot, reused for the first browser render. */
   initialData?: T | undefined;
+  /**
+   * Keep the last answer on screen while a changed key loads. For a read whose key only widens
+   * what it asks for, such as a list asked for more rows, so asking never blanks the list.
+   */
+  keepPrevious?: boolean;
 }
 
-export function snapshotQueryOptions<T>(options: SnapshotQueryOptions<T>) {
+export function snapshotQueryOptions<T>({
+  keepPrevious = false,
+  ...options
+}: SnapshotQueryOptions<T>) {
   return queryOptions({
     ...options,
+    ...(keepPrevious ? { placeholderData: keepPreviousData } : {}),
     queryFn: async () => {
       const result = await options.queryFn();
       if (result.status === "error") throw new SnapshotFailure(result.error.message);

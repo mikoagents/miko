@@ -16,6 +16,11 @@ export interface DataColumn {
    * as its widest value and never truncates. Every table has at least one.
    */
   fill?: boolean;
+  /**
+   * Shown in the header in place of `header`, which stays the column's accessible name: a
+   * timeline column's axis, so its ticks sit over the bars they measure.
+   */
+  headerContent?: ReactNode;
   /** Responsive visibility for the column, header and cells alike. */
   className?: string;
   /** The row's content anatomy, shared by every loading state using these columns. */
@@ -153,7 +158,7 @@ function TableShell({
                   column.className,
                 )}
               >
-                {column.header === "" ? <span className="sr-only">Actions</span> : column.header}
+                <HeaderLabel column={column} />
               </TableHead>
             ))}
           </TableRow>
@@ -164,6 +169,17 @@ function TableShell({
       </Table>
     </div>
   );
+}
+
+function HeaderLabel({ column }: { column: DataColumn }) {
+  if (column.headerContent !== undefined)
+    return (
+      <>
+        <span className="sr-only">{column.header}</span>
+        {column.headerContent}
+      </>
+    );
+  return column.header === "" ? <span className="sr-only">Actions</span> : column.header;
 }
 
 function columnKey(column: DataColumn, index: number): string {

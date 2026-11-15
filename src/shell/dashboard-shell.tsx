@@ -183,7 +183,7 @@ function DashboardContent({
             {...(instance || tenant?.project == null ? {} : { project: tenant.project.name })}
           />
           {/* The app's one content inset. Screens never pad themselves. */}
-          <div className="flex flex-1 flex-col p-4 md:p-8">
+          <div className="flex min-w-0 flex-1 flex-col p-4 md:p-8">
             <Page>
               <ErrorSummary message={error} />
               <PageContent account={account} tenant={tenant} transitioning={transitioning} />
@@ -417,7 +417,7 @@ function destinations(base: string, sections: readonly SectionDestination[]): Na
 // Home stands on its own; the remaining destinations are grouped by the task they support.
 // Organization administration still lives behind one Settings entry.
 const ORGANIZATION_SECTIONS: readonly SectionDestinations[] = [
-  { items: [{ section: "home", label: "Home", icon: House }] },
+  { items: [{ section: "home", label: "Home", icon: House, subtree: true }] },
   {
     label: "Workflows",
     items: [

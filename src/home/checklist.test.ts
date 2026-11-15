@@ -54,6 +54,7 @@ describe("the onboarding checklist", () => {
       runs: [
         {
           id: "r",
+          triggerId: "t",
           triggerName: "slack-help",
           provider: "slack",
           source: "slack.mention",

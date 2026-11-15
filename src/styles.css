@@ -194,28 +194,25 @@
   --shadow-floating: var(--shadow-floating);
 }
 
-.flow-diagram {
-  --pele-bg: var(--card);
-  --pele-fg: var(--foreground);
-  --pele-muted: var(--muted-foreground);
-  --pele-line: var(--muted-foreground);
-  --pele-surface: var(--muted);
-  --pele-surface-alt: var(--accent);
-  --pele-border: var(--input);
-  --pele-accent: var(--link);
-  --pele-error: var(--destructive);
-  --pele-series-1: var(--chart-1);
-  --pele-series-2: var(--chart-2);
-  --pele-series-3: var(--chart-3);
-  --pele-series-4: var(--chart-4);
-  --pele-series-5: var(--chart-5);
-  --pele-series-6: var(--chart-1);
-  --pele-series-7: var(--chart-2);
-  --pele-series-8: var(--chart-3);
-  --pele-title-weight: 400;
-  --pele-heading-weight: 400;
-  --pele-bold-weight: 400;
-  --pele-radius: var(--radius-lg);
+/*
+ * The two timeline fills a utility cannot draw. A running bar is striped, so it reads as not yet
+ * finished without a hue of its own; a folded stretch is hatched, so it reads as time left out
+ * rather than as a bar.
+ */
+.timeline-running {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--muted-foreground) 0 3px,
+    color-mix(in srgb, var(--muted-foreground) 25%, transparent) 3px 6px
+  );
+}
+
+.timeline-fold {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--foreground) 10%, transparent) 0 1px,
+    transparent 1px 5px
+  );
 }
 
 @layer base {

@@ -4,12 +4,22 @@ import {
   agentSessions,
   describeOperation,
   elapsed,
-  formatDuration,
   initialSession,
   operationState,
+  journalEntry,
+  milestoneDetail,
+  milestoneTone,
+  operationDuration,
+  operationSpans,
   runEventSummary,
+  runShape,
+  shapeSummary,
+  stepCount,
+  type CallState,
+  type JournalEntry,
   type RunAgent,
   type RunOperation,
+  type RunShape,
 } from "./run-presentation.js";
 
 function agentOperation(
@@ -24,6 +34,7 @@ function agentOperation(
     input: {},
     error: null,
     createdAt: "2026-11-14T00:00:00.000Z",
+    completedAt: null,
     executionId: `execution-${id}`,
     daemons: ["studio"],
     agent: {
@@ -50,14 +61,44 @@ function step(id: string, kind: string, input: unknown): RunOperation {
     input,
     error: null,
     createdAt: "2026-11-14T00:00:00.000Z",
+    completedAt: null,
     executionId: null,
     daemons: [],
     agent: null,
   };
 }
 
+const START = Date.parse("2026-11-14T00:00:00.000Z");
+
+/** The instant this many seconds into a run. */
+function at(seconds: number): string {
+  return new Date(START + seconds * 1000).toISOString();
+}
+
+function journal(
+  id: string,
+  kind: string,
+  from: number,
+  to: number | null,
+  state: CallState = "completed",
+  group: string | null = null,
+): JournalEntry {
+  return {
+    id,
+    kind,
+    state,
+    createdAt: at(from),
+    completedAt: to === null ? null : at(to),
+    group,
+  };
+}
+
 function ids(records: readonly { id: string }[]): string[] {
   return records.map((entry) => entry.id);
+}
+
+function stageIds(shape: RunShape): string[][] {
+  return shape.stages.map((stage) => ids(stage.milestones));
 }
 
 describe("Trigger run presentation", () => {
@@ -272,18 +313,180 @@ describe("Trigger run presentation", () => {
     );
   });
 
-  it("formats durations to the precision runs are compared by", () => {
-    assert.equal(formatDuration(400), "under 1s");
-    assert.equal(formatDuration(42_000), "42s");
-    assert.equal(formatDuration(120_000), "2m");
-    assert.equal(formatDuration(3_725_000), "1h 2m");
-    assert.equal(formatDuration(93_600_000), "1d 2h");
-    assert.equal(formatDuration(Number.NaN), "");
-    assert.equal(formatDuration(-1), "");
+  it("measures the time between two instants, or until now", () => {
     assert.equal(elapsed("2026-11-14T00:00:00.000Z", "2026-11-14T00:00:05.000Z"), 5000);
     assert.equal(
       elapsed("2026-11-14T00:00:00.000Z", null, Date.parse("2026-11-14T00:01:00.000Z")),
       60_000,
     );
+  });
+
+  it("draws calls made together as one stage and counts the steps between stages", () => {
+    const shape = runShape(
+      [
+        journal("handled", "state.get", 0, 0.1),
+        journal("audit:api", "agent", 1, 1120),
+        journal("audit:web", "agent", 1, 665),
+        journal("audit:infra", "agent", 1, 870, "failed"),
+        journal("fix:api", "agent", 1121, 2380),
+        journal("ci:api:0", "event", 2381, 3000, "completed", "ci:api"),
+        journal("ci:api:7", "event", 3000, 5570, "completed", "ci:api"),
+        journal("pr:api", "github", 5571, 5572),
+        journal("report", "agent", 5573, null, "running"),
+        journal("seen", "state.set", 5574, 5574),
+      ],
+      START + 5702_000,
+    );
+    assert.deepEqual(stageIds(shape), [
+      ["audit:api", "audit:web", "audit:infra"],
+      ["fix:api"],
+      ["ci:api"],
+      ["report"],
+    ]);
+    assert.deepEqual(
+      shape.stages.map((stage) => stage.steps),
+      [1, 0, 0, 1],
+    );
+    assert.equal(shape.trailing, 1);
+    // An event wait the code retried is one wait, opened by its first try and ended by its last.
+    assert.deepEqual(shape.stages[2]?.milestones[0], {
+      id: "ci:api",
+      operationId: "ci:api:7",
+      kind: "event",
+      state: "completed",
+      wait: true,
+      startedAt: at(2381),
+      completedAt: at(5570),
+    });
+  });
+
+  it("keeps stages apart when the journal never said when they ended", () => {
+    const shape = runShape(
+      [journal("plan", "agent", 0, null), journal("check", "agent", 0, null)],
+      START + 60_000,
+    );
+    assert.deepEqual(stageIds(shape), [["plan"], ["check"]]);
+  });
+
+  it("draws a lock only once the run had to wait for it", () => {
+    const shape = runShape(
+      [
+        journal("deploy:acquire", "lock", 0, 0.2),
+        journal("release:acquire", "lock", 1, 31),
+        journal("ship:acquire", "lock", 40, null, "waiting"),
+      ],
+      START + 60_000,
+    );
+    assert.deepEqual(
+      shape.stages.map((stage) => ({ steps: stage.steps, id: stage.milestones[0]?.id })),
+      [
+        { steps: 1, id: "release:acquire" },
+        { steps: 0, id: "ship:acquire" },
+      ],
+    );
+    assert.equal(shape.stages[0]?.milestones[0]?.wait, true);
+  });
+
+  it("says how each milestone went and how long it took", () => {
+    const now = START + 600_000;
+    const [stage] = runShape([journal("review", "agent", 0, 125)], now).stages;
+    const review = stage?.milestones[0];
+    assert.ok(review);
+    assert.equal(milestoneDetail(review, now), "2m 5s");
+    assert.equal(milestoneTone(review), "complete");
+    assert.equal(milestoneDetail({ ...review, state: "failed" }, now), "Failed after 2m 5s");
+    assert.equal(milestoneTone({ ...review, state: "failed", wait: true }), "failed");
+    assert.equal(milestoneDetail({ ...review, state: "running" }, now), "Running 10m");
+    assert.equal(milestoneTone({ ...review, state: "running" }), "running");
+    assert.equal(milestoneDetail({ ...review, state: "waiting" }, now), "Queued 10m");
+    assert.equal(milestoneDetail({ ...review, state: "waiting", wait: true }, now), "Waiting 10m");
+    assert.equal(milestoneTone({ ...review, state: "waiting", wait: true }), "waiting");
+    assert.equal(milestoneDetail({ ...review, wait: true }, now), "Waited 2m 5s");
+    assert.equal(milestoneDetail({ ...review, completedAt: null }, now), "Completed");
+    assert.equal(milestoneDetail({ ...review, completedAt: null, wait: true }, now), "Waited");
+  });
+
+  it("reads a run's shape aloud", () => {
+    const now = START + 600_000;
+    assert.equal(
+      shapeSummary(
+        runShape(
+          [
+            journal("ci:0", "event", 0, 60, "completed", "ci"),
+            journal("review", "agent", 61, 181),
+            journal("lint", "agent", 61, null, "running"),
+          ],
+          now,
+        ),
+        now,
+      ),
+      "ci: Waited 1m, then review: 2m and lint: Running 8m 59s",
+    );
+    assert.equal(shapeSummary(runShape([journal("load", "step", 0, 1)], now), now), "1 step");
+    assert.equal(stepCount(0), "No steps");
+    assert.equal(stepCount(3), "3 steps");
+  });
+
+  it("reads an operation's state and wait group from the run detail", () => {
+    assert.deepEqual(
+      journalEntry({
+        ...step("ci:3", "event", { source: "github", group: "ci" }),
+        status: "waiting",
+      }),
+      {
+        id: "ci:3",
+        kind: "event",
+        state: "waiting",
+        createdAt: "2026-11-14T00:00:00.000Z",
+        completedAt: null,
+        group: "ci",
+      },
+    );
+    assert.equal(journalEntry({ ...step("load", "step", {}), status: "running" }).state, "running");
+    assert.equal(
+      journalEntry(agentOperation("plan", {}, { status: "waiting", executionId: null })).state,
+      "waiting",
+    );
+    // An agent call ended when its agent did, before Hub's next pass recorded it.
+    assert.equal(
+      journalEntry(agentOperation("plan", { completedAt: at(30) }, { completedAt: at(32) }))
+        .completedAt,
+      at(30),
+    );
+  });
+
+  it("draws an agent call's wait for a daemon apart from its work", () => {
+    const now = START + 600_000;
+    const call = agentOperation(
+      "review",
+      { startedAt: at(20), completedAt: at(140) },
+      { createdAt: at(0) },
+    );
+    assert.deepEqual(operationSpans(call, now), [
+      { from: START, to: START + 20_000, tone: "waiting" },
+      { from: START + 20_000, to: START + 140_000, tone: "complete" },
+    ]);
+    assert.equal(operationDuration(call, now), 140_000);
+    assert.deepEqual(operationSpans({ ...call, status: "failed" }, now).at(-1)?.tone, "failed");
+    assert.deepEqual(operationSpans({ ...step("ci:0", "event", {}), completedAt: at(90) }, now), [
+      { from: START, to: START + 90_000, tone: "waiting" },
+    ]);
+    const running = { ...step("load", "step", {}), status: "running" };
+    assert.deepEqual(operationSpans(running, now), [{ from: START, to: now, tone: "running" }]);
+    assert.equal(operationDuration(running, now), 600_000);
+    // A step the journal finished without saying when draws nothing rather than a guess.
+    assert.deepEqual(operationSpans(step("load", "step", {}), now), []);
+    assert.equal(operationDuration(step("load", "step", {}), now), null);
+  });
+
+  it("keeps ended runs from animating a journal entry as live work", () => {
+    const call = agentOperation("review", {}, { status: "waiting" });
+    const now = START + 600_000;
+    const entry = journalEntry(call, "cancelled");
+    assert.equal(entry.state, "cancelled");
+    assert.deepEqual(operationSpans(call, now, "cancelled"), []);
+    assert.equal(operationDuration(call, now, "cancelled"), null);
+    const shape = runShape([entry], now);
+    assert.equal(milestoneDetail(shape.stages[0]!.milestones[0]!, now), "Cancelled");
   });
 });

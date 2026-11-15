@@ -26,7 +26,7 @@ export function TriggerSource({
   current: CodeTriggerDetail;
 }) {
   return (
-    <Card title="Source code">
+    <Card density="compact">
       <SourceFiles organizationSlug={organizationSlug} current={current} />
     </Card>
   );

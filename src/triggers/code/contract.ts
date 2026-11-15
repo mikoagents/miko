@@ -11,6 +11,7 @@ import type { TriggerValue } from "./sdk.js";
 import { TriggerAgentSchema } from "../configuration/schema.js";
 import { WorktreeTargetSchema } from "../../config/compiler.js";
 import { matchesPattern } from "./patterns.js";
+import { TriggerPipelineSchema } from "./pipeline-schema.js";
 
 export { matchesPattern } from "./patterns.js";
 
@@ -107,7 +108,7 @@ export const TriggerManifestSchema = z
   .object({
     name,
     description: z.string().max(2000).optional(),
-    diagram: z.string().trim().min(1).max(12000).optional(),
+    pipeline: TriggerPipelineSchema,
     on: z.array(subscription).min(1).max(100),
     runner: name,
     grants: z

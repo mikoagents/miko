@@ -1,5 +1,5 @@
-/* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop, eslint-plugin-react-perf/jsx-no-new-array-as-prop -- details compose shared summary and table slots */
-import { useCallback, useState } from "react";
+/* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop, eslint-plugin-react-perf/jsx-no-new-array-as-prop, eslint-plugin-react-perf/jsx-no-new-object-as-prop -- details compose shared summary, pipeline and table slots from the run each poll returns */
+import { useCallback, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useSnapshotQuery } from "../../queries/index.js";
 import {
@@ -13,28 +13,36 @@ import {
   DataRow,
   DataTable,
   DataTableSkeleton,
+  type DataColumn,
 } from "../../components/app/data-table.js";
 import { EmptyState } from "../../components/app/empty-state.js";
 import { FailureAlert, NoticeAlert } from "../../components/app/failure-alert.js";
+import { Pipeline, PipelineSkeleton } from "../../components/app/pipeline.js";
 import { RelativeTime } from "../../components/app/relative-time.js";
 import { Section } from "../../components/app/section.js";
 import { StatusPill, statusLabel } from "../../components/app/status-pill.js";
 import { SummaryPanel, SummaryPanelSkeleton } from "../../components/app/summary-panel.js";
+import { TimelineAxis, TimelineLegend, TimelineTrack } from "../../components/app/timeline.js";
 import { TwoLine } from "../../components/app/two-line.js";
 import { Button } from "../../components/ui/button.js";
+import { formatDuration } from "../../lib/duration.js";
+import { timelineScale, type TimelineScale, type TimelineSpan } from "../../lib/timeline.js";
 import { codeTriggerRunDetail, type CodeTriggerRun } from "../functions.js";
 import { SessionHistory, SessionHistorySkeleton } from "../session-history.js";
 import {
   agentSessions,
   describeOperation,
   elapsed,
-  formatDuration,
   initialSession,
+  operationDuration,
+  operationSpans,
   operationState,
   runEventSummary,
   type AgentCall,
   type RunSession,
 } from "./run-presentation.js";
+
+import { pipelineRunStates } from "./pipeline.js";
 
 type Run = CodeTriggerRun["run"];
 type Operation = CodeTriggerRun["operations"][number];
@@ -49,11 +57,11 @@ interface RunScope {
 const ACTIVE_STATUSES = new Set(["queued", "running", "waiting"]);
 
 const SESSION_COLUMNS = [
-  { header: "Session", fill: true },
+  { header: "Session", fill: true, skeleton: { secondary: true } },
   { header: "Continuation key", className: "hidden lg:table-cell" },
-  { header: "Agent", className: "hidden md:table-cell" },
+  { header: "Agent", className: "hidden md:table-cell", skeleton: { secondary: true } },
   { header: "Daemon", className: "hidden lg:table-cell" },
-  { header: "Status" },
+  { header: "Status", skeleton: { pill: true } },
 ];
 const SESSIONS_PENDING = {
   title: "No agent session yet",
@@ -71,18 +79,30 @@ const STEPS_NONE = {
   title: "No steps",
   description: "This run ended before its code took a step.",
 };
-const STEP_COLUMNS = [
-  { header: "Step", fill: true },
-  { header: "Kind", className: "hidden sm:table-cell" },
-  { header: "Status" },
+// Half the table from a tablet up; a phone draws each step's bar under its name instead.
+const TIMELINE_COLUMN: DataColumn = {
+  header: "Timeline",
+  className: "hidden sm:table-cell sm:w-1/2",
+};
+const STEP_COLUMNS: readonly DataColumn[] = [
+  { header: "Step", fill: true, skeleton: { secondary: true } },
+  { header: "Status", skeleton: { pill: true } },
+  { header: "Duration", align: "end", className: "hidden sm:table-cell" },
+  TIMELINE_COLUMN,
 ];
+const PIPELINE_DESCRIPTION =
+  "The Trigger’s declared flow, with recorded progress. All possible branches stay visible.";
+const STEPS_DESCRIPTION =
+  "Every durable step on one clock. Bars that overlap ran at the same time.";
 
 export function CodeActivityDetail({
   view,
   onViewChange,
+  navigation,
   ...scope
 }: RunScope & {
   view: string;
+  navigation: ReactNode;
   /** Opening a session or a step from Run details moves to the view that shows it. */
   onViewChange: (view: string) => void;
 }) {
@@ -108,98 +128,150 @@ export function CodeActivityDetail({
     queryFn: () => load({ data: scope }),
     refetchInterval: 3000,
   });
-  if (snapshot.status === "pending") return <CodeActivityDetailSkeleton view={view} />;
+  if (snapshot.status === "pending")
+    return <CodeActivityDetailSkeleton view={view} navigation={navigation} />;
   if (snapshot.status === "error")
     return (
-      <FailureAlert
-        title="Run unavailable"
-        error={snapshot.error}
-        fallback="Hub couldn't load this Trigger run."
-        onRetry={snapshot.refetch}
-      />
+      <>
+        {navigation}
+        <FailureAlert
+          title="Run unavailable"
+          error={snapshot.error}
+          fallback="Hub couldn't load this Trigger run."
+          onRetry={snapshot.refetch}
+        />
+      </>
     );
-  const { run, operations, logs } = snapshot.data;
+  const { run, operations, logs, pipeline } = snapshot.data;
+  const progress = pipeline === null ? null : pipelineRunStates(pipeline, operations, run.status);
   const { calls, sessions } = agentSessions(operations, run.status);
   const active = ACTIVE_STATUSES.has(run.status);
   const session = sessions.find((entry) => entry.id === sessionId) ?? initialSession(sessions);
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-5">
-      <SummaryPanel
-        label="Trigger run"
-        rows={[
-          { label: "Status", value: <RunStatus run={run} /> },
-          { label: "Started", value: <RelativeTime value={run.createdAt} /> },
-          { label: "Event", value: runEventSummary(run.event) },
-          { label: "Daemon", value: daemonList(operations) },
-        ]}
-      />
-      {run.error === null ? null : (
-        <FailureAlert
-          title={run.status === "skipped" ? "Run skipped" : "Run ended"}
-          error={run.error}
-          fallback="Inspect the run details."
+    <div className="min-w-0">
+      <Section title="Pipeline" description={PIPELINE_DESCRIPTION}>
+        {pipeline === null ? (
+          <NoticeAlert tone="neutral" title="Pipeline unavailable">
+            This revision has no Pipeline definition. Its recorded steps remain available below.
+          </NoticeAlert>
+        ) : (
+          <Pipeline
+            label="Run pipeline"
+            definition={pipeline}
+            states={progress?.states}
+            onSelect={openStep}
+          />
+        )}
+        {progress && progress.unmapped.length > 0 ? (
+          <NoticeAlert tone="neutral" title="Steps outside the pipeline">
+            {String(progress.unmapped.length)} recorded steps have no unique node binding. Inspect
+            them in Steps or Diagnostics.
+          </NoticeAlert>
+        ) : null}
+      </Section>
+      <div className="grid min-w-0 grid-cols-1 gap-5">
+        {navigation}
+        <SummaryPanel
+          label="Trigger run"
+          rows={[
+            { label: "Status", value: <RunStatus run={run} /> },
+            { label: "Started", value: <RelativeTime value={run.createdAt} /> },
+            { label: "Event", value: runEventSummary(run.event) },
+            { label: "Daemon", value: daemonList(operations) },
+          ]}
         />
-      )}
-      <div className="min-w-0">
-        {view === "conversation" ? (
-          <Conversation
-            scope={scope}
-            active={active}
-            calls={calls}
-            sessions={sessions}
-            session={session}
-            onSelect={setSessionId}
+        {run.error === null ? null : (
+          <FailureAlert
+            title={run.status === "skipped" ? "Run skipped" : "Run ended"}
+            error={run.error}
+            fallback="Inspect the run details."
           />
-        ) : null}
-        {view === "details" ? (
-          <RunDetails
-            run={run}
-            operations={operations}
-            calls={calls}
-            sessions={sessions}
-            active={active}
-            onOpenSession={openSession}
-            onOpenStep={openStep}
-          />
-        ) : null}
-        {view === "diagnostics" ? (
-          <Diagnostics
-            scope={scope}
-            run={run}
-            operations={operations}
-            logs={logs}
-            active={active}
-            stepId={stepId}
-            onSelectStep={setStepId}
-          />
-        ) : null}
+        )}
+        <div className="min-w-0">
+          {view === "conversation" ? (
+            <Conversation
+              scope={scope}
+              active={active}
+              calls={calls}
+              sessions={sessions}
+              session={session}
+              onSelect={setSessionId}
+            />
+          ) : null}
+          {view === "details" ? (
+            <RunDetails
+              run={run}
+              operations={operations}
+              calls={calls}
+              sessions={sessions}
+              active={active}
+              onOpenSession={openSession}
+              onOpenStep={openStep}
+            />
+          ) : null}
+          {view === "diagnostics" ? (
+            <Diagnostics
+              scope={scope}
+              run={run}
+              operations={operations}
+              logs={logs}
+              active={active}
+              stepId={stepId}
+              onSelectStep={setStepId}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
 }
 
 const RUN_LABELS = ["Status", "Started", "Event", "Daemon"];
+const DIAGNOSTIC_LABELS = ["Run ID", "Code revision", "Deadline", "Completed"];
 
-export function CodeActivityDetailSkeleton({ view }: { view: string }) {
+export function CodeActivityDetailSkeleton({
+  view,
+  navigation,
+}: {
+  view: string;
+  navigation: ReactNode;
+}) {
   return (
-    <div aria-busy="true" aria-label="Loading Trigger run" className="grid min-w-0 gap-5">
-      <SummaryPanelSkeleton label="Trigger run" labels={RUN_LABELS} />
-      {view === "conversation" ? <SessionHistorySkeleton view={view} /> : null}
-      {view === "diagnostics" ? (
-        <Section title="Run">
-          <CodeBlockSkeleton label="Loading runner diagnostics" />
-        </Section>
-      ) : null}
-      {view === "details" ? (
-        <>
-          <Section title="Agent sessions">
-            <DataTableSkeleton label="Agent sessions" columns={SESSION_COLUMNS} rows={2} />
-          </Section>
-          <Section title="Steps">
-            <DataTableSkeleton label="Steps" columns={STEP_COLUMNS} rows={4} />
-          </Section>
-        </>
-      ) : null}
+    <div aria-busy="true" aria-label="Loading Trigger run" className="min-w-0">
+      <Section title="Pipeline" description={PIPELINE_DESCRIPTION}>
+        <PipelineSkeleton />
+      </Section>
+      <div className="grid min-w-0 grid-cols-1 gap-5">
+        {navigation}
+        <SummaryPanelSkeleton label="Trigger run" labels={RUN_LABELS} />
+        {view === "conversation" ? <SessionHistorySkeleton view={view} /> : null}
+        {view === "details" ? (
+          <div className="min-w-0">
+            <Section title="Agent sessions">
+              <DataTableSkeleton label="Agent sessions" columns={SESSION_COLUMNS} rows={1} />
+            </Section>
+            <Section title="Steps" description={STEPS_DESCRIPTION}>
+              <DataTableSkeleton label="Steps" columns={STEP_COLUMNS} />
+            </Section>
+          </div>
+        ) : null}
+        {view === "diagnostics" ? (
+          <div className="min-w-0">
+            <Section title="Run diagnostics">
+              <SummaryPanelSkeleton label="Run diagnostics" labels={DIAGNOSTIC_LABELS} />
+            </Section>
+            <Section
+              title="Step data"
+              description="What a step was given and what it returned, as Hub stored them."
+            >
+              <CodeBlockSkeleton label="Loading step data" />
+            </Section>
+            <Section title="Runner log">
+              <CodeBlockSkeleton label="Loading runner log" />
+            </Section>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -331,6 +403,13 @@ function RunDetails({
   onOpenStep: (id: string) => void;
 }) {
   const sessionOf = new Map(calls.map((call) => [call.id, call.session]));
+  // A run still going is drawn to now, and redrawn with every poll.
+  const now = Date.now();
+  const spans = new Map(
+    operations.map((operation) => [operation.id, operationSpans(operation, now, run.status)]),
+  );
+  const drawn = [...spans.values()].flat();
+  const scale = timelineScale(Date.parse(run.createdAt), runEnd(run, active, now), drawn);
   return (
     <>
       {calls.length === 0 ? null : (
@@ -352,10 +431,13 @@ function RunDetails({
           <CodeBlock label="Trigger result">{json(run.output)}</CodeBlock>
         </Section>
       )}
-      <Section title="Steps" description="Each durable step, in the order the code reached it.">
+      <Section title="Steps" description={STEPS_DESCRIPTION}>
         <DataTable
           label="Steps"
-          columns={STEP_COLUMNS}
+          columns={[
+            ...STEP_COLUMNS.slice(0, -1),
+            { ...TIMELINE_COLUMN, headerContent: <TimelineAxis scale={scale} /> },
+          ]}
           isEmpty={operations.length === 0}
           empty={active ? STEPS_PENDING : STEPS_NONE}
         >
@@ -363,12 +445,21 @@ function RunDetails({
             <StepRow
               key={operation.id}
               operation={operation}
-              session={sessionOf.get(operation.id) ?? null}
               parentStatus={run.status}
+              session={sessionOf.get(operation.id) ?? null}
+              scale={scale}
+              spans={spans.get(operation.id) ?? []}
+              duration={operationDuration(operation, now, run.status)}
               onOpen={onOpenStep}
             />
           ))}
         </DataTable>
+        {drawn.length === 0 ? null : (
+          <TimelineLegend
+            tones={[...new Set(drawn.map((span) => span.tone))]}
+            folded={scale.folds.length > 0}
+          />
+        )}
       </Section>
     </>
   );
@@ -408,18 +499,26 @@ function SessionRow({ session, onOpen }: { session: RunSession; onOpen: (id: str
 
 function StepRow({
   operation,
-  session,
   parentStatus,
+  session,
+  scale,
+  spans,
+  duration,
   onOpen,
 }: {
   operation: Operation;
-  session: number | null;
   parentStatus: string;
+  session: number | null;
+  scale: TimelineScale;
+  spans: readonly TimelineSpan[];
+  /** Null when the step settled at a time the journal did not record. */
+  duration: number | null;
   onOpen: (id: string) => void;
 }) {
   const open = useCallback(() => onOpen(operation.id), [onOpen, operation.id]);
   const { kind, summary } = describeOperation(operation);
   const status = stepStatus(operation, parentStatus);
+  const took = duration === null ? "—" : formatDuration(duration);
   return (
     <DataRow onSelect={open}>
       <DataCell>
@@ -429,20 +528,36 @@ function StepRow({
               {operation.id}
             </Button>
           }
-          {...(summary === "" ? {} : { secondary: summary })}
+          secondary={facts(
+            kind,
+            session === null ? null : `Session ${String(session)}`,
+            summary === "" ? null : summary,
+          )}
         />
-      </DataCell>
-      <DataCell>
-        <TwoLine
-          primary={kind}
-          {...(session === null ? {} : { secondary: `Session ${String(session)}` })}
-        />
+        {/* A phone has no room for the timeline or duration columns: the step's own line under
+            its name carries both. */}
+        <span className="mt-1 flex items-center gap-2 sm:hidden">
+          <span className="min-w-0 flex-1">
+            <TimelineTrack scale={scale} spans={spans} compact />
+          </span>
+          <span className="text-xs text-muted-foreground">{took}</span>
+        </span>
       </DataCell>
       <DataCell>
         <StatusPill tone={tone(status)}>{statusLabel(status)}</StatusPill>
       </DataCell>
+      <DataCell>{took}</DataCell>
+      <DataCell>
+        <TimelineTrack scale={scale} spans={spans} />
+      </DataCell>
     </DataRow>
   );
+}
+
+/** Where a run's clock stops: when it ended, now while it is going, or its last step's end. */
+function runEnd(run: Run, active: boolean, now: number): number {
+  if (active) return now;
+  return run.completedAt === null ? Date.parse(run.createdAt) : Date.parse(run.completedAt);
 }
 
 function Diagnostics({

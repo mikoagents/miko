@@ -1,3 +1,4 @@
+import { testPipeline } from "../../test-utils/pipeline.js";
 import assert from "node:assert/strict";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
@@ -70,6 +71,18 @@ describe.each(["embedded", "postgres"] as const)("programmable Trigger on %s", (
           "select count(*)::int as count from trigger_code_operations",
         );
       assert.equal(count.rows[0]?.count, 2);
+      // A run's shape is read from its journal without the prompts and outputs it holds.
+      const summaries = await fixture
+        .database()
+        .triggerCode.transaction("code-org", (tx) => tx.operationSummaries([started.run!.id]));
+      assert.deepEqual(
+        summaries.map((summary) => `${summary.kind} ${summary.status}`),
+        ["agent completed", "agent completed"],
+      );
+      for (const summary of summaries) {
+        assert.ok(summary.completedAt !== undefined && summary.completedAt >= summary.createdAt);
+        assert.equal("input" in summary || "output" in summary, false);
+      }
       // Two operations on one daemon appear once; child workflow runs retain their own attribution.
       assert.deepEqual(
         await fixture.database().listTriggerRunDaemons("code-org", [started.run.id]),
@@ -140,6 +153,7 @@ describe.each(["embedded", "postgres"] as const)("programmable Trigger on %s", (
       const body = {
         format: "trigger-code-v1" as const,
         manifest: {
+          pipeline: testPipeline(),
           name: "native-wait",
           runner: "test",
           on: [
@@ -467,6 +481,7 @@ function program(): TriggerArtifact {
   const body = {
     format: "trigger-code-v1" as const,
     manifest: {
+      pipeline: testPipeline(),
       name: "code-review",
       runner: "test",
       on: [{ source: "manual", event: "run" }],
@@ -504,6 +519,7 @@ function sessionProgram(): TriggerArtifact {
   const body = {
     format: "trigger-code-v1" as const,
     manifest: {
+      pipeline: testPipeline(),
       name: "review-rounds",
       runner: "test",
       on: [{ source: "manual", event: "run" }],

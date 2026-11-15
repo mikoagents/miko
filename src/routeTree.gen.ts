@@ -51,11 +51,13 @@ import { Route as ShellOOrganizationSlugConnectionsRouteImport } from './routes/
 import { Route as ShellOOrganizationSlugActivityRouteImport } from './routes/_shell/o/$organizationSlug/activity'
 import { Route as ShellOOrganizationSlugTriggersIndexRouteImport } from './routes/_shell/o/$organizationSlug/triggers/index'
 import { Route as ShellOOrganizationSlugSettingsIndexRouteImport } from './routes/_shell/o/$organizationSlug/settings/index'
+import { Route as ShellOOrganizationSlugHomeIndexRouteImport } from './routes/_shell/o/$organizationSlug/home/index'
 import { Route as ShellOOrganizationSlugTriggersTriggerIdRouteImport } from './routes/_shell/o/$organizationSlug/triggers/$triggerId'
 import { Route as ShellOOrganizationSlugSettingsUsageRouteImport } from './routes/_shell/o/$organizationSlug/settings/usage'
 import { Route as ShellOOrganizationSlugSettingsTeamRouteImport } from './routes/_shell/o/$organizationSlug/settings/team'
 import { Route as ShellOOrganizationSlugSettingsBillingRouteImport } from './routes/_shell/o/$organizationSlug/settings/billing'
 import { Route as ShellOOrganizationSlugSettingsApiKeysRouteImport } from './routes/_shell/o/$organizationSlug/settings/api-keys'
+import { Route as ShellOOrganizationSlugHomeTriggerIdRunIdRouteImport } from './routes/_shell/o/$organizationSlug/home/$triggerId/$runId'
 
 const WebhookRoute = WebhookRouteImport.update({
   id: '/webhook',
@@ -285,6 +287,12 @@ const ShellOOrganizationSlugSettingsIndexRoute =
     path: '/',
     getParentRoute: () => ShellOOrganizationSlugSettingsRoute,
   } as any)
+const ShellOOrganizationSlugHomeIndexRoute =
+  ShellOOrganizationSlugHomeIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => ShellOOrganizationSlugHomeRoute,
+  } as any)
 const ShellOOrganizationSlugTriggersTriggerIdRoute =
   ShellOOrganizationSlugTriggersTriggerIdRouteImport.update({
     id: '/$triggerId',
@@ -315,6 +323,12 @@ const ShellOOrganizationSlugSettingsApiKeysRoute =
     path: '/api-keys',
     getParentRoute: () => ShellOOrganizationSlugSettingsRoute,
   } as any)
+const ShellOOrganizationSlugHomeTriggerIdRunIdRoute =
+  ShellOOrganizationSlugHomeTriggerIdRunIdRouteImport.update({
+    id: '/$triggerId/$runId',
+    path: '/$triggerId/$runId',
+    getParentRoute: () => ShellOOrganizationSlugHomeRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ShellIndexRoute
@@ -344,7 +358,7 @@ export interface FileRoutesByFullPath {
   '/o/$organizationSlug/activity': typeof ShellOOrganizationSlugActivityRoute
   '/o/$organizationSlug/connections': typeof ShellOOrganizationSlugConnectionsRoute
   '/o/$organizationSlug/daemons': typeof ShellOOrganizationSlugDaemonsRoute
-  '/o/$organizationSlug/home': typeof ShellOOrganizationSlugHomeRoute
+  '/o/$organizationSlug/home': typeof ShellOOrganizationSlugHomeRouteWithChildren
   '/o/$organizationSlug/settings': typeof ShellOOrganizationSlugSettingsRouteWithChildren
   '/o/$organizationSlug/triggers': typeof ShellOOrganizationSlugTriggersRouteWithChildren
   '/agent-executions/$executionId/attachments/$attachmentId': typeof AgentExecutionsExecutionIdAttachmentsAttachmentIdRoute
@@ -361,8 +375,10 @@ export interface FileRoutesByFullPath {
   '/o/$organizationSlug/settings/team': typeof ShellOOrganizationSlugSettingsTeamRoute
   '/o/$organizationSlug/settings/usage': typeof ShellOOrganizationSlugSettingsUsageRoute
   '/o/$organizationSlug/triggers/$triggerId': typeof ShellOOrganizationSlugTriggersTriggerIdRoute
+  '/o/$organizationSlug/home/': typeof ShellOOrganizationSlugHomeIndexRoute
   '/o/$organizationSlug/settings/': typeof ShellOOrganizationSlugSettingsIndexRoute
   '/o/$organizationSlug/triggers/': typeof ShellOOrganizationSlugTriggersIndexRoute
+  '/o/$organizationSlug/home/$triggerId/$runId': typeof ShellOOrganizationSlugHomeTriggerIdRunIdRoute
 }
 export interface FileRoutesByTo {
   '/health': typeof HealthRoute
@@ -392,7 +408,6 @@ export interface FileRoutesByTo {
   '/o/$organizationSlug/activity': typeof ShellOOrganizationSlugActivityRoute
   '/o/$organizationSlug/connections': typeof ShellOOrganizationSlugConnectionsRoute
   '/o/$organizationSlug/daemons': typeof ShellOOrganizationSlugDaemonsRoute
-  '/o/$organizationSlug/home': typeof ShellOOrganizationSlugHomeRoute
   '/agent-executions/$executionId/attachments/$attachmentId': typeof AgentExecutionsExecutionIdAttachmentsAttachmentIdRoute
   '/api/integrations/discord/callback': typeof ApiIntegrationsDiscordCallbackRoute
   '/api/integrations/github/callback': typeof ApiIntegrationsGithubCallbackRoute
@@ -407,8 +422,10 @@ export interface FileRoutesByTo {
   '/o/$organizationSlug/settings/team': typeof ShellOOrganizationSlugSettingsTeamRoute
   '/o/$organizationSlug/settings/usage': typeof ShellOOrganizationSlugSettingsUsageRoute
   '/o/$organizationSlug/triggers/$triggerId': typeof ShellOOrganizationSlugTriggersTriggerIdRoute
+  '/o/$organizationSlug/home': typeof ShellOOrganizationSlugHomeIndexRoute
   '/o/$organizationSlug/settings': typeof ShellOOrganizationSlugSettingsIndexRoute
   '/o/$organizationSlug/triggers': typeof ShellOOrganizationSlugTriggersIndexRoute
+  '/o/$organizationSlug/home/$triggerId/$runId': typeof ShellOOrganizationSlugHomeTriggerIdRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -440,7 +457,7 @@ export interface FileRoutesById {
   '/_shell/o/$organizationSlug/activity': typeof ShellOOrganizationSlugActivityRoute
   '/_shell/o/$organizationSlug/connections': typeof ShellOOrganizationSlugConnectionsRoute
   '/_shell/o/$organizationSlug/daemons': typeof ShellOOrganizationSlugDaemonsRoute
-  '/_shell/o/$organizationSlug/home': typeof ShellOOrganizationSlugHomeRoute
+  '/_shell/o/$organizationSlug/home': typeof ShellOOrganizationSlugHomeRouteWithChildren
   '/_shell/o/$organizationSlug/settings': typeof ShellOOrganizationSlugSettingsRouteWithChildren
   '/_shell/o/$organizationSlug/triggers': typeof ShellOOrganizationSlugTriggersRouteWithChildren
   '/agent-executions/$executionId/attachments/$attachmentId': typeof AgentExecutionsExecutionIdAttachmentsAttachmentIdRoute
@@ -457,8 +474,10 @@ export interface FileRoutesById {
   '/_shell/o/$organizationSlug/settings/team': typeof ShellOOrganizationSlugSettingsTeamRoute
   '/_shell/o/$organizationSlug/settings/usage': typeof ShellOOrganizationSlugSettingsUsageRoute
   '/_shell/o/$organizationSlug/triggers/$triggerId': typeof ShellOOrganizationSlugTriggersTriggerIdRoute
+  '/_shell/o/$organizationSlug/home/': typeof ShellOOrganizationSlugHomeIndexRoute
   '/_shell/o/$organizationSlug/settings/': typeof ShellOOrganizationSlugSettingsIndexRoute
   '/_shell/o/$organizationSlug/triggers/': typeof ShellOOrganizationSlugTriggersIndexRoute
+  '/_shell/o/$organizationSlug/home/$triggerId/$runId': typeof ShellOOrganizationSlugHomeTriggerIdRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -507,8 +526,10 @@ export interface FileRouteTypes {
     | '/o/$organizationSlug/settings/team'
     | '/o/$organizationSlug/settings/usage'
     | '/o/$organizationSlug/triggers/$triggerId'
+    | '/o/$organizationSlug/home/'
     | '/o/$organizationSlug/settings/'
     | '/o/$organizationSlug/triggers/'
+    | '/o/$organizationSlug/home/$triggerId/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/health'
@@ -538,7 +559,6 @@ export interface FileRouteTypes {
     | '/o/$organizationSlug/activity'
     | '/o/$organizationSlug/connections'
     | '/o/$organizationSlug/daemons'
-    | '/o/$organizationSlug/home'
     | '/agent-executions/$executionId/attachments/$attachmentId'
     | '/api/integrations/discord/callback'
     | '/api/integrations/github/callback'
@@ -553,8 +573,10 @@ export interface FileRouteTypes {
     | '/o/$organizationSlug/settings/team'
     | '/o/$organizationSlug/settings/usage'
     | '/o/$organizationSlug/triggers/$triggerId'
+    | '/o/$organizationSlug/home'
     | '/o/$organizationSlug/settings'
     | '/o/$organizationSlug/triggers'
+    | '/o/$organizationSlug/home/$triggerId/$runId'
   id:
     | '__root__'
     | '/_shell'
@@ -602,8 +624,10 @@ export interface FileRouteTypes {
     | '/_shell/o/$organizationSlug/settings/team'
     | '/_shell/o/$organizationSlug/settings/usage'
     | '/_shell/o/$organizationSlug/triggers/$triggerId'
+    | '/_shell/o/$organizationSlug/home/'
     | '/_shell/o/$organizationSlug/settings/'
     | '/_shell/o/$organizationSlug/triggers/'
+    | '/_shell/o/$organizationSlug/home/$triggerId/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -932,6 +956,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellOOrganizationSlugSettingsIndexRouteImport
       parentRoute: typeof ShellOOrganizationSlugSettingsRoute
     }
+    '/_shell/o/$organizationSlug/home/': {
+      id: '/_shell/o/$organizationSlug/home/'
+      path: '/'
+      fullPath: '/o/$organizationSlug/home/'
+      preLoaderRoute: typeof ShellOOrganizationSlugHomeIndexRouteImport
+      parentRoute: typeof ShellOOrganizationSlugHomeRoute
+    }
     '/_shell/o/$organizationSlug/triggers/$triggerId': {
       id: '/_shell/o/$organizationSlug/triggers/$triggerId'
       path: '/$triggerId'
@@ -967,8 +998,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellOOrganizationSlugSettingsApiKeysRouteImport
       parentRoute: typeof ShellOOrganizationSlugSettingsRoute
     }
+    '/_shell/o/$organizationSlug/home/$triggerId/$runId': {
+      id: '/_shell/o/$organizationSlug/home/$triggerId/$runId'
+      path: '/$triggerId/$runId'
+      fullPath: '/o/$organizationSlug/home/$triggerId/$runId'
+      preLoaderRoute: typeof ShellOOrganizationSlugHomeTriggerIdRunIdRouteImport
+      parentRoute: typeof ShellOOrganizationSlugHomeRoute
+    }
   }
 }
+
+interface ShellOOrganizationSlugHomeRouteChildren {
+  ShellOOrganizationSlugHomeIndexRoute: typeof ShellOOrganizationSlugHomeIndexRoute
+  ShellOOrganizationSlugHomeTriggerIdRunIdRoute: typeof ShellOOrganizationSlugHomeTriggerIdRunIdRoute
+}
+
+const ShellOOrganizationSlugHomeRouteChildren: ShellOOrganizationSlugHomeRouteChildren =
+  {
+    ShellOOrganizationSlugHomeIndexRoute: ShellOOrganizationSlugHomeIndexRoute,
+    ShellOOrganizationSlugHomeTriggerIdRunIdRoute:
+      ShellOOrganizationSlugHomeTriggerIdRunIdRoute,
+  }
+
+const ShellOOrganizationSlugHomeRouteWithChildren =
+  ShellOOrganizationSlugHomeRoute._addFileChildren(
+    ShellOOrganizationSlugHomeRouteChildren,
+  )
 
 interface ShellOOrganizationSlugSettingsRouteChildren {
   ShellOOrganizationSlugSettingsApiKeysRoute: typeof ShellOOrganizationSlugSettingsApiKeysRoute
@@ -1025,7 +1080,7 @@ interface ShellRouteChildren {
   ShellOOrganizationSlugActivityRoute: typeof ShellOOrganizationSlugActivityRoute
   ShellOOrganizationSlugConnectionsRoute: typeof ShellOOrganizationSlugConnectionsRoute
   ShellOOrganizationSlugDaemonsRoute: typeof ShellOOrganizationSlugDaemonsRoute
-  ShellOOrganizationSlugHomeRoute: typeof ShellOOrganizationSlugHomeRoute
+  ShellOOrganizationSlugHomeRoute: typeof ShellOOrganizationSlugHomeRouteWithChildren
   ShellOOrganizationSlugSettingsRoute: typeof ShellOOrganizationSlugSettingsRouteWithChildren
   ShellOOrganizationSlugTriggersRoute: typeof ShellOOrganizationSlugTriggersRouteWithChildren
 }
@@ -1041,7 +1096,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellOOrganizationSlugConnectionsRoute:
     ShellOOrganizationSlugConnectionsRoute,
   ShellOOrganizationSlugDaemonsRoute: ShellOOrganizationSlugDaemonsRoute,
-  ShellOOrganizationSlugHomeRoute: ShellOOrganizationSlugHomeRoute,
+  ShellOOrganizationSlugHomeRoute: ShellOOrganizationSlugHomeRouteWithChildren,
   ShellOOrganizationSlugSettingsRoute:
     ShellOOrganizationSlugSettingsRouteWithChildren,
   ShellOOrganizationSlugTriggersRoute:

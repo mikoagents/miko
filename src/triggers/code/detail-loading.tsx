@@ -3,13 +3,17 @@ import { useMatches } from "@tanstack/react-router";
 import { Steps } from "../../components/app/steps.js";
 import { PageHeader } from "../../components/app/page.js";
 import { PageHeaderSkeleton } from "../../components/app/page.js";
-import { SummaryPanelSkeleton } from "../../components/app/summary-panel.js";
-import { FlowDiagramSkeleton } from "../../components/app/flow-diagram.js";
+import { RecordListSkeleton } from "../../components/app/record-list.js";
+import { PipelineSkeleton } from "../../components/app/pipeline.js";
 import { Section } from "../../components/app/section.js";
 import { TriggerRunHistorySkeleton } from "../activity-loading.js";
 import { TriggerSourceSkeleton } from "./source-loading.js";
 
-const CONFIGURATION_LABELS = ["Events", "Runs on", "Agent calls", "Access"];
+const CONFIGURATION_SECTIONS = [
+  { title: "Events and access", rows: 2 },
+  { title: "Runs on", rows: 2 },
+  { title: "Agent calls", rows: 1 },
+];
 
 export function TriggerRouteLoading() {
   const creating = useMatches({
@@ -49,25 +53,21 @@ export function TriggerRouteLoading() {
 export function TriggerDetailSkeleton() {
   return (
     <div aria-busy="true" aria-label="Loading Trigger">
-      <PageHeaderSkeleton description={false} />
-      <Section>
-        <Card title="How it runs">
-          <FlowDiagramSkeleton />
-        </Card>
+      <PageHeaderSkeleton />
+      <Section title="Pipeline">
+        <PipelineSkeleton />
       </Section>
-      <Section>
-        <Card title="Configuration">
-          <SummaryPanelSkeleton
-            label="Trigger configuration"
-            labels={CONFIGURATION_LABELS}
-            layout="groups"
-          />
-        </Card>
-      </Section>
-      <Section title="Run history" description="Open a run to see its result, steps and logs.">
+      {CONFIGURATION_SECTIONS.map(({ title, rows }) => (
+        <Section key={title} title={title}>
+          <Card density="compact">
+            <RecordListSkeleton label={title} rows={rows} />
+          </Card>
+        </Section>
+      ))}
+      <Section title="Run history">
         <TriggerRunHistorySkeleton />
       </Section>
-      <Section>
+      <Section title="Source code">
         <TriggerSourceSkeleton />
       </Section>
     </div>

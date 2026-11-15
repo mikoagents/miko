@@ -42,6 +42,7 @@ export interface HomeSnapshot {
     receivedAt: string;
     status: OrganizationRunRecord["status"] | CodeRunStatus;
     provider: string;
+    code?: boolean;
   })[];
   unrouted: readonly UnroutedProviderEventCount[];
   windowDays: number;
@@ -83,6 +84,35 @@ export class HomeDashboard {
       this.database.countUnroutedProviderEventsSince(organizationId, since),
       this.database.triggerCode.transaction(organizationId, (tx) => tx.listRuns()),
     ]);
+    const recentRuns = runs
+      .map((run): HomeSnapshot["runs"][number] => ({
+        id: run.id,
+        triggerId: run.triggerId,
+        triggerName: run.triggerName,
+        provider: run.provider,
+        source: run.source,
+        status: run.status,
+        receivedAt: run.receivedAt.toISOString(),
+        agent: run.agent,
+      }))
+      .concat(
+        codeRuns
+          .filter((run) => run.createdAt >= since.toISOString())
+          .map((run) => ({
+            id: run.id,
+            triggerId: run.triggerId,
+            triggerName:
+              triggers.find((trigger) => trigger.id === run.triggerId)?.name ?? "Trigger",
+            provider: run.event.source,
+            source: `${run.event.source}.${run.event.type}`,
+            status: run.status,
+            receivedAt: run.createdAt,
+            agent: null,
+            code: true,
+          })),
+      )
+      .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+      .slice(0, RUNS_SHOWN);
     return {
       organization: tenant.organization,
       appsConfigured: this.providerAppsConfigured(connections),
@@ -116,39 +146,17 @@ export class HomeDashboard {
           presence,
           canExecute: permissions.includes("hub.execute"),
         })),
-      triggers: triggers.map((trigger, index) => ({
-        id: trigger.id,
-        name: trigger.name,
-        event: triggerEvent(revisions[index]?.yaml, revisions[index]?.sourceEvidence),
-        ...(trigger.format === "code" ? { code: true } : {}),
-        enabled: trigger.enabled,
-      })),
-      runs: runs
-        .map((run): HomeSnapshot["runs"][number] => ({
-          id: run.id,
-          triggerName: run.triggerName,
-          provider: run.provider,
-          source: run.source,
-          status: run.status,
-          receivedAt: run.receivedAt.toISOString(),
-          agent: run.agent,
-        }))
-        .concat(
-          codeRuns
-            .filter((run) => run.createdAt >= since.toISOString())
-            .map((run) => ({
-              id: run.id,
-              triggerName:
-                triggers.find((trigger) => trigger.id === run.triggerId)?.name ?? "Trigger",
-              provider: run.event.source,
-              source: `${run.event.source}.${run.event.type}`,
-              status: run.status,
-              receivedAt: run.createdAt,
-              agent: null,
-            })),
-        )
-        .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
-        .slice(0, RUNS_SHOWN),
+      triggers: triggers.map((trigger, index) => {
+        const result: HomeSnapshot["triggers"][number] = {
+          id: trigger.id,
+          name: trigger.name,
+          event: triggerEvent(revisions[index]?.yaml, revisions[index]?.sourceEvidence),
+          enabled: trigger.enabled,
+        };
+        if (trigger.format === "code") result.code = true;
+        return result;
+      }),
+      runs: recentRuns,
       unrouted,
       windowDays: HOME_WINDOW_DAYS,
     };

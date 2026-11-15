@@ -237,6 +237,107 @@ export function githubAccess(grants: NonNullable<TriggerGrants["github"]>): Gith
     }));
 }
 
+/**
+ * Scopes that subscribe to the same events, in the order the scopes are already listed. A later
+ * scope joins the earlier row; one that differs keeps its own, so a repository is never shown as
+ * subscribing to another's events. One scope is already one row.
+ */
+export function eventScopeGroups(
+  scopes: readonly EventScope[],
+): { resources: string; events: string }[] {
+  const groups: { events: string; resources: string[] }[] = [];
+  for (const scope of scopes) {
+    const group = groups.find((candidate) => candidate.events === scope.events);
+    if (group) group.resources.push(scope.resource);
+    else groups.push({ events: scope.events, resources: [scope.resource] });
+  }
+  return groups.map((group) => ({
+    resources: group.resources.join(", "),
+    events: group.events,
+  }));
+}
+
+/**
+ * The repositories every grant reaches, joined for display, when there is more than one grant and
+ * they agree — including when that list is empty. One grant stays beside its own list. The same
+ * repositories in a different order are not the same declaration, so they stay apart.
+ */
+export function sharedGrantRepositories(grants: GithubAccess["grants"]): string | null {
+  const first = grants[0];
+  if (grants.length < 2 || first === undefined) return null;
+  const key = (repositories: readonly string[]) => repositories.join("\0");
+  const repositories = key(first.repositories);
+  return grants.every((grant) => key(grant.repositories) === repositories)
+    ? first.repositories.join(", ")
+    : null;
+}
+
+export interface PermissionBand {
+  /** The permissions that share one level, in the order `githubAccess` already sorted. */
+  labels: string[];
+  shared: string | null;
+  levels: { alias: string; level: string }[];
+}
+
+/**
+ * Permissions that grant the same level, so "Read" is said once for Actions, Checks, and Statuses
+ * rather than beside each of them. Bands keep the order their first permission has in GitHub's
+ * own list; a later permission joins the earlier band instead of starting a second one.
+ */
+export function permissionBands(
+  permissions: readonly GithubAccess["permissions"][number][],
+): PermissionBand[] {
+  const bands: PermissionBand[] = [];
+  for (const permission of permissions) {
+    const key = permissionLevelKey(permission);
+    const band = bands.find((candidate) => permissionLevelKey(candidate) === key);
+    if (band) band.labels.push(permission.label);
+    else
+      bands.push({
+        labels: [permission.label],
+        shared: permission.shared,
+        levels: permission.levels,
+      });
+  }
+  return bands;
+}
+
+function permissionLevelKey(permission: {
+  shared: string | null;
+  levels: readonly { alias: string; level: string }[];
+}): string {
+  return permission.shared ?? JSON.stringify(permission.levels);
+}
+
+export interface EventAccessRecord extends EventRecord {
+  access: GithubAccess | null;
+}
+
+/** Join intake and grants by GitHub connection without merging their independent scopes. */
+export function eventAccessRecords(manifest: TriggerManifest): EventAccessRecord[] {
+  const access = new Map(
+    githubAccess(manifest.grants.github ?? {}).map((entry) => [entry.connection, entry]),
+  );
+  const records = eventRecords(manifest.on).map((record) => {
+    const grant =
+      record.source === "github" && record.scopes !== undefined
+        ? (access.get(record.primary) ?? null)
+        : null;
+    if (grant !== null) access.delete(grant.connection);
+    return Object.assign(record, { access: grant });
+  });
+  return [
+    ...records,
+    ...[...access.values()].map((grant) => ({
+      key: JSON.stringify(["connection", "github", grant.connection]),
+      source: "github",
+      primary: grant.connection,
+      secondary: "GitHub connection",
+      access: grant,
+    })),
+  ];
+}
+
 function byName(left: string, right: string): number {
   return left.localeCompare(right, "en", { numeric: true });
 }

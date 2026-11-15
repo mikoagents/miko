@@ -24,6 +24,7 @@ import { daemonLoginCommand, GRANT_EXECUTE_COMMAND } from "../daemons/handoff.js
 import { queryState } from "../projects/panel-state.js";
 import { useRouteTenant } from "../projects/context.js";
 import { deriveChecklist, type Checklist, type ChecklistStep } from "./checklist.js";
+import { ACTIVITY_RUN_ROUTE, activityRunSearch } from "../triggers/activity-run.js";
 import { homeSnapshot, type HomeSnapshot } from "./functions.js";
 
 const RECENT_RUNS_SHOWN = 5;
@@ -36,6 +37,7 @@ export function HomePanel() {
   const snapshot = useSnapshotQuery({
     queryKey: ["home", tenant.account.id, tenant.organization.id],
     queryFn: () => load({ data: scope }),
+    refetchInterval: 10000,
   });
   const home = queryState<HomeSnapshot>(snapshot, "Overview unavailable", <HomeLoading />);
   if (!home.ok) return home.element;
@@ -114,7 +116,24 @@ export function HomePanel() {
                   }
                 >
                   <TwoLine
-                    primary={run.triggerName}
+                    primary={
+                      run.triggerId === null ? (
+                        run.triggerName
+                      ) : (
+                        <Link
+                          to={ACTIVITY_RUN_ROUTE}
+                          params={{
+                            organizationSlug: data.organization.slug,
+                            triggerId: run.triggerId,
+                            runId: run.id,
+                          }}
+                          search={activityRunSearch(run.code === true)}
+                          className="text-foreground hover:text-link"
+                        >
+                          {run.triggerName}
+                        </Link>
+                      )
+                    }
                     secondary={
                       <>
                         {run.source} · <RelativeTime value={run.receivedAt} />

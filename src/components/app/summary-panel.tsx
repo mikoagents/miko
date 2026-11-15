@@ -10,11 +10,13 @@ export interface SummaryRow {
 }
 
 /**
- * The four shapes a description list takes. `grid` is a bordered panel of its own. `groups`
+ * The shapes a description list takes. `grid` is a bordered panel of its own. `groups`
  * names the parts of a surface that already has a border — a label column beside each part, a
  * hairline between them — so the parts read as siblings and their contents as children. `facts`
  * is a compact run of label-over-value pairs inside a record, with no rules of its own. `names`
  * sets names from code beside what each stands for: a grant beside the repositories it reaches.
+ * `columns` sets peer blocks beside each other once the record is wide enough, and stacks them
+ * on a phone, so a connection's events and its access share the row.
  */
 const LAYOUTS = {
   grid: {
@@ -33,6 +35,14 @@ const LAYOUTS = {
     // surface, not a value, and the column it sits in is what sets it apart from them.
     row: "grid min-w-0 gap-3 py-5 first:pt-0 last:pb-0 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-6",
     term: "text-sm text-muted-foreground",
+  },
+  columns: {
+    // Fitted tracks, as `grid` is: one block fills the row, two share it, and three do not leave
+    // a fixed pair with a hole. Below `sm` the page is too narrow for a 16rem minimum, so the
+    // blocks stack in one column that can shrink with the phone.
+    list: "grid min-w-0 gap-x-6 gap-y-3 sm:grid-cols-[repeat(auto-fit,minmax(16rem,1fr))]",
+    row: "grid min-w-0 content-start gap-2",
+    term: "text-xs text-muted-foreground",
   },
   facts: {
     // Filled tracks rather than a wrapping row: every record in a list lines its facts up in the
