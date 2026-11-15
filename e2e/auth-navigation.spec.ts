@@ -131,3 +131,58 @@ for (const action of ["select", "create"] as const) {
     }
   });
 }
+
+test("hides account actions when an inactive invitation snapshot matches the destination", async ({
+  hub,
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const owner = {
+    name: "Invitation owner",
+    email: "auth-invitation-cache@example.com",
+    password: "auth-navigation-password",
+  };
+  const inviter = {
+    name: "Orbit owner",
+    email: "auth-invitation-inviter@example.com",
+    password: "auth-navigation-password",
+  };
+  await hub.signUpAs("owner", owner);
+  await hub.createOrganization("owner", "Acme");
+  await hub.signUpAs("inviter", inviter);
+  await hub.createOrganization("inviter", "Orbit");
+  const invitation = await hub.inviteMember("inviter", owner.email, "admin");
+  await hub.openInvitation("owner", invitation);
+  await hub.acceptInvitation("owner");
+
+  const marker = "auth-invitation-cache-document";
+  await page.evaluate((value) => Reflect.set(window, value, true), marker);
+  await hub.chooseOrganization("owner", "Acme");
+  expect(await page.evaluate((value) => Reflect.get(window, value), marker)).toBe(true);
+
+  const application = hub.primaryApplication();
+  await application.query("alter table invitation rename to review_unavailable_invitation");
+  try {
+    await page.getByRole("button", { name: "Organization", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Orbit", exact: true }).click();
+    await expect(page).toHaveURL(/\/o\/orbit-[^/]+\/home$/u, { timeout: 30_000 });
+    await expect(
+      page.getByRole("heading", { name: "Sign in to Miko Hub", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("People with access to Acme.", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Machine access for Acme.", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create API key", exact: true })).toHaveCount(0);
+    expect(await page.evaluate((value) => Reflect.get(window, value), marker)).not.toBe(true);
+    const active = await application.query(
+      `select organization.name as name
+       from session
+       join organization on organization.id = session.active_organization_id
+       join "user" on "user".id = session.user_id
+       where "user".email = $1`,
+      [owner.email],
+    );
+    expect(active.map((row) => row["name"])).toEqual(["Orbit"]);
+  } finally {
+    await application.query("alter table review_unavailable_invitation rename to invitation");
+  }
+});

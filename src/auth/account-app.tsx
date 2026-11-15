@@ -87,7 +87,7 @@ function AccountApplication({
     return <InvitationEntry account={state} invitation={state.invitation} />;
   }
   if (state.status === "organizationRequired") return <OrganizationGate account={state} />;
-  return <DashboardShell account={state} />;
+  return <DashboardShell account={state} invitation={invitation} />;
 }
 
 type AuthCallback =

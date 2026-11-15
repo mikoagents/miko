@@ -74,7 +74,14 @@ type CreateOrganizationCommandResult = Result<{
   organizationSlug?: string;
 }>;
 
-export function DashboardShell({ account }: { account: ActiveAccount }) {
+export function DashboardShell({
+  account,
+  invitation,
+}: {
+  account: ActiveAccount;
+  /** The account-gate search value. It selects the mounted `["account", invitation]` query. */
+  invitation: string | undefined;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [accountUnreadable, setAccountUnreadable] = useState(false);
@@ -98,7 +105,7 @@ export function DashboardShell({ account }: { account: ActiveAccount }) {
     mutationFn: createOrganizationCommand,
     onSuccess: async (result) => {
       if (result.status !== "ok" || result.data.organizationSlug === undefined) return;
-      await openOrganization(queryClient, navigate, result.data.organizationSlug, () =>
+      await openOrganization(queryClient, navigate, result.data.organizationSlug, invitation, () =>
         setAccountUnreadable(true),
       );
     },
@@ -109,7 +116,7 @@ export function DashboardShell({ account }: { account: ActiveAccount }) {
       selectOrganizationCommand(input),
     onSuccess: async (result, variables) => {
       if (result.status !== "ok" || result.data.state !== "complete") return;
-      await openOrganization(queryClient, navigate, variables.slug, () =>
+      await openOrganization(queryClient, navigate, variables.slug, invitation, () =>
         setAccountUnreadable(true),
       );
     },
@@ -199,18 +206,21 @@ function DashboardContent({
 
 /**
  * Open the organization the session already selected. Client navigation keeps this document, but
- * only after the account cache names that same organization. A failed refresh still has the
- * previous account, and rendering it would label Team and API keys with the old organization while
- * commands use the new one. Hide those actions, then load the destination document so its account
- * gate stays closed until the read succeeds.
+ * only when the account query mounted by the shell gate has successfully refreshed to that
+ * organization. A failed refresh keeps the previous account, and another cached snapshot — including
+ * an inactive invitation query — cannot prove the mounted account is current. Rendering the previous
+ * account would label Team and API keys with the old organization while commands use the new one.
+ * Hide those actions, then load the destination document so its account gate stays closed until the
+ * read succeeds.
  */
 async function openOrganization(
   queryClient: QueryClient,
   navigate: ReturnType<typeof useNavigate>,
   slug: string,
+  invitation: string | undefined,
   markUnreadable: () => void,
 ): Promise<void> {
-  if (accountCacheMatches(queryClient, slug)) {
+  if (mountedAccountMatches(queryClient, slug, invitation)) {
     await navigate({
       to: "/o/$organizationSlug/home",
       params: { organizationSlug: slug },
@@ -224,10 +234,23 @@ async function openOrganization(
   });
 }
 
-function accountCacheMatches(queryClient: QueryClient, slug: string): boolean {
-  return queryClient.getQueriesData<AccountState>({ queryKey: ["account"] }).some(([, data]) => {
-    return data !== undefined && data.status === "active" && data.organization.slug === slug;
-  });
+function mountedAccountMatches(
+  queryClient: QueryClient,
+  slug: string,
+  invitation: string | undefined,
+): boolean {
+  const state = queryClient.getQueryState<AccountState>(["account", invitation]);
+  if (state === undefined) return false;
+  const data = state.data;
+  // status stays "error" and the previous data remains when the mounted refetch fails.
+  return (
+    state.status === "success" &&
+    state.fetchStatus === "idle" &&
+    state.error == null &&
+    !state.isInvalidated &&
+    data?.status === "active" &&
+    data.organization.slug === slug
+  );
 }
 
 function useAccountCommand<TInput, TResult extends Result<unknown>>(
