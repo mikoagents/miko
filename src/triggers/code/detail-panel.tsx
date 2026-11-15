@@ -15,6 +15,7 @@ import { TriggerRunHistory } from "../activity-panel.js";
 import { TriggerSource } from "./source-view.js";
 import { TriggerSettings } from "./settings-view.js";
 import { TriggerPipelineView } from "./pipeline-view.js";
+import { TriggerTemplateVersion } from "./template-view.js";
 import { TriggerConfigurationEditor } from "./configuration-editor.js";
 
 type Action = "run" | "enable" | "disable";
@@ -194,6 +195,9 @@ function TriggerDefinitionSettings({
       <Section title="Pipeline">
         <TriggerPipelineView manifest={manifest} />
       </Section>
+      {manifest.template === undefined ? null : (
+        <TriggerTemplateVersion reference={manifest.template} canManage={data.canManage} />
+      )}
       {editing ? (
         <TriggerConfigurationEditor
           current={data}

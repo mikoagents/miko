@@ -73,7 +73,7 @@ export async function buildTrigger(
       if (path.startsWith("node_modules/")) continue;
       sources.push({ path, content: await readFile(resolve(root, input), "utf8") });
     }
-    for (const path of ["package.json", "package-lock.json"]) {
+    for (const path of ["package.json", "package-lock.json", ".miko-template.json"]) {
       const content = await readFile(join(root, path), "utf8").catch(() => undefined);
       if (content !== undefined && !sources.some((file) => file.path === path))
         sources.push({ path, content });

@@ -11,6 +11,7 @@ import type { TriggerValue } from "./sdk.js";
 import { TriggerAgentSchema } from "../configuration/schema.js";
 import { WorktreeTargetSchema } from "../../config/compiler.js";
 import { matchesPattern } from "./patterns.js";
+import { TEMPLATE_VERSION_PATTERN } from "./template-version.js";
 import { TriggerPipelineSchema } from "./pipeline-schema.js";
 
 export { matchesPattern } from "./patterns.js";
@@ -104,9 +105,17 @@ const subscription = z
     )
       ctx.addIssue({ code: "custom", message: "Provider events require an explicit connection" });
   });
+export const TriggerTemplateReferenceSchema = z
+  .object({
+    id: name,
+    version: z.string().max(64).regex(TEMPLATE_VERSION_PATTERN),
+  })
+  .strict();
+
 export const TriggerManifestSchema = z
   .object({
     name,
+    template: TriggerTemplateReferenceSchema.optional(),
     description: z.string().max(2000).optional(),
     pipeline: TriggerPipelineSchema,
     on: z.array(subscription).min(1).max(100),

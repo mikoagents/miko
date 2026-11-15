@@ -7,9 +7,14 @@ import { pathToFileURL } from "node:url";
 import { describe, it } from "vitest";
 import { buildTrigger } from "./build.js";
 import { triggerStarter } from "./starter.js";
-import type { TriggerArtifact } from "./contract.js";
+import { TRIGGER_TEMPLATES, triggerTemplateManifest, triggerTemplateSource } from "./templates.js";
+import { artifactDigest, type TriggerArtifact } from "./contract.js";
 import { configureTriggerArtifact, triggerConfiguration } from "./editable-source.js";
-import { configurationSourcePreview } from "./configuration-draft.js";
+import {
+  configurationChanges,
+  configurationInput,
+  configurationSourcePreview,
+} from "./configuration-draft.js";
 
 async function fixture(run: (directory: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), "hub-edit-source-"));
@@ -21,6 +26,26 @@ async function fixture(run: (directory: string) => Promise<void>) {
 }
 
 describe("Trigger source configuration", () => {
+  it("reads all template settings without executing modules and keeps shared fields editable once", () => {
+    for (const template of TRIGGER_TEMPLATES) {
+      const body = {
+        format: "trigger-code-v1" as const,
+        manifest: triggerTemplateManifest(template),
+        code: "unused",
+        entrypoint: "trigger.ts",
+        sources: [{ path: "trigger.ts", content: triggerTemplateSource(template) }],
+      };
+      const configuration = triggerConfiguration({ ...body, digest: artifactDigest(body) });
+      assert.equal(configuration.unavailable, null, template.id + ": " + configuration.unavailable);
+      assert.equal(configuration.fields.filter((field) => field.label === "Provider").length, 1);
+      assert.equal(
+        configuration.fields.find((field) => field.label === "Prompt")?.value,
+        template.prompt,
+      );
+      assert.ok(configuration.fields.some((field) => field.label === "Provider options"));
+    }
+  });
+
   it("updates source, manifest and executable together and preserves custom workflow code", async () =>
     fixture(async (directory) => {
       const source = triggerStarter("editable").replace(
@@ -97,6 +122,28 @@ describe("Trigger source configuration", () => {
       );
     }));
 
+  it("propagates template repository settings into subscriptions, grants and execution targets", async () =>
+    fixture(async (directory) => {
+      const template = TRIGGER_TEMPLATES.find(
+        (candidate) => candidate.id === "find-vulnerabilities",
+      )!;
+      await writeFile(join(directory, "trigger.ts"), triggerTemplateSource(template));
+      const artifact = await buildTrigger(join(directory, "trigger.ts"));
+      const fields = triggerConfiguration(artifact).fields;
+      const repositories = fields.find((field) => field.label === "Repositories")!;
+      const updated = await configureTriggerArtifact(artifact, [
+        { id: repositories.id, value: [{ name: "acme/app", cwd: "/srv/app", branch: "develop" }] },
+      ]);
+      assert.equal(updated.manifest.on[1]?.resource, "acme/app");
+      assert.deepEqual(updated.manifest.grants.github?.["repository"]?.repositories, ["acme/app"]);
+      assert.equal(updated.manifest.grants.targets?.["repository-0"]?.cwd, "/srv/app");
+      await writeFile(join(directory, "trigger.ts"), updated.sources[0]!.content);
+      assert.deepEqual(
+        (await buildTrigger(join(directory, "trigger.ts"))).manifest,
+        updated.manifest,
+      );
+    }));
+
   it("refuses dynamic module setup, mismatched artifacts, unknown edits and invalid manifests", async () =>
     fixture(async (directory) => {
       await writeFile(join(directory, "trigger.ts"), triggerStarter("reject"));
@@ -126,4 +173,25 @@ describe("Trigger source configuration", () => {
         configureTriggerArtifact(artifact, [{ id: limit.id, value: "invalid-duration" }]),
       );
     }));
+
+  it("keeps incomplete drafts and parses list, boolean, numeric and native options edits", () => {
+    const template = TRIGGER_TEMPLATES.find((candidate) => candidate.id === "daily-digest")!;
+    const body = {
+      format: "trigger-code-v1" as const,
+      manifest: triggerTemplateManifest(template),
+      code: "unused",
+      entrypoint: "trigger.ts",
+      sources: [{ path: "trigger.ts", content: triggerTemplateSource(template) }],
+    };
+    const fields = triggerConfiguration({ ...body, digest: artifactDigest(body) }).fields;
+    const options = fields.find((field) => field.kind === "agent")!;
+    assert.equal(configurationInput(options), "{}");
+    assert.ok(configurationChanges(fields, { [options.id]: "{" }).errors[options.id]);
+    assert.deepEqual(
+      configurationChanges(fields, {
+        [options.id]: '{"model":"native-model","options":{"sandbox":"workspace-write"}}',
+      }).changes[0]?.value,
+      { model: "native-model", options: { sandbox: "workspace-write" } },
+    );
+  });
 });

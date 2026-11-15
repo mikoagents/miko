@@ -12,6 +12,9 @@ import type { TriggerArtifact } from "./contract.js";
 import { triggerConfiguration } from "./editable-source.js";
 import { TriggerCodeService } from "./service.js";
 import { triggerStarter } from "./starter.js";
+import { enrollTestDaemon, TEST_DAEMON_SLUG } from "../../test-utils/project-configuration.js";
+import { findTriggerTemplate } from "./templates.js";
+import { templateConfigurationProject } from "./template-configuration.js";
 
 let artifact: TriggerArtifact;
 beforeAll(async () => {
@@ -62,6 +65,36 @@ async function fixture(role: "owner" | "member" = "owner") {
 }
 
 describe("Trigger configuration revision boundary", () => {
+  it("creates a configured template with its upgrade baseline and refuses duplicate names", async () => {
+    const { database, dashboard, request, service } = await fixture();
+    await enrollTestDaemon(database, "org-1");
+    const template = findTriggerTemplate("product-finance-agent")!;
+    const { configuration } = templateConfigurationProject(template);
+    const daemon = configuration.fields.find((field) => field.label === "Daemon")!;
+    const scope = {
+      organizationSlug: "acme",
+      templateId: template.id,
+      name: "finance",
+      changes: [{ id: daemon.id, value: TEST_DAEMON_SLUG }],
+      save: true,
+    };
+    const created = await dashboard.createCodeFromTemplate(request, scope);
+    assert.ok(created.deployed);
+    const saved = await service.artifact(
+      "org-1",
+      created.deployed.triggerId,
+      created.deployed.revisionId,
+    );
+    const baseline = saved.sources.find((file) => file.path === ".miko-template.json")!;
+    assert.ok(baseline.content.includes('"name": "finance"'));
+    assert.equal(saved.manifest.name, "finance");
+    assert.equal(triggerConfiguration(saved).unavailable, null);
+    await assert.rejects(dashboard.createCodeFromTemplate(request, scope), /name already exists/u);
+    assert.equal(
+      (await service.trigger("org-1", created.deployed.triggerId)).activeRevisionId,
+      created.deployed.revisionId,
+    );
+  });
   it("previews without writing and saves a new revision while preserving enable state and accepted runs", async () => {
     const { database, service, dashboard, request, scope, deployed } = await fixture();
     const received = await service.dispatchManual("org-1", deployed.triggerId, {

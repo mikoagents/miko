@@ -23,6 +23,8 @@ export interface FieldControl {
 interface Frame {
   id: string;
   label: string;
+  /** Search can keep its accessible label while its placeholder identifies the control visually. */
+  labelVisibility?: "visible" | "hidden";
   description?: string;
   error?: string;
   /**
@@ -77,7 +79,7 @@ interface TypedControl {
 export function FormField(
   props: Frame & (TypedControl | { children: (control: FieldControl) => ReactNode }),
 ) {
-  const { id, label, description, error, required } = props;
+  const { id, label, labelVisibility, description, error, required } = props;
   const descriptionId = `${id}-description`;
   const errorId = `${id}-error`;
   const control = useMemo<FieldControl>(() => {
@@ -96,7 +98,9 @@ export function FormField(
   }, [description, descriptionId, error, errorId, id, required]);
   return (
     <Field data-invalid={error !== undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} className={labelVisibility === "hidden" ? "sr-only" : undefined}>
+        {label}
+      </FieldLabel>
       {"children" in props ? props.children(control) : <TypedInput {...props} control={control} />}
       {description === undefined ? null : (
         <FieldDescription id={descriptionId}>{description}</FieldDescription>

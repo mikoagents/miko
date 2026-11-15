@@ -1,13 +1,11 @@
 import { expect } from "@playwright/test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "./app.js";
 import { OrganizationTriggers } from "./helpers/triggers.js";
-import { buildTrigger } from "../src/triggers/code/build.js";
-import { testPipeline } from "../src/test-utils/pipeline.js";
 
-test("edits deployed source, resources, prompt and revision on a phone", async ({ hub, page }) => {
+test("creates a configured template and edits its source, resources, prompt and revision on a phone", async ({
+  hub,
+  page,
+}) => {
   await hub.signUpAs("owner", {
     name: "Editor Owner",
     email: "editor-owner@example.com",
@@ -15,26 +13,45 @@ test("edits deployed source, resources, prompt and revision on a phone", async (
   });
   await hub.createOrganization("owner", "Configuration editor");
   const daemon = await hub.connectProviderDaemon("owner", "Configuration editor");
-  const directory = await mkdtemp(join(tmpdir(), "hub-configuration-editor-"));
-  try {
-    await writeFile(
-      join(directory, "trigger.ts"),
-      [
-        'import { defineTrigger } from "@mikoagents/hub/triggers";',
-        `const settings = {runner:"browser-runner",daemon:${JSON.stringify(daemon)},cwd: "/workspace/app",agent:{provider:"codex",model:"custom-native-model"},prompt:"Summarize the important repository changes."};`,
-        'export default defineTrigger({name:"configured-digest",runner:settings.runner,',
-        `pipeline:${JSON.stringify(testPipeline("agent"))},`,
-        'on:[{source:"manual",event:"run"}],grants:{targets:{work:{daemon:settings.daemon,cwd:settings.cwd,providers:[settings.agent.provider]}}},limits:{maxRuntime:"1h"},',
-        'async run(ctx){return ctx.agent.run("agent",{target:"work",agent:settings.agent,prompt:settings.prompt});}});',
-      ].join("\n"),
-    );
-    await hub.deployCodeTrigger("owner", await buildTrigger(join(directory, "trigger.ts")));
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+  await hub.seedGitHubConnection("Configuration editor", "acme-inc", ["acme-inc/app"]);
   await new OrganizationTriggers(page).open();
-  await page.getByRole("link", { name: "configured-digest", exact: true }).click();
+  await page.getByRole("radio", { name: "Explore", exact: true }).click();
+  await page
+    .getByRole("link", { name: "Preview Summarize changes daily template", exact: true })
+    .click();
+  await page.getByRole("link", { name: "Use template", exact: true }).click();
   const form = page.getByRole("form", { name: "Trigger configuration" });
+  await form.getByRole("textbox", { name: "Name", exact: true }).fill("configured-digest");
+  await form.getByRole("textbox", { name: "Runner", exact: true }).fill("browser-runner");
+  await form.getByRole("combobox", { name: "Daemon", exact: true }).click();
+  await page.getByRole("option", { name: daemon, exact: true }).click();
+  await form
+    .getByRole("textbox", { name: "Working directory", exact: true })
+    .fill("/workspace/app");
+  await form.getByRole("combobox", { name: "GitHub connection", exact: true }).click();
+  await page.getByRole("option", { name: "acme-inc", exact: true }).click();
+  await form.getByRole("combobox", { name: "Repository", exact: true }).click();
+  await page.getByRole("option", { name: "acme-inc/app", exact: true }).click();
+  await form.getByRole("textbox", { name: "Slack channel", exact: true }).fill("C123");
+  await form.getByRole("textbox", { name: "Model", exact: true }).fill("custom-native-model");
+  await form
+    .getByRole("textbox", { name: "Prompt", exact: true })
+    .fill("Summarize the important repository changes.");
+  const source = form.getByRole("textbox", { name: "trigger.ts updated value", exact: true });
+  await expect(source).toContainText('"configured-digest"');
+  await expect(source).toContainText('"custom-native-model"');
+  await expect(source).toContainText("Summarize the important repository changes.");
+  await form.getByRole("button", { name: "Check configuration", exact: true }).click();
+  await expect(page.getByText("Configuration valid", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Run history", exact: true })).toHaveCount(0);
+  await form.getByRole("button", { name: "Create trigger", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "configured-digest", exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Runs on", exact: true })).toContainText(
+    "/workspace/app",
+  );
+  await expect(page.getByRole("list", { name: "Agent calls", exact: true })).toContainText(
+    "custom-native-model",
+  );
   await page.getByRole("button", { name: "Edit configuration", exact: true }).click();
   await form
     .getByRole("textbox", { name: "Working directory", exact: true })

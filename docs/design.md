@@ -113,6 +113,10 @@ it stacks them until the page content is at least `64rem` wide, then gives them 
 Detail dialogs grow to `72rem`, with a `2rem` viewport inset from `sm` and a `1rem` inset on phones.
 
 Trigger details keep the standard page width, with the workflow diagram first below the page title.
+Trigger browsing separates Mine from Explore. Explore groups templates under category headings,
+with one compact search control and vertical catalog cards: task glyph, title, two-line description,
+and a quiet event/integration line. Opening a template shows the shared Pipeline and Trigger settings
+with explicit editable defaults before the setup guide; it never represents a deployed or running Trigger.
 Configuration topics have their `Section` heading above a compact `Card` (`p-4`); the description
 belongs under the page title. Events and access share one card, with each connection named once.
 Events and access sit in a row once the card is wide enough for them, and stack when it is not.
@@ -123,7 +127,7 @@ are not the event scope. Execution resources and Agent calls follow, then run hi
 Managers can edit configuration in place using the shared form controls. Events, execution resources,
 Agent options, prompts and template inputs have quiet section headings and compact cards. Source
 changes update alongside the draft; checking a configuration and saving it are separate actions.
-Code-computed values retain their
+Template setup uses this same form and creates a Trigger directly. Code-computed values retain their
 source expression rather than becoming editable guessed values. Keep integration requirements visible,
 and use the shared form action row for Cancel, Check configuration and Save changes or Create trigger.
 
@@ -195,6 +199,7 @@ missing app component.
 | `StatusPill`                                                                           | Show state. Never `Badge`, never a coloured span.                                   |
 | `EmptyState`                                                                           | Say there is nothing here and what to do about it.                                  |
 | `FormField`, `FieldSkeleton`                                                           | Label a control, with optional description and error. Wraps any control.            |
+| `SearchField`, `SearchFieldSkeleton`                                                   | Search a collection with a compact control and a visually hidden accessible label.  |
 | `CheckboxField`                                                                        | Label a checkbox beside its box, with what ticking it means underneath.             |
 | `FormActions`                                                                          | The button row under a form: stacks on phones, right-aligns from `sm`.              |
 | `AuthForm`                                                                             | A pre-auth form: fields, submit, optional secondary action, busy state.             |
