@@ -8,6 +8,25 @@ import { defineTrigger } from "@mikoagents/hub/triggers";
 
 export default defineTrigger({
   name: "daily-scan",
+  pipeline: {
+    nodes: [
+      {
+        id: "event",
+        kind: "event",
+        label: "Scheduled or manual run",
+        description: "A schedule tick or an on-demand run starts the scan.",
+      },
+      {
+        id: "done",
+        kind: "outcome",
+        label: "Scan time returned",
+        description: "Return the event time after the locked scan finishes.",
+      },
+    ],
+    edges: [{ from: "event", to: "done" }],
+    // The lock is housekeeping around the scan, not a separate business stage.
+    supportOperations: ["scan:*"],
+  },
   runner: "local",
   on: [
     {

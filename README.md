@@ -126,6 +126,33 @@ import { defineTrigger } from "@mikoagents/hub/triggers";
 
 export default defineTrigger({
   name: "hello",
+  pipeline: {
+    nodes: [
+      {
+        id: "event",
+        kind: "event",
+        label: "Manual run",
+        description: "An on-demand run starts this workflow.",
+      },
+      {
+        id: "handle",
+        kind: "step",
+        label: "Handle input",
+        description: "Keep the incoming payload as the result.",
+        operations: ["handle-input"],
+      },
+      {
+        id: "done",
+        kind: "outcome",
+        label: "Input returned",
+        description: "Return the handled payload.",
+      },
+    ],
+    edges: [
+      { from: "event", to: "handle" },
+      { from: "handle", to: "done" },
+    ],
+  },
   runner: "local",
   on: [{ source: "manual", event: "run" }],
   grants: {},
