@@ -180,6 +180,7 @@ function AgentCall({ agent }: { agent: InspectedAgent }) {
       value: <Setting names field={agent.github} fallback="Not set" />,
     });
   for (const [label, field] of [
+    ["Continuation key", agent.continuation],
     ["Time limit", agent.maxRuntime],
     ["Idle timeout", agent.idleTimeout],
     ["Startup timeout", agent.startupTimeout],

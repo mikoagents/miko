@@ -127,6 +127,7 @@ export const saveTrigger = createServerFn({ method: "POST" })
 
 export type TriggerSnapshot = Awaited<ReturnType<TriggerDashboard["snapshot"]>>;
 export type CodeTriggerDetail = Awaited<ReturnType<TriggerDashboard["codeDetail"]>>;
+export type CodeTriggerRun = Awaited<ReturnType<TriggerDashboard["codeRunDetail"]>>;
 
 export const triggerRunHistory = createServerFn({ method: "GET" })
   .validator(scopeSchema.extend({ triggerId: z.string().uuid() }).strict())

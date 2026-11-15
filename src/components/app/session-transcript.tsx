@@ -11,16 +11,60 @@ import { RelativeTime } from "./relative-time.js";
 import { StatusPill } from "./status-pill.js";
 import { Section } from "./section.js";
 
-export function SessionTranscript({ rows }: { rows: readonly TimelineRow[] }) {
+/** A prompt Hub submitted, and the name the transcript gives it instead of "User". */
+export interface TranscriptPrompt {
+  messageId: string;
+  text: string;
+  label: string;
+  /** When set, identical text from before this call started keeps its own name. */
+  startedAt?: string;
+}
+
+const NO_PROMPTS: readonly TranscriptPrompt[] = [];
+
+export function SessionTranscript({
+  rows,
+  prompts = NO_PROMPTS,
+}: {
+  rows: readonly TimelineRow[];
+  /** Names the user messages that are these prompts, so each round says where it came from. */
+  prompts?: readonly TranscriptPrompt[];
+}) {
   return (
     <ol className="grid min-w-0 gap-4" aria-label="Session messages">
       {projectSessionRows(rows).map((row) => (
         <li key={row.seq} className="min-w-0">
-          <TranscriptEntry row={row} />
+          <TranscriptEntry row={row} prompts={prompts} at={row.timestamp} />
         </li>
       ))}
     </ol>
   );
+}
+
+/**
+ * The prompt a user message delivered. Hub submits each prompt with its own message id, which the
+ * daemon keeps; the text is the fallback for a daemon that recorded the message under another id.
+ * A message that already happened before the call started is a different round, even when the
+ * trigger sent the same words again.
+ */
+function promptLabel(
+  item: TimelineRow["item"],
+  prompts: readonly TranscriptPrompt[],
+  at: string | undefined,
+) {
+  if (item["type"] !== "user_message" || prompts.length === 0) return undefined;
+  const byId = prompts.find((prompt) => prompt.messageId === item["messageId"]);
+  if (byId !== undefined) return byId.label;
+  const text = typeof item["text"] === "string" ? item["text"].trim() : null;
+  if (text === null || text === "") return undefined;
+  const same = prompts.filter((prompt) => prompt.text.trim() === text);
+  const eligible = same.filter(
+    (prompt) => prompt.startedAt === undefined || at === undefined || at >= prompt.startedAt,
+  );
+  if (eligible.length === 0) return undefined;
+  return eligible.reduce((best, prompt) =>
+    (prompt.startedAt ?? "") >= (best.startedAt ?? "") ? prompt : best,
+  ).label;
 }
 
 function string(value: JsonValue | undefined, fallback: string) {
@@ -34,10 +78,18 @@ function statusTone(status: string) {
   if (status === "completed") return "success";
   return "neutral";
 }
-function TranscriptEntry({ row }: { row: TimelineRow }) {
+function TranscriptEntry({
+  row,
+  prompts,
+  at,
+}: {
+  row: TimelineRow;
+  prompts: readonly TranscriptPrompt[];
+  at: string | undefined;
+}) {
   if (row.item["type"] === "tool_call") return <ToolEntry row={row} />;
   if (row.item["type"] === "reasoning") return <ReasoningEntry row={row} />;
-  return <MessageEntry row={row} />;
+  return <MessageEntry row={row} label={promptLabel(row.item, prompts, at)} />;
 }
 function ReasoningEntry({ row }: { row: TimelineRow }) {
   const [open, setOpen] = useState(false);
@@ -100,7 +152,7 @@ function ToolDetails({ item }: { item: TimelineRow["item"] }) {
     </>
   );
 }
-function MessageEntry({ row }: { row: TimelineRow }) {
+function MessageEntry({ row, label }: { row: TimelineRow; label: string | undefined }) {
   const type = string(row.item["type"], "event");
   const titles: Record<string, string> = { user_message: "User", assistant_message: "Assistant" };
   const text = typeof row.item["text"] === "string" ? row.item["text"] : null;
@@ -109,7 +161,7 @@ function MessageEntry({ row }: { row: TimelineRow }) {
     <article className="grid min-w-0 gap-2 border-b pb-4">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span>{titles[type] ?? type.replaceAll("_", " ")}</span>
+          <span>{label ?? titles[type] ?? type.replaceAll("_", " ")}</span>
           <span className="text-muted-foreground">
             <RelativeTime value={row.timestamp} />
           </span>

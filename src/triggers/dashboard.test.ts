@@ -3,7 +3,11 @@ import { describe, it } from "vitest";
 import type { AuthServer } from "../auth/server.js";
 import { createMemoryDatabase } from "../db/memory.js";
 import { acceptingAgentValidator } from "../test-utils/agent-validator.js";
-import { enrollTestDaemon, TEST_DAEMON_SLUG } from "../test-utils/project-configuration.js";
+import {
+  enrollTestDaemon,
+  TEST_DAEMON_ID,
+  TEST_DAEMON_SLUG,
+} from "../test-utils/project-configuration.js";
 import { TriggerDashboard } from "./dashboard.js";
 import { OrganizationTriggerStore } from "./store.js";
 import { compileHubBundle } from "../config/bundle.js";
@@ -126,6 +130,7 @@ describe("trigger dashboard read model", () => {
     assert.equal(before.triggers[0]?.provider, "manual");
     assert.equal(before.triggers[0]?.event, "manual.run");
     assert.equal(before.triggers[0]?.lastTriggered, null);
+    assert.equal(before.triggers[0]?.targetSummary.primary, TEST_DAEMON_SLUG);
 
     const revision = await database.findActiveProjectConfiguration(trigger.runtimeProjectId);
     assert.ok(revision);
@@ -159,12 +164,13 @@ describe("trigger dashboard read model", () => {
       status: "running",
       receivedAt: receivedAt.toISOString(),
     });
+    assert.deepEqual(after.activity[0]?.daemons, []);
 
     const scope = { organizationSlug: "acme", triggerId: trigger.id, runId: created.run.id };
     const detail = await dashboard.activityRunSnapshot(request, scope);
     assert.equal(detail.activity.prompt, "run it");
     assert.deepEqual(detail.activity.triggerContext, { request: "Full invocation context" });
-    assert.equal("triggerContext" in after.activity[0]!, false);
+    assert.equal("triggerContext" in after.activity[0], false);
     const step = (await database.listWorkflowStepRunsForTriggerRun(created.run.id))[0]!;
     const execution = await database.insertAgentExecution({
       organizationId: "org-1",
@@ -176,6 +182,18 @@ describe("trigger dashboard read model", () => {
       workflowStepRunId: step.id,
     });
     await database.linkWorkflowStepRunExecution(step.id, execution.id);
+    await database.attachAgentToExecution(execution.id, TEST_DAEMON_ID, "native-agent");
+    assert.deepEqual((await dashboard.snapshot(request, "acme")).activity[0]?.daemons, [
+      TEST_DAEMON_SLUG,
+    ]);
+    assert.deepEqual((await dashboard.triggerHistory(request, "acme", trigger.id))[0]?.daemons, [
+      TEST_DAEMON_SLUG,
+    ]);
+    assert.equal(
+      (await dashboard.activityRunSnapshot(request, scope)).activity.steps[0]?.daemon,
+      TEST_DAEMON_SLUG,
+    );
+    assert.deepEqual(await database.listTriggerRunDaemons("other-org", [created.run.id]), []);
     for (let index = 0; index < 105; index++)
       await database.appendAgentExecutionLog({
         executionId: execution.id,

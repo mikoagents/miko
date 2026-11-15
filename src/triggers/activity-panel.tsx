@@ -29,15 +29,17 @@ import {
 
 const ACTIVITY_COLUMNS = [
   { header: "Trigger", fill: true },
-  { header: "Provider" },
-  { header: "Source" },
+  { header: "Provider", className: "hidden md:table-cell" },
+  { header: "Source", fill: true, className: "hidden md:table-cell" },
+  { header: "Daemon", fill: true },
   { header: "Status", fill: true },
-  { header: "Received" },
+  { header: "Received", className: "hidden sm:table-cell" },
 ];
 const ACTIVITY_DESCRIPTION = "Workflow runs, results and logs from your triggers.";
 const HISTORY_COLUMNS = [
   { header: "Started", fill: true },
   { header: "Event", fill: true, className: "hidden sm:table-cell" },
+  { header: "Daemon", fill: true },
   { header: "Status" },
 ];
 const HISTORY_EMPTY = {
@@ -229,6 +231,7 @@ function ActivityRow({
           </DataCell>
           {compact ? null : <DataCell>{triggerSourceLabel(run.provider)}</DataCell>}
           <DataCell>{run.source}</DataCell>
+          <DataCell>{run.daemons.join(" · ") || "—"}</DataCell>
           <DataCell>
             <TwoLine
               primary={<StatusPill tone={tone(run.status)}>{statusLabel(run.status)}</StatusPill>}
@@ -250,6 +253,7 @@ function ActivityRow({
             triggerId={run.triggerId}
             runId={run.id}
             view={view}
+            onViewChange={setView}
           />
         ) : (
           <ActivityDetail
