@@ -68,7 +68,22 @@ function Events({ manifest }: { manifest: TriggerManifest }) {
   return (
     <RecordList label="Events">
       {records.map((record) => (
-        <RecordRow key={record.key} media={<SourceGlyph source={record.source} />}>
+        <RecordRow
+          key={record.key}
+          media={<SourceGlyph source={record.source} />}
+          details={
+            record.scopes === undefined ? undefined : (
+              <SummaryPanel
+                layout="names"
+                label={record.primary + " events"}
+                rows={record.scopes.map((scope) => ({
+                  label: scope.resource,
+                  value: scope.events,
+                }))}
+              />
+            )
+          }
+        >
           <TwoLine wrap primary={record.primary} secondary={record.secondary} />
         </RecordRow>
       ))}

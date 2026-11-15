@@ -42,9 +42,11 @@ const LAYOUTS = {
   names: {
     // The names share one column, so every value starts on the same rail however long the name
     // beside it is. The rows dissolve into the grid; the terms and definitions are its cells.
-    list: "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1",
+    // The column stops at a fraction of the panel. A repository is one unbroken token, and an
+    // auto track would grow to that token and push the value off a phone.
+    list: "grid min-w-0 grid-cols-[fit-content(40%)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1",
     row: "contents",
-    term: "font-mono text-xs text-muted-foreground",
+    term: "min-w-0 font-mono text-xs text-muted-foreground wrap-anywhere",
   },
 } as const;
 

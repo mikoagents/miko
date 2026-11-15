@@ -44,39 +44,86 @@ export function subscriptionSummary(subscription: TriggerSubscription): string {
 export interface EventRecord {
   key: string;
   source: string;
-  /** What happens: the events, the schedule, or "On demand". */
+  /** The connection the events arrive on; otherwise the events, the schedule, or "On demand". */
   primary: string;
-  /** Where it happens: the source, then the scope and connection these events are limited to. */
+  /** The connection's kind; otherwise the source and the scope the events are limited to. */
   secondary: string;
+  /**
+   * A connection's events by what they are limited to: first those from anywhere on the
+   * connection, then each repository (or other resource) in the order the code names it.
+   */
+  scopes?: EventScope[];
+}
+
+export interface EventScope {
+  /** The repository or other resource, or what a subscription that names none reaches. */
+  resource: string;
+  events: string;
 }
 
 /**
- * The configured events, one record per place they come from. Events that share a source,
- * repository, and connection are one record, so that scope is said once rather than under each
- * event; a repository on one subscription is still never shown as the scope of another.
+ * The configured events, one record per place they arrive from. A connection is one record, so
+ * it is said once rather than beside every repository its events are limited to; under it, each
+ * repository keeps its own events, and a repository on one subscription is still never shown as
+ * the scope of another's.
  */
 export function eventRecords(subscriptions: readonly TriggerSubscription[]): EventRecord[] {
-  const groups = new Map<string, { source: string; events: Set<string>; secondary: string }>();
+  const groups = new Map<
+    string,
+    {
+      source: string;
+      connection: string | undefined;
+      secondary: string;
+      scopes: Map<string | undefined, Set<string>>;
+    }
+  >();
   for (const subscription of subscriptions) {
-    const { key, events, secondary } = eventScope(subscription);
-    const group = groups.get(key) ?? {
+    const place = eventPlace(subscription);
+    const group = groups.get(place.key) ?? {
       source: subscription.source,
-      events: new Set<string>(),
-      secondary,
+      connection: place.connection,
+      secondary: place.secondary,
+      scopes: new Map<string | undefined, Set<string>>(),
     };
-    for (const event of events) group.events.add(event);
-    groups.set(key, group);
+    const events = group.scopes.get(place.resource) ?? new Set<string>();
+    for (const event of place.events) events.add(event);
+    group.scopes.set(place.resource, events);
+    groups.set(place.key, group);
   }
-  return [...groups].map(([key, group]) => ({
-    key,
-    source: group.source,
-    primary: [...group.events].join(" · "),
-    secondary: group.secondary,
-  }));
+  return [...groups].map(([key, group]) => {
+    const scopes = [...group.scopes];
+    if (group.connection === undefined)
+      return {
+        key,
+        source: group.source,
+        primary: scopes.flatMap(([, events]) => [...events]).join(" · "),
+        secondary: group.secondary,
+      };
+    return {
+      key,
+      source: group.source,
+      primary: group.connection,
+      secondary: group.secondary,
+      // A repository's own events add to those from anywhere on the connection, so the
+      // connection-wide ones read first whatever order the code declares them in.
+      scopes: scopes
+        .sort(([left], [right]) => Number(left !== undefined) - Number(right !== undefined))
+        .map(([resource, events]) => ({
+          resource: resource ?? anyResource(group.source),
+          events: [...events].join(" · "),
+        })),
+    };
+  });
 }
 
-function eventScope(subscription: TriggerSubscription): {
+/**
+ * Which record a subscription belongs to. A connection's subscriptions share one, each under the
+ * resource it names; everything else is a record per source and scope, the scope in its line.
+ */
+function eventPlace(subscription: TriggerSubscription): {
   key: string;
+  connection: string | undefined;
+  resource: string | undefined;
   events: string[];
   secondary: string;
 } {
@@ -84,31 +131,56 @@ function eventScope(subscription: TriggerSubscription): {
   if (source === "schedule") {
     const description = subscriptionDescription(subscription);
     return {
-      key: JSON.stringify([source, description]),
+      key: JSON.stringify(["schedule", description]),
+      connection: undefined,
+      resource: undefined,
       events: [description],
       secondary: "Schedule",
     };
   }
   if (source === "manual" && matchesPattern("run", subscription.event))
     return {
-      key: JSON.stringify([source]),
+      key: JSON.stringify(["manual"]),
+      connection: undefined,
+      resource: undefined,
       events: ["On demand"],
       secondary: "When you choose Run now",
     };
-  const secondary = [
-    triggerSourceLabel(source),
-    subscription.resource,
-    subscription.connection ? `via ${subscription.connection}` : undefined,
-  ]
-    .filter((part) => part !== undefined && part !== "")
-    .join(" · ");
+  const events = (
+    Array.isArray(subscription.event) ? subscription.event : [subscription.event]
+  ).map(eventLabel);
+  if (subscription.connection)
+    return {
+      key: JSON.stringify(["connection", source, subscription.connection]),
+      connection: subscription.connection,
+      resource: subscription.resource,
+      events,
+      secondary: `${triggerSourceLabel(source)} connection`,
+    };
   return {
-    key: JSON.stringify([source, subscription.resource ?? "", subscription.connection ?? ""]),
-    events: (Array.isArray(subscription.event) ? subscription.event : [subscription.event]).map(
-      eventLabel,
-    ),
-    secondary,
+    key: JSON.stringify(["source", source, subscription.resource ?? ""]),
+    connection: undefined,
+    resource: undefined,
+    events,
+    secondary: [triggerSourceLabel(source), subscription.resource]
+      .filter((part) => part !== undefined && part !== "")
+      .join(" · "),
   };
+}
+
+/**
+ * What a subscription that names no resource takes events from, in its source's own terms:
+ * "All repositories" is how GitHub itself says an installation reaches every repository.
+ */
+const ALL_RESOURCES: Record<string, string> = {
+  github: "All repositories",
+  slack: "All workspaces",
+  discord: "All servers",
+  linear: "All projects",
+};
+
+function anyResource(source: string): string {
+  return Object.hasOwn(ALL_RESOURCES, source) ? ALL_RESOURCES[source]! : "All resources";
 }
 
 export interface GithubAccess {

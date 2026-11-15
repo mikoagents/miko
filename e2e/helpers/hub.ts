@@ -1548,7 +1548,7 @@ export class MikoHub {
   async seedGitHubConnection(
     organizationName: string,
     slug: string,
-    repository?: string,
+    repository?: string | readonly string[],
   ): Promise<void> {
     await this.queryDatabase(
       this.primary,
@@ -1558,11 +1558,14 @@ export class MikoHub {
        from organization where name = $1`,
       [organizationName, slug],
     );
-    if (repository) {
+    const repositories =
+      repository === undefined ? [] : typeof repository === "string" ? [repository] : repository;
+    // A single name stays repository 9001, matching fixtures that address that id.
+    for (const [index, fullName] of repositories.entries()) {
       await this.queryDatabase(
         this.primary,
-        "insert into github_repositories (organization_id,connection_id,repository_id,full_name,default_branch) select c.organization_id,c.id,9001,$3,'main' from github_connections c join organization o on o.id=c.organization_id where o.name=$1 and c.slug=$2",
-        [organizationName, slug, repository],
+        "insert into github_repositories (organization_id,connection_id,repository_id,full_name,default_branch) select c.organization_id,c.id,$4,$3,'main' from github_connections c join organization o on o.id=c.organization_id where o.name=$1 and c.slug=$2",
+        [organizationName, slug, fullName, 9001 + index],
       );
     }
   }
