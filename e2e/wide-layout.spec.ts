@@ -32,14 +32,16 @@ test("uses wide screens for overview columns and records while keeping narrow la
   for (const width of WIDTHS) {
     await test.step(`overview at ${width}px`, async () => {
       await page.setViewportSize({ width, height: 1000 });
-      const runsBox = await box(recent);
-      const daemonsBox = await box(daemons);
-      if (width >= 1440) {
-        expect(Math.abs(runsBox.y - daemonsBox.y)).toBeLessThan(1);
-        expect(daemonsBox.x).toBeGreaterThanOrEqual(runsBox.x + runsBox.width);
-      } else {
-        expect(daemonsBox.y).toBeGreaterThanOrEqual(runsBox.y + runsBox.height);
-      }
+      // Leaving the phone layout animates the sidebar, changing the grid's available width.
+      await expect
+        .poll(async () => {
+          const runsBox = await box(recent);
+          const daemonsBox = await box(daemons);
+          return width >= 1440
+            ? Math.abs(runsBox.y - daemonsBox.y) < 1 && daemonsBox.x >= runsBox.x + runsBox.width
+            : daemonsBox.y >= runsBox.y + runsBox.height;
+        })
+        .toBe(true);
       await expectContained(page);
       if (width === 1920 || width === 390) {
         await page.screenshot({
