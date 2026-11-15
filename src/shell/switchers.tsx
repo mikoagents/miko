@@ -52,7 +52,9 @@ export function OrganizationSwitcher({
   onCreateOrganization: (name: string) => void;
   onSelectOrganization: (organizationId: string, slug: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const { isMobile, setOpenMobile } = useSidebar();
   const requestCreate = useCallback((event: Event) => {
     event.preventDefault();
     setCreating(true);
@@ -62,14 +64,18 @@ export function OrganizationSwitcher({
       event.preventDefault();
       onCreateOrganization(formValue(new FormData(event.currentTarget), "name"));
       setCreating(false);
+      setOpen(false);
+      if (isMobile) setOpenMobile(false);
     },
-    [onCreateOrganization],
+    [onCreateOrganization, isMobile, setOpenMobile],
   );
 
   return (
     <>
       <SidebarSwitcher
         label="Organization"
+        open={open}
+        onOpenChange={setOpen}
         media={ORGANIZATION_MARK}
         primary={organization.name}
         secondary={ROLE_LABELS[role] ?? role}
@@ -132,9 +138,11 @@ function OrganizationItem({
   busy: boolean;
   onSelect: (organizationId: string, slug: string) => void;
 }) {
+  const { isMobile, setOpenMobile } = useSidebar();
   const handleSelect = useCallback(() => {
     onSelect(id, slug);
-  }, [id, onSelect, slug]);
+    if (isMobile) setOpenMobile(false);
+  }, [id, onSelect, slug, isMobile, setOpenMobile]);
 
   return (
     <DropdownMenuItem

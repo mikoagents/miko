@@ -22,6 +22,8 @@ interface SnapshotQueryOptions<T> {
   enabled?: boolean;
   refetchInterval?: number;
   staleTime?: number;
+  /** A route's server-resolved snapshot, reused for the first browser render. */
+  initialData?: T | undefined;
 }
 
 export function snapshotQueryOptions<T>(options: SnapshotQueryOptions<T>) {

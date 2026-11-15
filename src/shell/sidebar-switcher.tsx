@@ -37,17 +37,24 @@ export function SidebarSwitcher({
   tone = "primary",
   side = "bottom",
   trigger,
+  open,
+  onOpenChange,
   children,
 }: SwitcherFace & {
   /** Names the level being switched, e.g. "Organization". */
   label: string;
   side?: "top" | "bottom";
   trigger?: RefObject<HTMLButtonElement | null>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   /** The menu items. The menu itself, its width, and its offset belong to the row. */
   children: ReactNode;
 }) {
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      {...(open === undefined ? {} : { open })}
+      {...(onOpenChange === undefined ? {} : { onOpenChange })}
+    >
       <DropdownMenuTrigger asChild>
         <SidebarMenuButton
           {...(trigger === undefined ? {} : { ref: trigger })}

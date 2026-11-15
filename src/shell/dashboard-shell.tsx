@@ -13,7 +13,7 @@ import {
   SunMoon,
   Zap,
 } from "lucide-react";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback } from "react";
@@ -74,6 +74,7 @@ type CreateOrganizationCommandResult = Result<{
 }>;
 
 export function DashboardShell({ account }: { account: ActiveAccount }) {
+  const navigate = useNavigate();
   const createOrganizationCommand = useAccountCommand(
     useServerFn(createOrganization) as (
       input: Parameters<typeof createOrganization>[0],
@@ -92,9 +93,12 @@ export function DashboardShell({ account }: { account: ActiveAccount }) {
   const create = useMutation({
     mutationKey: ACCOUNT_MUTATION_KEY,
     mutationFn: createOrganizationCommand,
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result.status === "ok" && result.data.organizationSlug !== undefined) {
-        window.location.assign(`/o/${result.data.organizationSlug}/home`);
+        await navigate({
+          to: "/o/$organizationSlug/home",
+          params: { organizationSlug: result.data.organizationSlug },
+        });
       }
     },
   });
@@ -102,8 +106,13 @@ export function DashboardShell({ account }: { account: ActiveAccount }) {
     mutationKey: ACCOUNT_MUTATION_KEY,
     mutationFn: ({ input }: { input: Parameters<typeof selectOrganization>[0]; slug: string }) =>
       selectOrganizationCommand(input),
-    onSuccess: (result, variables) => {
-      if (result.status === "ok") window.location.assign(`/o/${variables.slug}/home`);
+    onSuccess: async (result, variables) => {
+      if (result.status === "ok" && result.data.state === "complete") {
+        await navigate({
+          to: "/o/$organizationSlug/home",
+          params: { organizationSlug: variables.slug },
+        });
+      }
     },
   });
   const leave = useMutation({
