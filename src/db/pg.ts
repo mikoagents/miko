@@ -2090,6 +2090,29 @@ class PgDatabase implements Database {
     return rows.rows;
   }
 
+  async listCodeAgentExecutions(organizationId: string, runIds: readonly string[]) {
+    if (runIds.length === 0) return [];
+    const rows = await query<{ runId: string; operationId: string; executionId: string }>(
+      this.pool,
+      `select distinct on (ops.run_id, ops.operation_id)
+         ops.run_id as "runId",
+         ops.operation_id as "operationId",
+         steps.agent_execution_id as "executionId"
+       from trigger_code_operations ops
+       join trigger_runs runs
+         on runs.organization_id = ops.organization_id
+        and runs.id::text = ops.document->>'childRunId'
+       join workflow_step_runs steps on steps.trigger_run_id = runs.id
+       where ops.organization_id = $1
+         and ops.run_id = any($2::uuid[])
+         and ops.document->>'kind' = 'agent'
+         and steps.agent_execution_id is not null
+       order by ops.run_id, ops.operation_id, steps.ordinal`,
+      [organizationId, runIds],
+    );
+    return rows.rows;
+  }
+
   private async toProjectActivityRun(
     row: ProjectActivityRunRow,
   ): Promise<ProjectActivityRunRecord> {

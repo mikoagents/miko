@@ -487,6 +487,12 @@ describe("Trigger run presentation", () => {
     assert.deepEqual(operationSpans(call, now, "cancelled"), []);
     assert.equal(operationDuration(call, now, "cancelled"), null);
     const shape = runShape([entry], now);
-    assert.equal(milestoneDetail(shape.stages[0]!.milestones[0]!, now), "Cancelled");
+    const milestone = shape.stages[0]?.milestones[0];
+    assert.ok(milestone);
+    assert.equal(milestoneDetail(milestone, now), "Cancelled");
+    assert.equal(milestoneTone(milestone), "complete");
+    assert.equal(milestoneTone({ ...milestone, state: "skipped" }), "complete");
+    assert.equal(milestoneTone({ ...milestone, state: "timed_out" }), "failed");
+    assert.equal(milestoneDetail({ ...milestone, state: "timed_out" }, now), "Timed out");
   });
 });

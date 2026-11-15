@@ -1948,6 +1948,30 @@ class MemoryDatabase implements Database {
     });
   }
 
+  async listCodeAgentExecutions(organizationId: string, runIds: readonly string[]) {
+    if (runIds.length === 0) return [];
+    const wanted = new Set(runIds);
+    const operations = await this.triggerCode.transaction(organizationId, (tx) =>
+      Promise.all(runIds.map((runId) => tx.operations(runId))),
+    );
+    const links = [];
+    for (const list of operations) {
+      for (const operation of list) {
+        if (
+          !wanted.has(operation.runId) ||
+          operation.kind !== "agent" ||
+          operation.childRunId === null
+        )
+          continue;
+        const child = this.triggerRuns.get(operation.childRunId);
+        const executionId = this.listSteps(operation.childRunId)[0]?.agentExecutionId;
+        if (child?.organizationId !== organizationId || executionId == null) continue;
+        links.push({ runId: operation.runId, operationId: operation.id, executionId });
+      }
+    }
+    return links;
+  }
+
   private listSteps(triggerRunId: string): WorkflowStepRunRecord[] {
     return [...this.workflowStepRuns.values()]
       .filter((step) => step.triggerRunId === triggerRunId)

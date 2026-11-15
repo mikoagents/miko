@@ -794,6 +794,13 @@ export interface TriggerRunDaemonRecord {
   slug: string;
 }
 
+/** An agent call whose child execution has started, keyed back to the code journal. */
+export interface CodeAgentExecutionLink {
+  runId: string;
+  operationId: string;
+  executionId: string;
+}
+
 export interface WorkflowStepRunRecord {
   id: string;
   triggerRunId: string;
@@ -1259,6 +1266,15 @@ export interface Database {
     organizationId: string,
     runIds: readonly string[],
   ): Promise<TriggerRunDaemonRecord[]>;
+  /**
+   * Agent calls in these code runs whose child execution has started. The journal stays `waiting`
+   * until the child finishes, so a history projection cannot tell a queued call from a running one
+   * without this fact.
+   */
+  listCodeAgentExecutions(
+    organizationId: string,
+    runIds: readonly string[],
+  ): Promise<CodeAgentExecutionLink[]>;
   findProjectActivityRun(
     projectId: string,
     runId: string,

@@ -370,9 +370,13 @@ function settledEnd(
   return value.completedAt === null ? null : Date.parse(value.completedAt);
 }
 
-/** A milestone drawn as a timeline draws the same stretch. */
+/**
+ * A milestone drawn as a timeline draws the same stretch. A parent that has ended is not still
+ * running or waiting, even when the journal entry it stopped was a wait.
+ */
 export function milestoneTone(milestone: Milestone): TimelineTone {
-  if (milestone.state === "failed") return "failed";
+  if (milestone.state === "failed" || milestone.state === "timed_out") return "failed";
+  if (milestone.state === "cancelled" || milestone.state === "skipped") return "complete";
   if (milestone.wait) return "waiting";
   return milestone.state === "completed" ? "complete" : "running";
 }
