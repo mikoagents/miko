@@ -1,6 +1,6 @@
 import { TriggerDetailSkeleton } from "./detail-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop -- workflow cards compose their source and status controls */
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pause, Play } from "lucide-react";
@@ -10,11 +10,12 @@ import { Section } from "../../components/app/section.js";
 import { Button } from "../../components/ui/button.js";
 import { useSnapshotQuery } from "../../queries/index.js";
 import { useRouteTenant } from "../../projects/context.js";
-import { codeTriggerDetail, codeTriggerAction } from "../functions.js";
+import { codeTriggerDetail, codeTriggerAction, type CodeTriggerDetail } from "../functions.js";
 import { TriggerRunHistory } from "../activity-panel.js";
 import { TriggerSource } from "./source-view.js";
 import { TriggerSettings } from "./settings-view.js";
 import { TriggerPipelineView } from "./pipeline-view.js";
+import { TriggerConfigurationEditor } from "./configuration-editor.js";
 
 type Action = "run" | "enable" | "disable";
 const ACTION_FEEDBACK = {
@@ -29,6 +30,17 @@ const ENABLED_STATUS = { label: "Enabled", tone: "success" } as const;
 const DISABLED_STATUS = { label: "Disabled", tone: "neutral" } as const;
 
 export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const edit = useCallback(() => {
+    setSaved(false);
+    setEditing(true);
+  }, []);
+  const closeEditor = useCallback(() => setEditing(false), []);
+  const savedConfiguration = useCallback(() => {
+    setEditing(false);
+    setSaved(true);
+  }, []);
   const { organization } = useRouteTenant();
   const organizationSlug = organization.slug;
   const load = useServerFn(codeTriggerDetail);
@@ -80,6 +92,15 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
         status={data.enabled ? ENABLED_STATUS : DISABLED_STATUS}
       >
         {data.canManage && manifest ? (
+          <Button
+            variant="outline"
+            disabled={editing || data.configuration?.unavailable !== null}
+            onClick={edit}
+          >
+            Edit configuration
+          </Button>
+        ) : null}
+        {data.canManage && manifest && !editing ? (
           <TriggerActions
             enabled={data.enabled}
             busy={mutation.isPending}
@@ -100,13 +121,19 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
           {feedback.message}
         </NoticeAlert>
       ) : null}
+      {saved ? (
+        <NoticeAlert standalone tone="success" title="Configuration saved">
+          Project source and configuration now use the new revision.
+        </NoticeAlert>
+      ) : null}
       {manifest ? (
-        <>
-          <Section title="Pipeline">
-            <TriggerPipelineView manifest={manifest} />
-          </Section>
-          <TriggerSettings manifest={manifest} inspection={data.inspection} />
-        </>
+        <TriggerDefinitionSettings
+          data={data}
+          editing={editing}
+          organizationSlug={organizationSlug}
+          onClose={closeEditor}
+          onSaved={savedConfiguration}
+        />
       ) : (
         <NoticeAlert standalone tone="neutral" title="Previous configuration">
           Deploy a code project with the same name to update this Trigger and keep its history.
@@ -143,6 +170,45 @@ function TriggerActions({
         <Play aria-hidden="true" />
         Run now
       </Button>
+    </>
+  );
+}
+
+function TriggerDefinitionSettings({
+  data,
+  editing,
+  organizationSlug,
+  onClose,
+  onSaved,
+}: {
+  data: CodeTriggerDetail;
+  editing: boolean;
+  organizationSlug: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const manifest = data.artifact!.manifest;
+  return (
+    <>
+      {" "}
+      <Section title="Pipeline">
+        <TriggerPipelineView manifest={manifest} />
+      </Section>
+      {editing ? (
+        <TriggerConfigurationEditor
+          current={data}
+          organizationSlug={organizationSlug}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
+      ) : (
+        <TriggerSettings manifest={manifest} inspection={data.inspection} />
+      )}
+      {data.canManage && data.configuration?.unavailable ? (
+        <NoticeAlert standalone tone="neutral" title="Edit this project in code">
+          {data.configuration.unavailable}
+        </NoticeAlert>
+      ) : null}
     </>
   );
 }

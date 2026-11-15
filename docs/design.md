@@ -120,6 +120,12 @@ Events say which resources can start a run; resources that subscribe to the same
 Access is what the code may do there: the permission levels its grants share, then each grant name
 beside the repositories that grant may touch. Those repositories are not a third column, and they
 are not the event scope. Execution resources and Agent calls follow, then run history and source revisions.
+Managers can edit configuration in place using the shared form controls. Events, execution resources,
+Agent options, prompts and template inputs have quiet section headings and compact cards. Source
+changes update alongside the draft; checking a configuration and saving it are separate actions.
+Code-computed values retain their
+source expression rather than becoming editable guessed values. Keep integration requirements visible,
+and use the shared form action row for Cancel, Check configuration and Save changes or Create trigger.
 
 ## Emphasis without weight
 

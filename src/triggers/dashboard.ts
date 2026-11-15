@@ -1,6 +1,8 @@
 import { TriggerPipelineSchema } from "./code/pipeline-schema.js";
 import { validateArtifact, jsonValue } from "./code/contract.js";
 import { inspectTriggerArtifact } from "./code/inspection.js";
+import { configureTriggerArtifact, triggerConfiguration } from "./code/editable-source.js";
+import type { TriggerConfigurationChange } from "./code/configuration-types.js";
 import {
   agentModelSummary,
   executionTargetSummary,
@@ -432,6 +434,81 @@ export class TriggerDashboard {
             },
       yaml: artifact === null ? revision.yaml : null,
       inspection: artifact === null ? null : inspectTriggerArtifact(artifact),
+      configuration: artifact === null ? null : triggerConfiguration(artifact),
+    };
+  }
+
+  async configureCode(
+    request: Request,
+    scope: {
+      organizationSlug: string;
+      triggerId: string;
+      revisionId: string;
+      changes: TriggerConfigurationChange[];
+      save: boolean;
+    },
+  ) {
+    const { account, tenant } = await resolveRouteTenant(this.auth, this.database, request, scope);
+    if (!capabilitiesFor(tenant.membership.role).manageResources || !this.triggerCode)
+      throw new ProjectCommandError("forbidden");
+    const trigger = await this.triggerCode.trigger(tenant.organization.id, scope.triggerId);
+    if (trigger.activeRevisionId !== scope.revisionId)
+      throw new Error("This Trigger has a newer revision. Reload it before saving your changes.");
+    const previous = await this.triggerCode.artifact(
+      tenant.organization.id,
+      trigger.id,
+      scope.revisionId,
+    );
+    const artifact = await configureTriggerArtifact(previous, scope.changes);
+    await this.triggerCode.validate(tenant.organization.id, artifact);
+    const deployed = scope.save
+      ? await this.triggerCode.deploy(
+          tenant.organization.id,
+          artifact,
+          { editedByUserId: account.account.id },
+          { triggerId: trigger.id, revisionId: scope.revisionId },
+        )
+      : null;
+    return {
+      deployed,
+      manifest: artifact.manifest,
+      inspection: inspectTriggerArtifact(artifact),
+      sources: artifact.sources.filter(
+        (file) =>
+          previous.sources.find((source) => source.path === file.path)?.content !== file.content,
+      ),
+    };
+  }
+
+  async codeConfigurationResources(request: Request, organizationSlug: string) {
+    const { tenant } = await resolveRouteTenant(this.auth, this.database, request, {
+      organizationSlug,
+    });
+    if (!capabilitiesFor(tenant.membership.role).manageResources)
+      throw new ProjectCommandError("forbidden");
+    const [daemons, connections, repositories] = await Promise.all([
+      this.database.listDaemonsForOrganization(tenant.organization.id),
+      this.database.organizationConnectionUsage(tenant.organization.id),
+      this.database.listGitHubRepositories(tenant.organization.id),
+    ]);
+    return {
+      daemons: daemons
+        .filter(
+          (daemon) => daemon.status === "active" && daemon.permissions.includes("hub.execute"),
+        )
+        .map((daemon) => ({ value: daemon.slug, label: daemon.slug })),
+      github: connections.github.map((connection) => ({
+        value: connection.slug,
+        label: connection.slug,
+      })),
+      linear: connections.linear.map((connection) => ({
+        value: connection.slug,
+        label: connection.slug,
+      })),
+      repositories: repositories.map((repository) => ({
+        value: repository.fullName,
+        label: repository.fullName,
+      })),
     };
   }
 

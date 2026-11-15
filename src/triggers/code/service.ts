@@ -151,6 +151,7 @@ export class TriggerCodeService {
     organizationId: string,
     value: unknown,
     sourceEvidence: Record<string, unknown> = {},
+    expected?: { triggerId: string; revisionId: string } | { create: true },
   ) {
     const { artifact, routes } = await this.validate(organizationId, value);
     return this.database.withAdvisoryLock(
@@ -159,6 +160,20 @@ export class TriggerCodeService {
         const previous = (await this.database.listOrganizationTriggers(organizationId)).find(
           (item) => item.name === artifact.manifest.name,
         );
+        if (
+          expected &&
+          "triggerId" in expected &&
+          (previous?.id !== expected.triggerId || previous.activeRevisionId !== expected.revisionId)
+        )
+          throw new TriggerCodeError(
+            "This Trigger has a newer revision. Reload it before saving your changes.",
+            409,
+          );
+        if (expected && "create" in expected && previous)
+          throw new TriggerCodeError(
+            "A Trigger with this name already exists. Choose another name.",
+            409,
+          );
         // The existing routing adapter remains data-only; code owns its dynamic operation graph.
         const routing: CompiledHubConfig = {
           environments: [{ kind: "daemon", name: "code", daemon: "trigger-runner", cwd: "/" }],
