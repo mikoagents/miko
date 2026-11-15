@@ -3,6 +3,8 @@ import { validateArtifact, jsonValue } from "./code/contract.js";
 import { inspectTriggerArtifact } from "./code/inspection.js";
 import { configureTriggerArtifact, triggerConfiguration } from "./code/editable-source.js";
 import type { TriggerConfigurationChange } from "./code/configuration-types.js";
+import { configureTemplate } from "./code/template-configuration.js";
+import { findTriggerTemplate } from "./code/templates.js";
 import {
   agentModelSummary,
   executionTargetSummary,
@@ -512,6 +514,39 @@ export class TriggerDashboard {
     };
   }
 
+  async createCodeFromTemplate(
+    request: Request,
+    scope: {
+      organizationSlug: string;
+      templateId: string;
+      name: string;
+      changes: TriggerConfigurationChange[];
+      save: boolean;
+    },
+  ) {
+    const { account, tenant } = await resolveRouteTenant(this.auth, this.database, request, scope);
+    if (!capabilitiesFor(tenant.membership.role).manageResources || !this.triggerCode)
+      throw new ProjectCommandError("forbidden");
+    const template = findTriggerTemplate(scope.templateId);
+    if (!template) throw new Error("Template unavailable. Reload the template catalog.");
+    const artifact = await configureTemplate(template, scope.name, scope.changes);
+    await this.triggerCode.validate(tenant.organization.id, artifact);
+    const deployed = scope.save
+      ? await this.triggerCode.deploy(
+          tenant.organization.id,
+          artifact,
+          { editedByUserId: account.account.id },
+          { create: true },
+        )
+      : null;
+    return {
+      deployed,
+      manifest: artifact.manifest,
+      inspection: inspectTriggerArtifact(artifact),
+      sources: artifact.sources,
+    };
+  }
+
   async codeRunDetail(
     request: Request,
     scope: { organizationSlug: string; triggerId: string; runId: string },
@@ -599,6 +634,7 @@ export class TriggerDashboard {
       triggerId: string;
       action: "run" | "enable" | "disable" | "cancel";
       runId?: string | undefined;
+      payload?: unknown;
     },
   ) {
     const { tenant } = await resolveRouteTenant(this.auth, this.database, request, scope);
@@ -616,7 +652,7 @@ export class TriggerDashboard {
         id: randomUUID(),
         source: "manual",
         type: "run",
-        payload: null,
+        payload: jsonValue(scope.payload ?? null),
         receivedAt: new Date().toISOString(),
       });
     } else

@@ -54,6 +54,111 @@ is running. Deploying code builds and validates the bundle automatically. Use `t
 ./my-trigger/trigger.ts --out ./trigger-artifact.json` and `trigger deploy --artifact
 ./trigger-artifact.json` when CI needs a separate build artifact.
 
+The Triggers page includes all 27 built-in templates from the Cursor Automations catalog captured
+on November 15, 2026, adapted from
+[Cursor Automations](https://cursor.com/marketplace). Select a template to inspect its original
+prompt, setup requirements and generated `defineTrigger` script. **Use template** opens the same
+source-backed configuration form; fill in the environment and integration settings, check the
+configuration and choose **Create trigger**. Creation refuses an existing name and retains the
+template upgrade baseline. MCP tools, runner secrets and event relays still require explicit operator
+setup. You can also create the same project locally:
+
+```sh
+miko trigger templates
+miko trigger init ./daily-digest --template daily-digest
+```
+
+Every template has its own stable `major.minor.patch` version. Generated scripts declare
+`template: { id, version }` in the manifest, so Hub retains the association on every deployed
+revision and shows the installed version, latest available version and update status in the
+Trigger detail page. Versions describe Miko's adaptation, independently of Cursor and Hub
+release numbers. Detection compares with the catalog in the installed Hub/CLI; newer Hub releases
+can ship newer template versions. Unknown templates and versions newer than the local catalog are
+shown explicitly and are never downgraded automatically.
+Changes to a template's prompt, schedule, grants or generated adapter require a new template
+version; shared adapter changes require bumping every affected template.
+
+`trigger init --template` also creates `.miko-template.json`, containing the original generated
+source and its digest. Commit this baseline with your project. Builds include it in the source
+bundle so it can be recovered from a deployed revision.
+
+```sh
+miko trigger template-status ./daily-digest/trigger.ts
+miko trigger upgrade ./daily-digest/trigger.ts
+```
+
+The upgrade command uses git to merge the installed baseline, your current source and the latest
+template into a preview such as `trigger.upgrade-1.1.0.ts`. Your working script and baseline stay
+untouched. If the template is current, no preview is written. Review the result and resolve any
+conflict markers. Keep the preview's `.miko-upgrade.json` metadata beside it: applying checks that
+your script has not changed since the preview, and refuses stale previews rather than losing edits.
+Use `--out ./daily-digest/reviewed.ts` to choose another preview filename beside the entrypoint.
+Version checks and preview generation read static provenance without executing the project or
+requiring it to satisfy the latest execution schema. This lets older projects upgrade when required
+fields change. Keep the Trigger name and template ID/version statically readable; applying the
+reviewed candidate validates it against the current schema.
+
+```sh
+miko trigger upgrade ./daily-digest/trigger.ts --apply ./daily-digest/trigger.upgrade-1.1.0.ts
+miko trigger check ./daily-digest/trigger.ts
+miko trigger deploy ./daily-digest/trigger.ts --url http://localhost:3000 --token-file /private/hub-credential
+```
+
+Applying validates the reviewed candidate, preserves the Trigger name and template identity, and
+updates the local source and baseline. Deploying with that same name updates the existing Trigger
+and retains its history. Template metadata does not automatically change a running workflow.
+
+Templates preserve every complete original prompt, input description, source link and workflow
+tool configuration. The gallery searches by task, service or tool and shows the trigger and setup
+requirements. The previous eight templates are version 1.1.0 after this adapter expansion.
+Slack bug-report thread delivery and Linear issue triage writes are also version 1.1.0; the
+other newly added templates begin at 1.0.0.
+
+Edit the generated `settings`, subscriptions and grants before deploying: choose the runner,
+daemon, working directory, native provider options and original template inputs. Repository
+workflows declare their GitHub connection, repository and branch. Multi-repository PR templates
+use `settings.repositories` and select the matching daemon directory from the event. PR workflows
+check out the triggering PR; inline review fixes push to its existing branch. Permissions match
+the task: reviewer assignment can write PR reviews without gaining repository content write access.
+
+All templates support **Run now**, alongside their original UTC schedule or event subscription.
+Manual runs of event-driven templates need the same event context, such as repository and
+`pull_request.number`. On the Trigger page, **Run now** asks for that JSON object before queueing
+an event-driven template. Manual-only and schedule templates still start immediately. The CLI
+`trigger run --input-file` path is unchanged. GitHub PR/review-comment/workflow and Linear issue events use native Hub
+connections. Failed-workflow triage accepts cancellations as well as failures; CI autofix retains
+its main-branch and 30-minute failing-job claim checks.
+
+Slack channel monitoring, Sentry issue events and PagerDuty incident events use explicit event
+relays to the authenticated custom event API. Hub's Slack connection receives mentions, so it
+cannot substitute for a subscription to every channel message. Configure a relay that verifies
+provider deliveries, preserves their payloads, IDs and timestamps, and forwards the source/type
+shown in the template setup using an API key with Dispatch runs permission. Slack relays use
+`slack_channel` / `message`; Sentry uses `sentry` / `issue.*`; PagerDuty uses `pagerduty` /
+`incident.triggered`. Slack templates check the configured channel and exclude bot messages by
+default through the editable `settings.ignoreBotMessages` flag.
+
+Customer health, product analytics, product FAQ, product finance and Slack digest run in an
+automation workspace without a repository grant or git worktree. Configure their listed MCP
+servers on the chosen daemon/provider, using native provider configuration. The build-health and
+environment-doctor templates also need the original `cursor-cloud` diagnostics capabilities;
+their setup explains those requirements and the original fallback behavior. The Anyone onboarding
+template retains its product-specific API requirements. Performance flag sync needs its Statsig
+secret in the daemon's native execution environment, outside project files and manifests.
+
+For templates with Slack delivery, the agent returns a structured message and the Trigger posts it
+in a durable step. FAQ answers use the incoming Slack thread; build-health reports publish their
+investigation replies using the actual parent-message receipt. Slack needs a bot with `chat:write`
+and access to the destination. Put `SLACK_BOT_TOKEN` in a private JSON secrets file outside the
+project and add `--secrets-file /private/secrets.json` to the runner command. Templates without a
+Slack action need no Slack token and return their report in the run summary or GitHub thread.
+
+Templates with memory enabled return a complete named-file snapshot; Hub saves it in `ctx.state`
+only after required notifications succeed. Memory-disabled templates neither read nor save this
+snapshot. Runs are serialized with `ctx.withLock`, and CI autofix passes a bounded CI job report
+to the agent. Repository tasks require git/gh and a local checkout; other native tool requirements
+remain explicit per template. No Cursor memory service is used.
+
 ```ts
 import { defineTrigger } from "@mikoagents/hub/triggers";
 
@@ -386,7 +491,8 @@ Pipeline and operation IDs in sync whenever the code changes.
 
 The graph scrolls independently on narrow screens and supports keyboard navigation. **Expand
 pipeline** opens the same graph in a larger view. The [GitHub review example](../examples/triggers/github-review/trigger.ts)
-shows explicit CI, Review receipt, supplemental verification and repair loops. New starter projects include complete Pipeline definitions.
+shows explicit CI, Review receipt, supplemental verification and repair loops. New starter and
+built-in template projects include complete Pipeline definitions.
 
 ## Events, schedules, and operations
 

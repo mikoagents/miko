@@ -1,7 +1,7 @@
 import { COLUMNS, FILTERS, DESCRIPTION, TriggersLoading } from "./panel-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop, eslint-plugin-react-perf/jsx-no-new-array-as-prop, eslint-plugin-react-perf/jsx-no-new-function-as-prop -- shared record surfaces compose their labels, facts and row navigation */
 /* oxlint-disable typescript-eslint/no-unsafe-type-assertion -- organization URLs are resolved by the server outside generated route parameter types */
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Braces, Plus } from "lucide-react";
 import { DataTable, DataRow, DataCell } from "../components/app/data-table.js";
@@ -19,6 +19,7 @@ import { triggerSnapshot, type TriggerSnapshot } from "./functions.js";
 import { useTriggerStatusFilter } from "./status-filter.js";
 import { subscriptionListSummary } from "./code/presentation.js";
 import { describeTriggerEvent } from "./configuration/editor.js";
+import { TriggerTemplateGallery } from "./code/template-gallery.js";
 
 type BrowserTrigger = TriggerSnapshot["triggers"][number];
 
@@ -32,9 +33,16 @@ const FILTER_EMPTY = {
   disabled: { title: "No disabled triggers", description: "Choose All to view every Trigger." },
 };
 
+const VIEWS = [
+  { value: "mine", label: "Mine" },
+  { value: "explore", label: "Explore" },
+];
+
 export function TriggersPanel() {
   const navigate = useNavigate();
   const tenant = useRouteTenant();
+  const { scope } = useSearch({ from: "/_shell/o/$organizationSlug/triggers/" });
+  const canManage = tenant.capabilities.manageResources;
   const organizationSlug = tenant.organization.slug;
   const load = useServerFn(triggerSnapshot);
   const snapshot = useSnapshotQuery({
@@ -51,11 +59,58 @@ export function TriggersPanel() {
       onChange={setFilter}
     />
   );
-  if (snapshot.status === "pending" || !ready) return <TriggersLoading controls={controls} />;
+  const views = canManage ? (
+    <SegmentedControl
+      label="Trigger view"
+      value={scope === "explore" ? "explore" : "mine"}
+      options={VIEWS}
+      onChange={(value) => {
+        void navigate({
+          to: "/o/$organizationSlug/triggers",
+          params: { organizationSlug },
+          search: value === "explore" ? { scope: "explore" } : {},
+        });
+      }}
+    />
+  ) : null;
+  const header = (
+    <PageHeader title="Triggers" description={DESCRIPTION}>
+      {canManage ? (
+        <Button asChild>
+          <Link to={path("new")}>
+            <Plus aria-hidden="true" />
+            New trigger
+          </Link>
+        </Button>
+      ) : null}
+    </PageHeader>
+  );
+  if (canManage && scope === "explore")
+    return (
+      <>
+        {header}
+        <div className="grid min-w-0 gap-6">
+          {views}
+          <TriggerTemplateGallery />
+        </div>
+      </>
+    );
+  if (snapshot.status === "pending" || !ready)
+    return (
+      <TriggersLoading
+        controls={
+          <div className="grid gap-6">
+            {views}
+            {controls}
+          </div>
+        }
+      />
+    );
   if (snapshot.status === "error")
     return (
       <>
-        <PageHeader title="Triggers" description={DESCRIPTION} />
+        {header}
+        {views}
         <FailureAlert
           title="Triggers unavailable"
           error={snapshot.error}
@@ -70,17 +125,9 @@ export function TriggersPanel() {
   );
   return (
     <>
-      <PageHeader title="Triggers" description={DESCRIPTION}>
-        {data.canManage ? (
-          <Button asChild>
-            <Link to={path("new")}>
-              <Plus aria-hidden="true" />
-              New trigger
-            </Link>
-          </Button>
-        ) : null}
-      </PageHeader>
+      {header}
       <div className="grid gap-6">
+        {views}
         {controls}
         <DataTable
           label="Triggers"

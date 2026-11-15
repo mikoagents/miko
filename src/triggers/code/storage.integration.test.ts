@@ -20,6 +20,41 @@ afterAll(async () => {
 }, 120_000);
 
 describe.each(["embedded", "postgres"] as const)("programmable Trigger on %s", (kind) => {
+  it("retains template association and version per deployed revision across restarts", async () => {
+    const fixture = await setupCodeStorage(kind, postgres.getConnectionUri());
+    try {
+      const { digest: _digest, ...base } = program();
+      const versioned = (version: string) => {
+        const body = {
+          ...base,
+          manifest: { ...base.manifest, template: { id: "daily-digest", version } },
+        };
+        return { ...body, digest: artifactDigest(body) };
+      };
+      const first = await fixture.service().deploy("code-org", versioned("0.9.0"));
+      await fixture.restart();
+      const restored = await fixture
+        .service()
+        .artifact("code-org", first.triggerId, first.revisionId);
+      assert.deepEqual(restored.manifest.template, { id: "daily-digest", version: "0.9.0" });
+      const updated = await fixture.service().deploy("code-org", versioned("1.0.0"));
+      assert.equal(updated.triggerId, first.triggerId);
+      await fixture.restart();
+      assert.deepEqual(
+        (await fixture.service().artifact("code-org", first.triggerId, first.revisionId)).manifest
+          .template,
+        { id: "daily-digest", version: "0.9.0" },
+      );
+      assert.deepEqual(
+        (await fixture.service().artifact("code-org", updated.triggerId, updated.revisionId))
+          .manifest.template,
+        { id: "daily-digest", version: "1.0.0" },
+      );
+    } finally {
+      await fixture.close();
+    }
+  }, 90_000);
+
   it("recovers a real database and worker without redispatching an acknowledged agent; validates completion through MCP", async () => {
     const fixture = await setupCodeStorage(kind, postgres.getConnectionUri());
     try {

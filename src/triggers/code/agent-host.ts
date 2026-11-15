@@ -7,6 +7,7 @@ import type { GitHubAuthorityRegistration } from "../../providers/registration.j
 import type { CodeRun } from "./records.js";
 import { digest, CodeAgentOptionsSchema, ownGrant } from "./contract.js";
 import { requestGitHub } from "./github-transport.js";
+import { NormalizedLinearEventSchema } from "../linear/events.js";
 import {
   object,
   TriggerCodeError,
@@ -235,7 +236,35 @@ async function outputContext(database: Database, run: CodeRun): Promise<unknown>
     const connection = usage.slack.find((item) => item.slug === run.event.connection);
     return { provider: "slack", connectionId: connection?.id, ...raw };
   }
-  if (run.event.source === "discord" || run.event.source === "linear")
-    return { provider: run.event.source, ...raw };
+  if (run.event.source === "discord") return { provider: "discord", ...raw };
+  if (run.event.source === "linear") {
+    const reply = linearCodeOutputContext(raw);
+    return reply === undefined ? { provider: "linear", ...raw } : { ...raw, ...reply };
+  }
   return { provider: "trigger_code" };
+}
+
+/** The issue a code-trigger agent may comment on. Credentials stay on the Hub Linear connection. */
+export function linearCodeOutputContext(
+  payload: unknown,
+): { provider: "linear"; linearOrganizationId: string; issueId: string } | undefined {
+  const raw = object(payload);
+  const parsed = NormalizedLinearEventSchema.safeParse(raw);
+  if (parsed.success) {
+    const issueId =
+      parsed.data.type === "issue"
+        ? parsed.data.issue.id
+        : (parsed.data.issue?.id ?? parsed.data.comment.issueId);
+    return { provider: "linear", linearOrganizationId: parsed.data.organizationId, issueId };
+  }
+  const linearOrganizationId = raw["linearOrganizationId"];
+  const issueId = raw["issueId"];
+  if (
+    typeof linearOrganizationId === "string" &&
+    linearOrganizationId.length > 0 &&
+    typeof issueId === "string" &&
+    issueId.length > 0
+  )
+    return { provider: "linear", linearOrganizationId, issueId };
+  return undefined;
 }

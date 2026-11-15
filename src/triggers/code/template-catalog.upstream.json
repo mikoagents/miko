@@ -1,0 +1,623 @@
+{
+  "sourceUrl": "https://cursor.com/marketplace",
+  "capturedAt": "2026-11-15",
+  "templates": [
+    {
+      "id": "assign-pr-reviewers",
+      "promptSha256": "ef82edd02329fc7a7170ca3d60944e9f115b6a5ca7e4fa3a2217f344f2fb5c7b",
+      "triggers": [
+        {
+          "git": {
+            "pullRequest": {
+              "ignoreDraftPrs": true,
+              "prAction": "GIT_PULL_REQUEST_ACTION_PUSHED"
+            }
+          }
+        },
+        {
+          "git": {
+            "pullRequest": {
+              "ignoreDraftPrs": true,
+              "prAction": "GIT_PULL_REQUEST_ACTION_OPENED"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "requestReviewers": {}
+        },
+        {
+          "prComment": {
+            "resolveStaleThreads": true,
+            "allowApprove": true
+          }
+        }
+      ],
+      "inputKeys": ["repos", "slack_channel"]
+    },
+    {
+      "id": "daily-digest",
+      "promptSha256": "bea7f052e811e82cd51242a11cf08456d2758691545368c18aef371c501577a8",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 17 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "find-vulnerabilities",
+      "promptSha256": "76e1a07376a90728aedf5cec7cd136e5aa5e2e5bafec8964950ee563186d34f1",
+      "triggers": [
+        {
+          "git": {
+            "pullRequest": {
+              "ignoreDraftPrs": true,
+              "prAction": "GIT_PULL_REQUEST_ACTION_OPENED"
+            }
+          }
+        },
+        {
+          "git": {
+            "pullRequest": {
+              "ignoreDraftPrs": true,
+              "prAction": "GIT_PULL_REQUEST_ACTION_PUSHED"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "prComment": {
+            "allowInlineComments": true,
+            "resolveStaleThreads": true
+          }
+        },
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repos", "slack_channel"]
+    },
+    {
+      "id": "fix-slack-bugs",
+      "promptSha256": "7860d5b1a9a923e577d41f5769e03954b4975c9a3c8a360c066f850fc026f92a",
+      "triggers": [
+        {
+          "slackTrigger": {}
+        }
+      ],
+      "actions": [
+        {
+          "readSlack": {}
+        },
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "triage-github-workflow-failures",
+      "promptSha256": "20b7b0cafc47d8543ca24326b311088dc7cefb03b5e653fef24e655e1bd6d051",
+      "triggers": [
+        {
+          "git": {
+            "workflowRun": {
+              "conclusion": "GIT_WORKFLOW_RUN_CONCLUSION_FAILURE"
+            }
+          }
+        },
+        {
+          "git": {
+            "workflowRun": {
+              "conclusion": "GIT_WORKFLOW_RUN_CONCLUSION_CANCELLED"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "add-test-coverage",
+      "promptSha256": "deabc8b6f4bfa3a0c4236b1e4f11120c65caf98e6e4b96ba9d97bd47387df24e",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 10 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "autofix-pr-review-comments",
+      "promptSha256": "0f9af6837ec1a302851bae1f31e73e7b5e90d85561c1a37be3162f4a569996be",
+      "triggers": [
+        {
+          "git": {
+            "pullRequestReviewComment": {}
+          }
+        }
+      ],
+      "actions": [
+        {
+          "prComment": {
+            "allowInlineComments": true,
+            "resolveStaleThreads": true
+          }
+        }
+      ],
+      "inputKeys": ["repo"]
+    },
+    {
+      "id": "build-healthcheck",
+      "promptSha256": "94226c1fe9fa4923983f8feb1501ff9bed9df3c721d85b6575d07ddae8636e4f",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 * * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "ci-autofix",
+      "promptSha256": "b81fc3fc913008ea1b5b05adb98ae980d3185430d604ae9ce09bf18ee907d5d4",
+      "triggers": [
+        {
+          "git": {
+            "ciCompleted": {
+              "condition": "GIT_CI_COMPLETION_CONDITION_FAILURE",
+              "branch": "main"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "readSlack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "clean-up-feature-flags",
+      "promptSha256": "36bd7f4d331e9e71275ddda62f0fd7975276d07a3502fea5f4415e3a5c28eef6",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 10 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "customer-health-monitoring-agent",
+      "promptSha256": "9b0bdde8740e06ba20aa2c74ea8415d405d210637c74cbf949bdc7fd8fbd19da",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 13 * * 1"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Granola"
+            }
+          }
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Slack"
+            }
+          }
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Linear"
+            }
+          }
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Databricks SQL"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["slack_channel"]
+    },
+    {
+      "id": "environment-doctor",
+      "promptSha256": "ec7179e208c82d39b119af471472ed7fb283b67bd450876a3fe1c5527c5647f7",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 * * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "find-bugs",
+      "promptSha256": "26cf28f89fe59901cfac2ecbdbb4c1b89c80bcb623fdbc3a12bee6ee05dfdd3b",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 11 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "generate-docs",
+      "promptSha256": "a7d4406fbe7dcaf94b3a41e2dc14dd85c1a67abff23e887f36c5f80a17c8e7c7",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 16 * * 1"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "investigate-datadog-errors",
+      "promptSha256": "295e71cec406bdcc7751fe7235747e9644fe5adab1ea1ae5e2c3111fd23bd083",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 12 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Datadog"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "investigate-sentry-issues",
+      "promptSha256": "f6e1143ff7f56aa02b9aaabc0a27498340baf2bfe4c9736832029e57b94ef16e",
+      "triggers": [
+        {
+          "sentry": {
+            "issueAny": {}
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Sentry"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "linear-issue-triage",
+      "promptSha256": "050ac172656ef0c29cc5d4bdb724c8007eec140ef92b14b84f1c7f251738a1f2",
+      "triggers": [
+        {
+          "linear": {
+            "issueCreated": {}
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "monitor-engineering-invariants",
+      "promptSha256": "2078cf2ea80cd259a2524594f3414cd51e27477d5b74147a631dcdd713c16f26",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "10 18 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "readSlack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "pagerduty-incident-investigation",
+      "promptSha256": "3d36a01aa97241cdd40fcbb0a6782a19422ab292b7927ad6439f67118c2ae3b7",
+      "triggers": [
+        {
+          "pagerduty": {
+            "incidentTriggered": {}
+          }
+        }
+      ],
+      "actions": [
+        {
+          "mcp": {
+            "server": {
+              "name": "Datadog"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["repo"]
+    },
+    {
+      "id": "prepare-anyone-onboarding-session",
+      "promptSha256": "65f6617470e8553f6b52cfcb0e52d0db358f0b1128bd69a65a62e61421ebaf7d",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 20 * * 1"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Slack"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel", "candidate_pool"]
+    },
+    {
+      "id": "product-analytics-agent",
+      "promptSha256": "4ec9a64c6eefb1281f64128fcf61565ee97ec45754ccf952ecddbdbf18ccbbe1",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 13 * * 1"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Databricks SQL"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["slack_channel"]
+    },
+    {
+      "id": "product-faq-agent",
+      "promptSha256": "4a48cd1e37378e66b5e224868c83bbe8b32b446d2c5f5a56487ebe7f515cbe9c",
+      "triggers": [
+        {
+          "slackTrigger": {}
+        }
+      ],
+      "actions": [
+        {
+          "readSlack": {}
+        },
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Notion"
+            }
+          }
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Linear"
+            }
+          }
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "GitHub"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["slack_channel"]
+    },
+    {
+      "id": "product-finance-agent",
+      "promptSha256": "8678a7b7fe368aaf49145d4aa829b41c8db32631e89b00920dc22d30356db09c",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 13 * * 1"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Stripe"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["slack_channel"]
+    },
+    {
+      "id": "remediate-dependency-vulnerabilities",
+      "promptSha256": "8e2d3e545676bafc25a655a97637cc659ef10cd7f44a34a6ec42bd657b913621",
+      "triggers": [
+        {
+          "linear": {
+            "issueCreated": {}
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "scan-codebase-vulnerabilities",
+      "promptSha256": "afd3707c5ef6fd6923435b8c1bc4dd706eeac94b5a7cbbbd804494693943b91c",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 17 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    },
+    {
+      "id": "slack-digest-agent",
+      "promptSha256": "a8800fa9a2f19ee6beb68062fcb19dca2840c4ae19548dd0ec4f745bd11787fe",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 12 * * *"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "slack": {}
+        },
+        {
+          "mcp": {
+            "server": {
+              "name": "Slack"
+            }
+          }
+        }
+      ],
+      "inputKeys": ["slack_channel"]
+    },
+    {
+      "id": "sync-perf-test-feature-flags",
+      "promptSha256": "95a08a592e23abf1b5ec09f62bd22e5a8de0d0d684116d307a0c691cd0dad367",
+      "triggers": [
+        {
+          "cron": {
+            "cron": "0 15 * * 1-5"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "gitPr": {}
+        },
+        {
+          "slack": {}
+        }
+      ],
+      "inputKeys": ["repo", "slack_channel"]
+    }
+  ]
+}

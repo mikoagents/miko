@@ -90,8 +90,15 @@ export interface TriggerGrants {
   secrets?: string[] | undefined;
 }
 
+/** Provenance of the native Hub template this project was created from. */
+export interface TriggerTemplateReference {
+  id: string;
+  version: string;
+}
+
 export interface TriggerManifest {
   name: string;
+  template?: TriggerTemplateReference | undefined;
   description?: string | undefined;
   /** Complete nodes and labelled branches, shared by Trigger and Activity. */
   pipeline: TriggerPipeline;

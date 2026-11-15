@@ -1,10 +1,12 @@
 import { TriggerDetailSkeleton } from "./detail-loading.js";
 /* oxlint-disable eslint-plugin-react-perf/jsx-no-jsx-as-prop -- workflow cards compose their source and status controls */
-import { useCallback, useState } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pause, Play } from "lucide-react";
 import { FailureAlert, NoticeAlert } from "../../components/app/failure-alert.js";
+import { FormDialog } from "../../components/app/form-dialog.js";
+import { FormField } from "../../components/app/form-field.js";
 import { PageHeader } from "../../components/app/page.js";
 import { Section } from "../../components/app/section.js";
 import { Button } from "../../components/ui/button.js";
@@ -15,6 +17,7 @@ import { TriggerRunHistory } from "../activity-panel.js";
 import { TriggerSource } from "./source-view.js";
 import { TriggerSettings } from "./settings-view.js";
 import { TriggerPipelineView } from "./pipeline-view.js";
+import { TriggerTemplateVersion } from "./template-view.js";
 import { TriggerConfigurationEditor } from "./configuration-editor.js";
 
 type Action = "run" | "enable" | "disable";
@@ -32,6 +35,8 @@ const DISABLED_STATUS = { label: "Disabled", tone: "neutral" } as const;
 export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [runOpen, setRunOpen] = useState(false);
+  const [contextError, setContextError] = useState<string | undefined>();
   const edit = useCallback(() => {
     setSaved(false);
     setEditing(true);
@@ -51,8 +56,15 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
     queryFn: () => load({ data: { organizationSlug, triggerId } }),
   });
   const mutation = useMutation({
-    mutationFn: async (action: Action) => {
-      const result = await act({ data: { organizationSlug, triggerId, action } });
+    mutationFn: async (request: { action: Action; payload?: unknown }) => {
+      const result = await act({
+        data: {
+          organizationSlug,
+          triggerId,
+          action: request.action,
+          ...(request.payload === undefined ? {} : { payload: request.payload }),
+        },
+      });
       if (result.status === "error") throw new Error(result.error.message);
       return result;
     },
@@ -64,6 +76,45 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
       ]);
     },
   });
+  const requestAction = useCallback(
+    (action: Action) => {
+      const subscriptions =
+        source.status === "success" ? source.data.artifact?.manifest.on : undefined;
+      if (action === "run" && needsManualContext(subscriptions)) {
+        setContextError(undefined);
+        setRunOpen(true);
+        return;
+      }
+      mutation.mutate({ action });
+    },
+    [mutation, source.data, source.status],
+  );
+  const submitContext = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const value = new FormData(event.currentTarget).get("context");
+      const raw = typeof value === "string" ? value.trim() : "";
+      let payload: unknown;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        setContextError("Event context must be a JSON object.");
+        return;
+      }
+      if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+        setContextError("Event context must be a JSON object.");
+        return;
+      }
+      setContextError(undefined);
+      setRunOpen(false);
+      mutation.mutate({ action: "run", payload });
+    },
+    [mutation],
+  );
+  const closeRun = useCallback((open: boolean) => {
+    setRunOpen(open);
+    if (!open) setContextError(undefined);
+  }, []);
   if (source.status === "pending") return <TriggerDetailSkeleton />;
   if (source.status === "error")
     return (
@@ -80,7 +131,7 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
   const data = source.data;
   const manifest = data.artifact?.manifest;
   const feedback =
-    mutation.isSuccess && mutation.variables ? ACTION_FEEDBACK[mutation.variables] : null;
+    mutation.isSuccess && mutation.variables ? ACTION_FEEDBACK[mutation.variables.action] : null;
   return (
     <>
       <PageHeader
@@ -104,10 +155,17 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
           <TriggerActions
             enabled={data.enabled}
             busy={mutation.isPending}
-            onAction={mutation.mutate}
+            onAction={requestAction}
           />
         ) : null}
       </PageHeader>
+      <ManualRunDialog
+        open={runOpen}
+        busy={mutation.isPending}
+        error={contextError}
+        onOpenChange={closeRun}
+        onSubmit={submitContext}
+      />
       {mutation.error ? (
         <FailureAlert
           standalone
@@ -146,6 +204,49 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
         <TriggerSource organizationSlug={organizationSlug} current={data} />
       </Section>
     </>
+  );
+}
+
+function needsManualContext(subscriptions: readonly { source: string }[] | undefined): boolean {
+  return (subscriptions ?? []).some(
+    (subscription) => subscription.source !== "manual" && subscription.source !== "schedule",
+  );
+}
+
+function ManualRunDialog({
+  open,
+  busy,
+  error,
+  onOpenChange,
+  onSubmit,
+}: {
+  open: boolean;
+  busy: boolean;
+  error: string | undefined;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Run with event context"
+      description="Paste the event this Trigger should read. The CLI input file is unchanged."
+      label="Run with event context"
+      submitLabel="Run now"
+      busy={busy}
+      onSubmit={onSubmit}
+    >
+      <FormField
+        id="trigger-run-context"
+        label="Event context"
+        description="JSON object sent as this run's payload. Include the repository and pull request number, or the Slack channel and thread timestamp, when the template requires them."
+        {...(error === undefined ? {} : { error })}
+        kind="multiline"
+        name="context"
+        required
+      />
+    </FormDialog>
   );
 }
 
@@ -194,6 +295,9 @@ function TriggerDefinitionSettings({
       <Section title="Pipeline">
         <TriggerPipelineView manifest={manifest} />
       </Section>
+      {manifest.template === undefined ? null : (
+        <TriggerTemplateVersion reference={manifest.template} canManage={data.canManage} />
+      )}
       {editing ? (
         <TriggerConfigurationEditor
           current={data}

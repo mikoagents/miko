@@ -5,8 +5,8 @@ import { Skeleton } from "../ui/skeleton.js";
 
 /**
  * The one bordered surface. Anything that would otherwise be a hand-rolled `rounded-* border
- * bg-card p-*` div is this, so every card on the dashboard has the same radius, the same
- * padding, and the same distance from its title to its body. Title and description are
+ * bg-card p-*` div is this, so cards share their radius, density, and distance from title to
+ * body. Title and description are
  * optional: a card with neither is just the box.
  */
 export function Card({
@@ -17,6 +17,7 @@ export function Card({
   children,
   className,
   density = "default",
+  layout = "default",
 }: {
   /** A glyph identifying what the card is about, beside its title. */
   icon?: ReactNode;
@@ -30,28 +31,59 @@ export function Card({
   className?: string;
   /** Compact cards group settings under a heading outside the surface. */
   density?: "default" | "compact";
+  /** A catalog entry inside a link: a leading glyph, a short preview, and optional metadata. */
+  layout?: "default" | "catalog";
 }) {
   const titled = title !== undefined || description !== undefined || action !== undefined;
+  const catalog = layout === "catalog";
+  const Heading = catalog ? "h3" : "h2";
   return (
     <section
       className={cn(
         "grid min-w-0 gap-4 rounded-xl border bg-card",
         density === "compact" ? "p-4" : "p-6",
+        catalog &&
+          "h-full grid-rows-[1fr_auto] gap-3 transition-colors duration-150 group-hover:bg-accent group-focus-visible:bg-accent",
         className,
       )}
     >
       {titled ? (
-        <div className="flex min-w-0 items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2.5">
+        <div
+          className={cn(
+            "flex min-w-0 justify-between gap-4",
+            catalog ? "items-start" : "items-center",
+          )}
+        >
+          <div
+            className={cn(
+              "flex min-w-0",
+              catalog ? "flex-col items-start gap-3" : "items-center gap-2.5",
+            )}
+          >
             {icon === undefined ? null : (
-              <span aria-hidden="true" className="flex shrink-0 items-center [&>svg]:size-4">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "flex shrink-0 items-center",
+                  catalog ? "size-5 text-link [&>svg]:size-5" : "[&>svg]:size-4",
+                )}
+              >
                 {icon}
               </span>
             )}
             <div className="grid min-w-0 gap-1">
-              {title === undefined ? null : <h2 className="text-sm text-foreground">{title}</h2>}
+              {title === undefined ? null : (
+                <Heading className="text-sm text-foreground">{title}</Heading>
+              )}
               {description === undefined ? null : (
-                <p className="text-sm text-muted-foreground">{description}</p>
+                <p
+                  className={cn(
+                    "text-sm text-muted-foreground",
+                    catalog && "line-clamp-2 min-h-10",
+                  )}
+                >
+                  {description}
+                </p>
               )}
             </div>
           </div>

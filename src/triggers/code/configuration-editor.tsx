@@ -14,7 +14,11 @@ import { Section } from "../../components/app/section.js";
 import { Button } from "../../components/ui/button.js";
 import { useSnapshotQuery } from "../../queries/index.js";
 import type { CodeTriggerDetail } from "../functions.js";
-import { codeConfigurationResources, configureCodeTrigger } from "./configuration-functions.js";
+import {
+  codeConfigurationResources,
+  configureCodeTrigger,
+  createTemplateTrigger,
+} from "./configuration-functions.js";
 import {
   configurationChanges,
   configurationInput,
@@ -36,11 +40,13 @@ export function TriggerConfigurationEditor({
   organizationSlug,
   onClose,
   onSaved,
+  creation,
 }: {
   current: Pick<CodeTriggerDetail, "id" | "revisionId" | "version" | "artifact" | "configuration">;
   organizationSlug: string;
   onClose: () => void;
   onSaved: (deployed: { triggerId: string } | null) => void;
+  creation?: { templateId: string };
 }) {
   // Hold the accepted editing baseline even if a background detail refresh discovers a new revision.
   const [baseline] = useState(current);
@@ -52,6 +58,7 @@ export function TriggerConfigurationEditor({
   const [sourceOpen, setSourceOpen] = useState(true);
   const loadResources = useServerFn(codeConfigurationResources);
   const configure = useServerFn(configureCodeTrigger);
+  const create = useServerFn(createTemplateTrigger);
   const client = useQueryClient();
   const resources = useSnapshotQuery({
     queryKey: ["trigger-configuration-resources", organizationSlug],
@@ -79,20 +86,31 @@ export function TriggerConfigurationEditor({
     setFailure(null);
   }, []);
   const submit = async (save: boolean) => {
-    if (busy || Object.keys(draft.errors).length > 0 || draft.changes.length === 0) return;
+    if (busy || Object.keys(draft.errors).length > 0 || (!creation && draft.changes.length === 0))
+      return;
     setBusy(true);
     setFailure(null);
     setValidated(false);
     try {
-      const result = await configure({
-        data: {
-          organizationSlug,
-          triggerId: baseline.id,
-          revisionId: baseline.revisionId,
-          changes: draft.changes,
-          save,
-        },
-      });
+      const result = creation
+        ? await create({
+            data: {
+              organizationSlug,
+              templateId: creation.templateId,
+              name: values["template-name"] ?? baseline.artifact?.manifest.name ?? "",
+              changes: draft.changes.filter((change) => change.id !== "template-name"),
+              save,
+            },
+          })
+        : await configure({
+            data: {
+              organizationSlug,
+              triggerId: baseline.id,
+              revisionId: baseline.revisionId,
+              changes: draft.changes,
+              save,
+            },
+          });
       if (result.status === "error") throw new Error(result.error.message);
       if (save) {
         await Promise.all([
@@ -120,7 +138,10 @@ export function TriggerConfigurationEditor({
         title="Configure trigger"
         description="Changes update the project source and create a revision when you save."
       >
-        <NoticeAlert tone="neutral" title={`Editing revision ${baseline.version}`}>
+        <NoticeAlert
+          tone="neutral"
+          title={creation ? "Configure your template" : `Editing revision ${baseline.version}`}
+        >
           Shared settings update every place that references them. Values computed when a run starts
           stay in the workflow code.
         </NoticeAlert>
@@ -197,7 +218,11 @@ export function TriggerConfigurationEditor({
         <Button
           type="button"
           variant="outline"
-          disabled={busy || draft.changes.length === 0 || Object.keys(draft.errors).length > 0}
+          disabled={
+            busy ||
+            (!creation && draft.changes.length === 0) ||
+            Object.keys(draft.errors).length > 0
+          }
           onClick={() => void submit(false)}
         >
           Check configuration
@@ -206,12 +231,12 @@ export function TriggerConfigurationEditor({
           type="submit"
           disabled={
             busy ||
-            draft.changes.length === 0 ||
+            (!creation && draft.changes.length === 0) ||
             Object.keys(draft.errors).length > 0 ||
             current.revisionId !== baseline.revisionId
           }
         >
-          {busy ? "Checking…" : "Save changes"}
+          {busy ? "Checking…" : submitLabel(creation !== undefined)}
         </Button>
       </FormActions>
     </form>
@@ -378,7 +403,9 @@ function SourceChange({
 }
 
 const EMPTY_FIELDS: TriggerConfigurationField[] = [];
-
+function submitLabel(creating: boolean) {
+  return creating ? "Create trigger" : "Save changes";
+}
 function resourceOptions(field: TriggerConfigurationField, resources: Resources | undefined) {
   if (field.label.endsWith("Daemon")) return resources?.daemons;
   if (field.label.endsWith("GitHub connection")) return resources?.github;

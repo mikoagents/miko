@@ -6,6 +6,13 @@ import { buildTrigger } from "./build.js";
 import { triggerRequest } from "./http-client.js";
 import { runTriggerRunner } from "./runner.js";
 import { triggerStarter } from "./starter.js";
+import { findTriggerTemplate, TRIGGER_TEMPLATES, triggerTemplateStatus } from "./templates.js";
+import {
+  applyTemplateUpgrade,
+  initializeTemplateProject,
+  prepareTemplateUpgrade,
+  templateProjectStatus,
+} from "./template-project.js";
 
 export async function runTriggerCommand(args: string[]): Promise<void> {
   const command = args[0];
@@ -21,19 +28,53 @@ export async function runTriggerCommand(args: string[]): Promise<void> {
     } else positionals.push(item);
   }
   const print = (value: unknown) => process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  if (command === "templates") {
+    print(
+      TRIGGER_TEMPLATES.map(({ id, version, name, description }) => ({
+        id,
+        version,
+        name,
+        description,
+      })),
+    );
+    return;
+  }
   if (command === "init") {
     const directory = resolve(positionals[0] ?? "trigger");
     const triggerName = flags["name"] ?? basename(directory);
     if (!/^[a-z][a-z0-9_-]*$/u.test(triggerName))
       throw new Error("Use a lowercase project name, or pass --name <trigger-name>");
+    const template = findTriggerTemplate(flags["template"]);
+    if (flags["template"] !== undefined && template === undefined)
+      throw new Error(
+        `Unknown template: ${flags["template"]}. Run miko trigger templates to list templates.`,
+      );
     await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, "trigger.ts"), triggerStarter(triggerName), { flag: "wx" });
+    if (template === undefined)
+      await writeFile(join(directory, "trigger.ts"), triggerStarter(triggerName), { flag: "wx" });
+    else await initializeTemplateProject(directory, template, triggerName);
     print({
       directory,
       name: triggerName,
       entry: join(directory, "trigger.ts"),
+      ...(template === undefined
+        ? {}
+        : { template: { id: template.id, version: template.version } }),
       next: "miko trigger check <entry>",
     });
+    return;
+  }
+  if (command === "template-status") {
+    print(await templateProjectStatus(positionals[0] ?? "trigger.ts"));
+    return;
+  }
+  if (command === "upgrade") {
+    const entry = positionals[0] ?? "trigger.ts";
+    print(
+      flags["apply"] === undefined
+        ? await prepareTemplateUpgrade(entry, flags["out"])
+        : await applyTemplateUpgrade(entry, flags["apply"]),
+    );
     return;
   }
   if (command === "check" || command === "build") {
@@ -45,6 +86,9 @@ export async function runTriggerCommand(args: string[]): Promise<void> {
       name: artifact.manifest.name,
       digest: artifact.digest,
       sources: artifact.sources.map((file) => file.path),
+      ...(artifact.manifest.template === undefined
+        ? {}
+        : { template: triggerTemplateStatus(artifact.manifest.template) }),
     });
     return;
   }
@@ -147,7 +191,7 @@ export async function runTriggerCommand(args: string[]): Promise<void> {
     }
     default:
       throw new Error(
-        "Usage: miko trigger <init|check|build|deploy|list|run|event|runs|logs|cancel|enable|disable|runner-enroll|runner> [entry/name] --url <Hub URL> --token-file <credential file>",
+        "Usage: miko trigger <templates|init|template-status|upgrade|check|build|deploy|list|run|event|runs|logs|cancel|enable|disable|runner-enroll|runner> [entry/name] [--template <template-id>] [--apply <reviewed-file>] --url <Hub URL> --token-file <credential file>",
       );
   }
 }
