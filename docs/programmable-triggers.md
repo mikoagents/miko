@@ -110,8 +110,9 @@ and retains its history. Template metadata does not automatically change a runni
 
 Templates preserve every complete original prompt, input description, source link and workflow
 tool configuration. The gallery searches by task, service or tool and shows the trigger and setup
-requirements. The previous eight templates are version 1.1.0 after this adapter expansion; the
-19 newly added templates begin at 1.0.0.
+requirements. The previous eight templates are version 1.1.0 after this adapter expansion.
+Slack bug-report thread delivery and Linear issue triage writes are also version 1.1.0; the
+other newly added templates begin at 1.0.0.
 
 Edit the generated `settings`, subscriptions and grants before deploying: choose the runner,
 daemon, working directory, native provider options and original template inputs. Repository
@@ -122,7 +123,9 @@ the task: reviewer assignment can write PR reviews without gaining repository co
 
 All templates support **Run now**, alongside their original UTC schedule or event subscription.
 Manual runs of event-driven templates need the same event context, such as repository and
-`pull_request.number`. GitHub PR/review-comment/workflow and Linear issue events use native Hub
+`pull_request.number`. On the Trigger page, **Run now** asks for that JSON object before queueing
+an event-driven template. Manual-only and schedule templates still start immediately. The CLI
+`trigger run --input-file` path is unchanged. GitHub PR/review-comment/workflow and Linear issue events use native Hub
 connections. Failed-workflow triage accepts cancellations as well as failures; CI autofix retains
 its main-branch and 30-minute failing-job claim checks.
 

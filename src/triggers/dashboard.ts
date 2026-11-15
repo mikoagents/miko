@@ -634,6 +634,7 @@ export class TriggerDashboard {
       triggerId: string;
       action: "run" | "enable" | "disable" | "cancel";
       runId?: string | undefined;
+      payload?: unknown;
     },
   ) {
     const { tenant } = await resolveRouteTenant(this.auth, this.database, request, scope);
@@ -651,7 +652,7 @@ export class TriggerDashboard {
         id: randomUUID(),
         source: "manual",
         type: "run",
-        payload: null,
+        payload: jsonValue(scope.payload ?? null),
         receivedAt: new Date().toISOString(),
       });
     } else

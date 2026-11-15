@@ -212,6 +212,7 @@ export const codeTriggerAction = createServerFn({ method: "POST" })
       triggerId: z.string().uuid(),
       action: z.enum(["run", "enable", "disable", "cancel"]),
       runId: z.string().uuid().optional(),
+      payload: z.unknown().optional(),
     }),
   )
   .handler(async ({ data }): Promise<Result<{ state: "complete" }>> => {

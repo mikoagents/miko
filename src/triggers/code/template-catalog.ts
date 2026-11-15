@@ -233,7 +233,7 @@ export const TRIGGER_TEMPLATES = [
   {
     id: "fix-slack-bugs",
     category: "code-quality",
-    version: "1.0.0",
+    version: "1.1.0",
     name: "Fix bugs reported in Slack",
     description:
       "Monitor a Slack channel for bug reports, investigate the codebase, and fix with a PR",
@@ -253,7 +253,7 @@ export const TRIGGER_TEMPLATES = [
     writesCode: true,
     requiresMemory: true,
     notifySlack: true,
-    slackMode: "channel",
+    slackMode: "thread",
     requiredMcp: ["Slack"],
     tools: ["GitHub", "Slack notifications", "Slack MCP"],
     githubPermissions: {
@@ -1139,7 +1139,7 @@ export const TRIGGER_TEMPLATES = [
   {
     id: "linear-issue-triage",
     category: "team",
-    version: "1.0.0",
+    version: "1.1.0",
     name: "Triage Linear issues",
     description:
       "Triage new issues by investigating bugs, planning feature requests, and opening PRs for easy fixes",
@@ -1160,8 +1160,8 @@ export const TRIGGER_TEMPLATES = [
     requiresMemory: true,
     notifySlack: true,
     slackMode: "channel",
-    requiredMcp: [],
-    tools: ["GitHub", "Slack notifications"],
+    requiredMcp: ["Linear"],
+    tools: ["GitHub", "Slack notifications", "Linear MCP"],
     githubPermissions: {
       contents: "write",
       pull_requests: "write",
@@ -1180,7 +1180,9 @@ export const TRIGGER_TEMPLATES = [
         kind: "text",
       },
     ],
-    setupNotes: [],
+    setupNotes: [
+      "Configure Linear MCP on the daemon for the issue reaction and Triage-to-Backlog status change. Hub grants linear.reply so the agent can comment on the triggering issue through the Hub Linear connection without receiving that credential.",
+    ],
     upstreamWorkflow: {
       triggers: [
         {

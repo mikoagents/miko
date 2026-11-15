@@ -310,6 +310,42 @@ describe("built-in Trigger templates", () => {
     assert.equal(inline.fetch.mock.calls.length, 0);
   });
 
+  it("replies to Slack bug reports in the triggering thread and requires its timestamp", async () => {
+    const runtime = fixture();
+    await definitions.get("fix-slack-bugs")!.run(runtime.context);
+    const body = runtime.fetch.mock.calls[0]?.[1]?.body;
+    assert.ok(typeof body === "string");
+    assert.ok(body.includes('"thread_ts":"1700000000.000001"'));
+    assert.equal(runtime.prompts.length, 1);
+    vi.restoreAllMocks();
+    const missing = fixture({
+      event: {
+        ...event,
+        payload: { event: { channel: "your-slack-channel-id", text: "The button does nothing" } },
+      },
+    });
+    await assert.rejects(
+      async () => definitions.get("fix-slack-bugs")!.run(missing.context),
+      /triggering Slack message timestamp/u,
+    );
+    assert.equal(missing.prompts.length, 0);
+    assert.equal(missing.fetch.mock.calls.length, 0);
+  });
+
+  it("grants a Linear reply and declares Linear setup for issue triage", async () => {
+    const template = findTriggerTemplate("linear-issue-triage")!;
+    assert.deepEqual(template.requiredMcp, ["Linear"]);
+    const source = triggerTemplateSource(template);
+    assert.ok(source.includes("Required native MCP servers: Linear."));
+    assert.ok(source.includes('outputs: { "linear.reply": { max: 1 } }'));
+    const runtime = fixture();
+    await definitions.get("linear-issue-triage")!.run(runtime.context);
+    assert.deepEqual(runtime.prompts[0]?.outputs, { "linear.reply": { max: 1 } });
+    const other = fixture();
+    await definitions.get("remediate-dependency-vulnerabilities")!.run(other.context);
+    assert.equal(other.prompts[0]?.outputs, undefined);
+  });
+
   it("delivers FAQ answers in the triggering Slack thread and rejects other channels", async () => {
     const runtime = fixture();
     await definitions.get("product-faq-agent")!.run(runtime.context);

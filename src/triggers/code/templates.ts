@@ -185,6 +185,8 @@ export function triggerTemplateSource(template: TriggerTemplate, name = template
           ? { mode: "branch-off", base: context.repository!.branch, newBranch: ${JSON.stringify("automation/" + name + "-")} + ctx.runId }
           : { mode: "checkout-pr", prNumber: context.pullRequestNumber },`
     : "";
+  const outputs =
+    template.id === "linear-issue-triage" ? ' outputs: { "linear.reply": { max: 1 } },' : "";
   return `// Adapted from Cursor Automations: ${template.sourceUrl}
 import { defineTrigger, type TriggerAgentOptions, type TriggerContext } from "@mikoagents/hub/triggers";
 
@@ -224,7 +226,8 @@ export default defineTrigger({
         agent: { provider: settings.provider, ...settings.agentOptions },${worktree}
         title: ${JSON.stringify(template.name)},
         prompt: [context.prompt, originalPrompt, hubInstructions, JSON.stringify(memory)].join("\\n\\n"),
-        maxRuntime: "50m", idleTimeout: "10m", output: { schema: resultSchema },
+        maxRuntime: "50m", idleTimeout: "10m",${outputs}
+        output: { schema: resultSchema },
       });
       const notified = await deliverSlack(ctx, context, result.output);
       ${template.requiresMemory ? 'await ctx.state.set("save-memory", "memory", result.output.memory);' : "// Persistent memory is disabled by this template."}

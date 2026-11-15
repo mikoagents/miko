@@ -382,6 +382,68 @@ describe("trigger dashboard read model", () => {
     );
     assert.deepEqual(await dashboard.triggerHistory(request, "acme", second.id), []);
   });
+
+  it("queues Run now with the supplied event context and keeps an omitted payload empty", async () => {
+    const database = createMemoryDatabase({
+      memberships: [
+        {
+          userId: "user-1",
+          organizationId: "org-1",
+          organizationName: "Acme",
+          organizationSlug: "acme",
+          membershipId: "member-1",
+          role: "owner",
+        },
+      ],
+    });
+    const service = new TriggerCodeService(database, {
+      ensure: async () => {},
+      cancel: async () => {},
+      github: async () => null,
+    });
+    const body = {
+      format: "trigger-code-v1" as const,
+      manifest: {
+        pipeline: testPipeline(),
+        name: "event-task",
+        runner: "local",
+        on: [{ source: "manual", event: "run" }],
+        grants: {},
+        limits: { maxRuntime: "10m" },
+      },
+      code: "export default {async run(){ return null }};",
+      sources: [{ path: "trigger.ts", content: "export default {async run(){ return null }};" }],
+      entrypoint: "trigger.ts",
+    };
+    const deployed = await service.deploy("org-1", { ...body, digest: artifactDigest(body) });
+    const dashboard = new TriggerDashboard(
+      database,
+      accountAuth(),
+      acceptingAgentValidator(),
+      undefined,
+      service,
+    );
+    const request = new Request("https://hub.test/o/acme/triggers/event-task");
+    const payload = { repository: { full_name: "owner/repo" }, pull_request: { number: 7 } };
+    await dashboard.codeAction(request, {
+      organizationSlug: "acme",
+      triggerId: deployed.triggerId,
+      action: "run",
+      payload,
+    });
+    await dashboard.codeAction(request, {
+      organizationSlug: "acme",
+      triggerId: deployed.triggerId,
+      action: "run",
+    });
+    const runs = await database.triggerCode.transaction("org-1", (tx) =>
+      tx.listRuns(deployed.triggerId),
+    );
+    assert.deepEqual(
+      runs.map((run) => JSON.stringify(run.event.payload)).sort(),
+      [JSON.stringify(payload), JSON.stringify(null)].sort(),
+    );
+  });
 });
 
 const triggerYaml = `name: manual-task
