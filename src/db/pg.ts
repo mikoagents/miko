@@ -2090,6 +2090,29 @@ class PgDatabase implements Database {
     return rows.rows;
   }
 
+  async listCodeAgentExecutions(organizationId: string, runIds: readonly string[]) {
+    if (runIds.length === 0) return [];
+    const rows = await query<{ runId: string; operationId: string; executionId: string }>(
+      this.pool,
+      `select distinct on (ops.run_id, ops.operation_id)
+         ops.run_id as "runId",
+         ops.operation_id as "operationId",
+         steps.agent_execution_id as "executionId"
+       from trigger_code_operations ops
+       join trigger_runs runs
+         on runs.organization_id = ops.organization_id
+        and runs.id::text = ops.document->>'childRunId'
+       join workflow_step_runs steps on steps.trigger_run_id = runs.id
+       where ops.organization_id = $1
+         and ops.run_id = any($2::uuid[])
+         and ops.document->>'kind' = 'agent'
+         and steps.agent_execution_id is not null
+       order by ops.run_id, ops.operation_id, steps.ordinal`,
+      [organizationId, runIds],
+    );
+    return rows.rows;
+  }
+
   private async toProjectActivityRun(
     row: ProjectActivityRunRow,
   ): Promise<ProjectActivityRunRecord> {
@@ -4270,7 +4293,7 @@ class PgDatabase implements Database {
   ): Promise<OrganizationRunRecord[]> {
     const rows = await query<OrganizationRunRow>(
       this.pool,
-      `select runs.id, coalesce(triggers.name, runs.configured_trigger_name) as trigger_name,
+      `select runs.id, triggers.id as trigger_id, coalesce(triggers.name, runs.configured_trigger_name) as trigger_name,
               runs.status, receipts.provider, receipts.source, receipts.received_at,
               (select executions.launch_intent -> 'agent'
                  from workflow_step_runs steps
@@ -4293,6 +4316,7 @@ class PgDatabase implements Database {
     );
     return rows.rows.map((row) => ({
       id: row.id,
+      triggerId: row.trigger_id,
       triggerName: row.trigger_name,
       provider: row.provider,
       source: row.source,
@@ -4686,6 +4710,7 @@ interface ProjectActivityRunRow extends TriggerRunRow {
 
 interface OrganizationRunRow extends QueryRow {
   id: string;
+  trigger_id: string | null;
   trigger_name: string;
   status: TriggerRunRecord["status"];
   provider: ProviderEventReceiptRecord["provider"];

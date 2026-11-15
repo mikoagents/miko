@@ -523,7 +523,7 @@ export class TriggerCodeService {
             outcome: "unknown",
             retryable: existing.kind === "github" && object(existing.input)["method"] === "GET",
           };
-          await tx.putOperation(existing);
+          await this.saveOperation(tx, existing);
           return {
             reply: { status: "failed" as const, error: existing.error, failure: existing.failure },
           };
@@ -546,7 +546,7 @@ export class TriggerCodeService {
         createdAt: now.toISOString(),
       };
       await this.applyOperation(tx, run, op, artifact);
-      await tx.putOperation(op);
+      await this.saveOperation(tx, op);
       return {
         reply:
           op.status === "completed"
@@ -748,7 +748,7 @@ export class TriggerCodeService {
       op.error = "error" in result ? result.error : null;
       if ("error" in result && result.failure !== undefined) op.failure = result.failure;
       op.output = "output" in result ? result.output : null;
-      await tx.putOperation(op);
+      await this.saveOperation(tx, op);
     });
   }
 
@@ -892,7 +892,7 @@ export class TriggerCodeService {
             };
             current.error =
               child.outcome === "accepted" ? child.failureReason : "Agent invocation rejected";
-            await tx.putOperation(current);
+            await this.saveOperation(tx, current);
           });
         }
       }
@@ -986,6 +986,13 @@ export class TriggerCodeService {
         op.output = null;
       }
     }
+    await this.saveOperation(tx, op);
+  }
+
+  /** Persists an operation, stamping the moment Hub first recorded its outcome. */
+  private async saveOperation(tx: TriggerCodeTransaction, op: CodeOperation) {
+    if ((op.status === "completed" || op.status === "failed") && op.completedAt === undefined)
+      op.completedAt = this.now().toISOString();
     await tx.putOperation(op);
   }
 
@@ -1000,7 +1007,7 @@ export class TriggerCodeService {
         if (op?.status !== "waiting") return;
         op.status = "failed";
         op.error = errorMessage(error);
-        await tx.putOperation(op);
+        await this.saveOperation(tx, op);
       });
     }
   }

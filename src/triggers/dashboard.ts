@@ -1,3 +1,4 @@
+import { TriggerPipelineSchema } from "./code/pipeline-schema.js";
 import { validateArtifact, jsonValue } from "./code/contract.js";
 import { inspectTriggerArtifact } from "./code/inspection.js";
 import {
@@ -6,7 +7,13 @@ import {
   triggerTargetSummary,
 } from "./code/presentation.js";
 import type { TriggerCodeService } from "./code/service.js";
-import type { CodeRun } from "./code/records.js";
+import type { CodeOperationSummary, CodeRun } from "./code/records.js";
+import {
+  operationState,
+  runShape,
+  type JournalEntry,
+  type RunShape,
+} from "./code/run-presentation.js";
 import { randomUUID } from "node:crypto";
 import { SessionTimelines } from "../session-timelines/service.js";
 import type { AuthServer } from "../auth/server.js";
@@ -123,7 +130,16 @@ export class TriggerDashboard {
     };
   }
 
-  async triggerHistory(request: Request, organizationSlug: string, triggerId: string) {
+  /**
+   * A Trigger's latest runs. The newest `pipelines` of them carry their pipeline: the list shows
+   * a page at a time, so a poll never reads the journals of runs nobody can see.
+   */
+  async triggerHistory(
+    request: Request,
+    organizationSlug: string,
+    triggerId: string,
+    pipelines = 0,
+  ) {
     const { tenant } = await resolveRouteTenant(this.auth, this.database, request, {
       organizationSlug,
     });
@@ -141,7 +157,46 @@ export class TriggerDashboard {
       .concat(codeRuns.map((run) => codeActivityView(run, trigger.name)))
       .sort((left, right) => right.receivedAt.localeCompare(left.receivedAt))
       .slice(0, 100);
+    const shapes = await this.runShapes(
+      tenant.organization.id,
+      activity.slice(0, pipelines).flatMap((run) => (run.code ? [run] : [])),
+    );
+    for (const run of activity) run.pipeline = shapes.get(run.id) ?? null;
     return this.withActivityDaemons(tenant.organization.id, activity);
+  }
+
+  /**
+   * Each code run's shape, drawn from one read of its journal without inputs or outputs.
+   * Cancel, timeout, failure and skip leave an open journal entry waiting, and a started agent
+   * stays waiting until its child finishes. The parent status and the child execution say which.
+   */
+  private async runShapes(organizationId: string, runs: readonly { id: string; status: string }[]) {
+    const shapes = new Map<string, RunShape>();
+    if (runs.length === 0) return shapes;
+    const runIds = runs.map((run) => run.id);
+    const statusOf = new Map(runs.map((run) => [run.id, run.status]));
+    const [summaries, started] = await Promise.all([
+      this.database.triggerCode.transaction(organizationId, (tx) => tx.operationSummaries(runIds)),
+      this.database.listCodeAgentExecutions(organizationId, runIds),
+    ]);
+    const executionOf = new Map(
+      started.map((link) => [`${link.runId}\0${link.operationId}`, link.executionId]),
+    );
+    const journals = new Map<string, JournalEntry[]>(runIds.map((id) => [id, []]));
+    for (const summary of summaries) {
+      journals
+        .get(summary.runId)
+        ?.push(
+          journalEntry(
+            summary,
+            statusOf.get(summary.runId),
+            executionOf.get(`${summary.runId}\0${summary.id}`) ?? null,
+          ),
+        );
+    }
+    const now = Date.now();
+    for (const [id, entries] of journals) shapes.set(id, runShape(entries, now));
+    return shapes;
   }
 
   private async withActivityDaemons(organizationId: string, activity: TriggerActivityRow[]) {
@@ -189,6 +244,7 @@ export class TriggerDashboard {
           status: run.status,
           daemons: [],
           code: false,
+          pipeline: null,
           failureReason:
             run.outcome === "accepted" ? displayFailureReason(run.failureReason) : null,
           receivedAt: receipt.receivedAt.toISOString(),
@@ -441,6 +497,7 @@ export class TriggerDashboard {
           output: jsonValue(operation.output),
           error: operation.error,
           createdAt: operation.createdAt,
+          completedAt: operation.completedAt ?? null,
           executionId,
           daemons: daemons
             .filter(({ runId }) => runId === operation.childRunId)
@@ -454,7 +511,13 @@ export class TriggerDashboard {
       run.triggerId,
       run.revisionId,
     );
+    // A run always reads its accepted revision, even after a new deployment.
+    const authored = record(record(record(revision?.sourceEvidence)?.["artifact"])?.["manifest"])?.[
+      "pipeline"
+    ];
+    const pipeline = TriggerPipelineSchema.safeParse(authored);
     return {
+      pipeline: pipeline.success ? pipeline.data : null,
       run: {
         id: run.id,
         status: run.status,
@@ -697,6 +760,26 @@ function codeActivityView(run: CodeRun, triggerName: string): TriggerActivityRow
     failureReason: run.error,
     receivedAt: run.createdAt,
     code: true,
+    pipeline: null,
+  };
+}
+
+/** A journal summary as a run's shape reads it, with the same lifecycle as the run detail. */
+function journalEntry(
+  summary: CodeOperationSummary,
+  parentStatus: string | undefined,
+  executionId: string | null,
+): JournalEntry {
+  return {
+    id: summary.id,
+    kind: summary.kind,
+    state: operationState(
+      { status: summary.status, kind: summary.kind, executionId },
+      parentStatus,
+    ),
+    createdAt: summary.createdAt,
+    completedAt: summary.completedAt ?? null,
+    group: summary.group ?? null,
   };
 }
 
@@ -712,4 +795,6 @@ export interface TriggerActivityRow {
   failureReason: string | null;
   receivedAt: string;
   code: boolean;
+  /** The run's pipeline, for the code runs a list asked to draw; null for every other row. */
+  pipeline: RunShape | null;
 }

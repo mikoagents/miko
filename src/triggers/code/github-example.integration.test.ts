@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFetchServer } from "../../http/node-server.js";
 import { createWebhookSource } from "../github/webhook.js";
+import { pipelineRunStates } from "./pipeline.js";
 import { buildTrigger } from "./build.js";
 import { executeTriggerJob } from "./runner.js";
 import { setupCodeStorage } from "./test-fixture.js";
@@ -44,6 +45,23 @@ describe("operator-owned GitHub review code project", () => {
     assert.equal(new Set(children).size, 4);
     await f.completeReview(3, { comments: 0 });
     await f.pumpUntil(async () => (await f.read(run)).status === "succeeded");
+    const recorded = await f
+      .database()
+      .triggerCode.transaction("code-org", (tx) => tx.operations(run));
+    assert.deepEqual(
+      pipelineRunStates(
+        f.pipeline,
+        recorded.map((operation) => ({
+          id: operation.id,
+          kind: operation.kind,
+          status: operation.status,
+          executionId: null,
+        })),
+        "succeeded",
+      ).unmapped,
+      [],
+      "Every operation in CI, verification and repair loops must bind to the authored Pipeline",
+    );
     assert.equal(f.remote.labels.includes("review:complete"), true);
     assert.deepEqual((await f.read(run)).output, {
       head: "head-two",
@@ -285,6 +303,7 @@ async function setup(policy: { maxFixRounds?: number; completeLabel?: string } =
   }
   return {
     ...f,
+    pipeline: artifact.manifest.pipeline,
     remote,
     execute,
     deliver: async (event: string, id: string, head?: string) => {

@@ -1,12 +1,11 @@
 # Programmable Triggers
 
 Triggers are TypeScript/JavaScript projects deployed as immutable bundles. The existing
-**Triggers** page remains their management entry point. Each Trigger opens with a workflow diagram
+**Triggers** page remains their management entry point. Each Trigger opens with its authored Pipeline
 and its recent runs. **Source code** always shows the file list; expand individual files or inspect an earlier revision.
 The build's entry file appears first with an **Entrypoint** label when its path is recorded.
-**Configuration** summarizes **The event**, **Where it runs**, **What runs there**, and
-**GitHub access** in four rows. Expand a row to inspect its parameters and source links. You can enable or disable the Trigger and start it on demand with
-**Run now**.
+Configuration groups show **Events and access**, **Runs on**, and **Agent calls**. You can
+enable or disable the Trigger and start it on demand with **Run now**.
 **Activity** shows the durable operation journal, results, runner logs, and agent conversations.
 Author code locally or in a Git repository and deploy from the CLI or CI.
 
@@ -50,6 +49,42 @@ import { defineTrigger } from "@mikoagents/hub/triggers";
 
 export default defineTrigger({
   name: "health-check",
+  pipeline: {
+    nodes: [
+      {
+        id: "event",
+        kind: "event",
+        label: "Incoming event",
+        description: "Receive a manual or monitor event.",
+      },
+      {
+        id: "api",
+        kind: "step",
+        label: "Check API",
+        description: "Read API health.",
+        operations: ["check:api"],
+      },
+      {
+        id: "web",
+        kind: "step",
+        label: "Check web",
+        description: "Read web health.",
+        operations: ["check:web"],
+      },
+      {
+        id: "done",
+        kind: "outcome",
+        label: "Checks complete",
+        description: "Join the checks and return both results.",
+      },
+    ],
+    edges: [
+      { from: "event", to: "api", label: "API" },
+      { from: "event", to: "web", label: "Web" },
+      { from: "api", to: "done" },
+      { from: "web", to: "done" },
+    ],
+  },
   runner: "local",
   on: [
     { source: "manual", event: "run" },
@@ -256,57 +291,92 @@ The receipt contains `{ repository, number, id, url, body, deduplicated }`. It d
 exactly-once behavior from GitHub or decide whether a source comment is still authorized;
 permission and source/head rechecks remain explicit workflow policy.
 
-## Show the workflow
+## Define the Pipeline
 
-Hub always shows a diagram based on the events declared in `on`: matching event → workflow
-code → result and logs. Add an optional `diagram` string to explain your own conditions, branches,
-or loops. Hub renders Mermaid syntax with [Pele](https://pele.run/examples#mindmap), including
-flowcharts and mindmaps:
+Model only the key business actions an operator needs to understand, rather than every durable
+operation. Combine event receipt, reads and readiness checks into one admission node when they
+serve the same condition. Put continuation and result choices on edges rather than adding a
+separate result node when it does no additional business work. Use
+concrete action/object labels such as “Write Review draft”, “Publish GitHub Review” and “Read back
+Review and comments”; name decisions after their actual conditions, such as “CI finished?”. Do not
+collapse distinct business actions behind vague labels such as “Check conditions” or “Finish”. Group
+locks, pagination, label synchronization and cleanup into the phase that owns them, with details in
+its description/tooltip. Keep consequential decisions, waits, parallel work and bounded repair
+continuations explicit. All stages render left to right in a compact Card that grows to fit the graph.
+
+Compactness is about removing repetition, not reaching a fixed number of nodes. Keep actions separate
+when their effects or failure modes matter to the operator: writing a draft, publishing a Review and
+confirming its remote receipt are different phases. Distinguish waiting for an event from skipping
+an ineligible or duplicate input. Repair branches should explain when work continues with a
+checkpoint, completes a segment, stops for an external blocker or exhausts its budget. Put these
+conditions on the relevant edges; a tooltip should explain a visible path, not be its only mention.
+An agent reporting completion is not evidence that remote Review, CI or PR completion conditions
+have passed. Show the subsequent verification and status synchronization as the code performs them.
+
+Keep missing business phases as nodes rather than expanding node cards into prose. In a Review
+workflow this includes CI admission, duplicate-review checks, workspace preparation, draft generation,
+formal publication and remote verification. In repair workflows distinguish the evidence snapshot,
+repair-input/commit gates, durable input claim, execution budget, Agent work, checkpoint persistence
+and post-repair verification. Keep descriptions in tooltips and retain the actual outcome branches.
+
+Every Trigger must declare a `pipeline` alongside `run(ctx)`. Trigger details and Activity render
+this same graph at the top, including all branches and loops. An Activity uses the definition from
+its accepted revision, so a later deployment cannot rewrite an earlier run’s flow. The previous
+`diagram` field and Mermaid rendering have been removed; replace that field before redeploying.
 
 ```ts
-export default defineTrigger({
-  name: "health-check",
-  description: "Check the service and report whether it is healthy.",
-  diagram: `flowchart LR
-    event([Run now]) --> check[Check service]
-    check --> healthy{Healthy?}
-    healthy -->|Yes| ready[Return ready]
-    healthy -->|No| blocked[Return blocked]`,
-  on: [{ source: "manual", event: "run" }],
-  runner: "local",
-  grants: {},
-  limits: { maxRuntime: "10m" },
-  async run(ctx) {
-    const healthy = await ctx.step("check", null, async () => {
-      const response = await fetch("https://service.example/health");
-      return response.ok;
-    });
-    return { status: healthy ? "ready" : "blocked" };
-  },
-});
+pipeline: {
+  nodes: [
+    { id: "event", kind: "event", label: "Incoming event", description: "Receive a manual or monitor event." },
+    { id: "check", kind: "step", label: "Check service", description: "Read the service health endpoint.", operations: ["check"] },
+    { id: "healthy", kind: "decision", label: "Healthy?", description: "Choose the result from the health response." },
+    { id: "ready", kind: "outcome", label: "Ready", description: "Return a healthy result." },
+    { id: "blocked", kind: "outcome", label: "Blocked", description: "Return the failed health check." },
+  ],
+  edges: [
+    { from: "event", to: "check" },
+    { from: "check", to: "healthy" },
+    { from: "healthy", to: "ready", label: "Healthy" },
+    { from: "healthy", to: "blocked", label: "Unhealthy" },
+  ],
+},
 ```
 
-For a branching overview, use a mindmap instead:
+Use stable, unique node IDs and concise labels with useful descriptions. The node kinds are
+`event`, `step`, `agent`, `wait`, `decision`, `parallel`, `join`, and `outcome`. Describe each material action, condition,
+parallel lane, wait, retry loop, early return, skip and terminal outcome. Every outgoing branch at a
+fork needs a distinct condition or lane label; decisions need at least two exits. A `parallel` fork
+starts all its labelled lanes, while a `decision` chooses a condition. Use a `join` node to collect
+at least two parallel lanes before continuing.
 
-```ts
-diagram: `mindmap
-  root((Health check))
-    When
-      Run now
-    Check service
-      Healthy
-        Return ready
-      Unhealthy
-        Return blocked`,
-```
+Bind executable nodes to durable IDs using `operations`. An exact ID such as `"check"` selects one
+operation; a trailing wildcard such as `"review:*"` selects all iterations with that prefix. Name
+loop operations by stage first, for example ``ctx.agent.run(`review:${round}`, options)``.
+Selectors must not overlap, and a catch-all `"*"` is rejected. Map SDK suboperations with an explicit
+prefix, such as `"ci-wait:*"` for `ctx.waitForEvent("ci-wait", ...)`, or `"comments:*"` for a paginated
+GitHub read. Each recorded operation should have one owner; intentional grouping belongs within a
+node, rather than hiding actions behind a generic workflow box. Admission `event` nodes and final
+`outcome` action nodes may also bind operations, so they can report actual progress without extra
+wrapper nodes. Declare locks, bookkeeping and cleanup in the graph’s `supportOperations` array
+when they are not business stages. These use the same exact/prefix selectors, remain visible in
+step diagnostics, and do not drive a node’s progress. Their selectors must not overlap node or
+other support bindings.
 
-This diagram is author-written documentation, stored with the same code revision. Execution
-follows `run(ctx)`; Hub does not guess the branches in arbitrary JavaScript. Update the diagram
-when you change its logic. **Expand diagram** opens a larger, scrollable view. Invalid diagram
-syntax leaves source, details and run history available.
+Mark each return edge with `loop: true` and label the reason to repeat. Removing return edges must
+leave an acyclic graph. Every node must be reachable from the single event entry, and every path
+must be able to reach an outcome. Build, check and deployment reject incomplete topology, dangling
+references, duplicate IDs, unlabelled branches and ambiguous selectors.
 
-The [GitHub review example](../examples/triggers/github-review/trigger.ts) includes a diagram
-for CI checks, formal Review, supplemental verification, repairs and review of the new head.
+Execution still follows `run(ctx)`; the Pipeline does not dispatch work or change permissions.
+Activity overlays only recorded operation states. Unbound decisions and outcomes are descriptive;
+Hub does not infer a taken condition from timestamps or claim an unrecorded branch ran. Repeated
+operations aggregate on the same node; clicking a recorded node opens its step diagnostics. Steps
+without a unique binding remain visible in Steps and are called out above the run. Keep the
+Pipeline and operation IDs in sync whenever the code changes.
+
+The graph scrolls independently on narrow screens and supports keyboard navigation. **Expand
+pipeline** opens the same graph in a larger view. The [GitHub review example](../examples/triggers/github-review/trigger.ts)
+shows explicit CI, Review receipt, supplemental verification and repair loops. New starter projects include complete Pipeline definitions.
 
 ## Events, schedules, and operations
 

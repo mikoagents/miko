@@ -1,3 +1,4 @@
+import { testPipeline } from "../test-utils/pipeline.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { AuthServer } from "../auth/server.js";
@@ -53,6 +54,7 @@ describe("home read model", () => {
     const body = {
       format: "trigger-code-v1" as const,
       manifest: {
+        pipeline: testPipeline(),
         name: "manual-task",
         runner: "local",
         on: [{ source: "manual", event: "run" }],

@@ -3,6 +3,12 @@
 import { durableJson } from "./sdk-json.js";
 import { createGitHubClient, type TriggerGitHub } from "./sdk-github.js";
 import { errorFailure, operationError, type TriggerFailure } from "./sdk-errors.js";
+import type { TriggerPipeline } from "./pipeline-types.js";
+export type {
+  TriggerPipeline,
+  TriggerPipelineNode,
+  TriggerPipelineEdge,
+} from "./pipeline-types.js";
 
 export { stableJson } from "./sdk-json.js";
 export { GitHubRequestError, TriggerOperationError } from "./sdk-errors.js";
@@ -87,8 +93,8 @@ export interface TriggerGrants {
 export interface TriggerManifest {
   name: string;
   description?: string | undefined;
-  /** Optional Pele diagram in Mermaid syntax, including mindmaps. Documentation only; code controls execution. */
-  diagram?: string | undefined;
+  /** Complete nodes and labelled branches, shared by Trigger and Activity. */
+  pipeline: TriggerPipeline;
   on: TriggerSubscription[];
   runner: string;
   grants: TriggerGrants;

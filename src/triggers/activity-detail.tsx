@@ -28,8 +28,8 @@ interface ActivityScope {
 type Activity = TriggerActivitySnapshot["activity"];
 
 export const ACTIVITY_VIEWS = [
-  { value: "conversation", label: "Conversation" },
   { value: "details", label: "Run details" },
+  { value: "conversation", label: "Conversation" },
   { value: "diagnostics", label: "Diagnostics" },
 ];
 

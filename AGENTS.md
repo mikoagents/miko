@@ -46,3 +46,31 @@ This is a project in early-development, take advantage of not needing to impleme
 `docs/design.md` is the visual contract for every `.tsx` file, `src/styles.css`, and everything under
 `src/components`. It is loaded with this file. Follow it; `src/typography-policy.test.ts` enforces the
 mechanical parts.
+
+# Trigger Pipeline contract
+
+Every new or changed Trigger must declare a high-quality `pipeline` in its code. Keep the graph in
+sync with `run(ctx)` at the level of core operator-facing phases, not one node per API call. Group
+locks, pagination, labels and cleanup into their owning phase; keep implementation details in its
+description/tooltip. Merge event receipt, preflight reads and readiness checks into one admission
+node when they express the same condition; put result choices on outgoing edges where possible.
+Compactness must not erase distinct business actions or consequential conditions. Keep publication
+and remote verification distinguishable; distinguish waiting from skipping, and show continuation,
+external blockers and exhausted limits on their actual paths. Choose nodes by meaning, not a fixed
+node count; avoid a second node that merely restates the preceding action's result.
+Restore meaningful business phases as explicit nodes when simplifying would hide them: CI gates,
+review deduplication, workspace preparation, evidence snapshots, repair-input claims, budget checks,
+checkpoint persistence and completion decisions. Node cards show only names and recorded status;
+descriptions stay in tooltips. Do not replace missing nodes with expanded description text.
+Declare housekeeping in `supportOperations` so it stays in diagnostics without creating nodes or
+falsely advancing business-stage progress. Admission and final action nodes may bind operations.
+Name each phase with a concrete action and object (for example, “Publish GitHub
+Review”), and each decision with the condition it checks (“CI finished?”). Avoid umbrella labels
+such as “Check conditions”, “Execute” or “Finish” that hide what the workflow does. Use stable IDs,
+precise labels and descriptions, explicit actions and waits,
+labelled conditions and parallel lanes, joins, early exits, outcomes and bounded retry loops.
+Bind executable nodes to exact durable operation IDs or non-overlapping literal prefixes ending
+in `*`; name loop operations by stage first. Mark and label return edges with `loop: true`.
+Trigger and Activity share this definition and renderer; Activity uses its accepted revision and
+adds recorded operation status without inferring decisions. Do not add Mermaid diagrams or a
+second graph renderer. See `docs/programmable-triggers.md` for the authoring and validation contract.

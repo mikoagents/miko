@@ -5,6 +5,15 @@ export function triggerStarter(name: string): string {
 export default defineTrigger({
   name: ${JSON.stringify(name)},
   description: "Log the incoming event and return its input.",
+  // Keep the declared nodes and branches in sync with run(ctx).
+  pipeline: {
+    nodes: [
+      { id: "event", kind: "event", label: "Incoming event", description: "An on-demand run starts this workflow." },
+      { id: "prepare", kind: "step", label: "Prepare result", description: "Keep the incoming payload as the result.", operations: ["prepare-result"] },
+      { id: "done", kind: "outcome", label: "Result saved", description: "Return the payload and save the completion log." },
+    ],
+    edges: [{ from: "event", to: "prepare" }, { from: "prepare", to: "done" }],
+  },
 
   // When it runs. Add service events or a schedule here.
   on: [{ source: "manual", event: "run" }],
@@ -16,7 +25,7 @@ export default defineTrigger({
 
   // What it does. Write ordinary TypeScript here.
   async run(ctx) {
-    const result = { input: ctx.event.payload };
+    const result = await ctx.step("prepare-result", ctx.event.payload, (input) => ({ input }));
     await ctx.log("Trigger completed", result);
     return result;
   },

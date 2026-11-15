@@ -15,6 +15,8 @@ const bob = {
 test("connects verified providers per organization and disconnects through confirmation", async ({
   hub,
 }) => {
+  // Two browser sessions and multiple full organization reloads share this provider journey.
+  test.setTimeout(90_000);
   await hub.signUpAs("alice", alice);
   await hub.createOrganization("alice", "Acme");
   await hub.expectConnections("alice");

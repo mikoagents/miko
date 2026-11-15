@@ -5,10 +5,10 @@ import { cn } from "../../lib/utils.js";
 /**
  * The one way a record shows two facts: what it is, over the quieter fact that identifies it.
  * Emphasis here is colour and size, never weight, and both lines truncate rather than wrap so
- * a table row keeps its height whatever the data is. A line only truncates when whatever holds
- * it is narrower than the line: on its own it is as wide as its longer line, so a table column
- * sized to its content shows all of it. A string line carries itself as its title, so a value
- * that was cut is one hover away.
+ * a table row keeps its height whatever the data is. `wrap` is the exception, for a run of names
+ * outside a table. A line only truncates when whatever holds it is narrower than the line: on its
+ * own it is as wide as its longer line, so a table column sized to its content shows all of it.
+ * A string line carries itself as its title, so a value that was cut is one hover away.
  */
 export function TwoLine({
   primary,
@@ -27,8 +27,9 @@ export function TwoLine({
    */
   path?: boolean;
   /**
-   * The primary line is a run of names a reader needs all of — the events one scope starts a
-   * Trigger on — so it wraps instead of truncating. Never in a table, whose rows keep one height.
+   * Both lines are a run of names a reader needs all of — the events one scope starts a Trigger
+   * on, and the repositories they are limited to — so they wrap instead of truncating. Never in
+   * a table, whose rows keep one height, and never with `path`.
    */
   wrap?: boolean;
 }) {
@@ -48,15 +49,19 @@ export function TwoLine({
             // In a filling table cell the primary line sets the record's width and the secondary
             // line takes whatever that leaves: a model under a name, a path under a daemon, a
             // connection under an event. Otherwise one long path would claim the width a
-            // neighbouring column needs for the fact a reader is scanning for.
-            "truncate text-xs text-muted-foreground in-data-[slot=fill-cell]:w-0 in-data-[slot=fill-cell]:min-w-full",
+            // neighbouring column needs for the fact a reader is scanning for. A wrapped line is
+            // not in a table, and a repository is one unbroken token, so it breaks anywhere rather
+            // than widening the page.
+            wrap
+              ? "text-xs wrap-anywhere text-muted-foreground"
+              : "truncate text-xs text-muted-foreground in-data-[slot=fill-cell]:w-0 in-data-[slot=fill-cell]:min-w-full",
             (mono || path) && "font-mono",
             path && "text-left",
           )}
-          title={titleOf(secondary)}
+          title={wrap ? undefined : titleOf(secondary)}
           // Right-to-left puts the overflow, and the ellipsis, at the start of the line; the
           // isolate inside keeps the path itself reading left to right.
-          {...(path ? { dir: "rtl" } : {})}
+          {...(path && !wrap ? { dir: "rtl" } : {})}
         >
           {path ? <bdi dir="ltr">{secondary}</bdi> : secondary}
         </span>

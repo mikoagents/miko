@@ -21,6 +21,7 @@ export function DetailDialog({
   trigger,
   toolbar,
   scrollResetKey,
+  size = "default",
   children,
 }: {
   open: boolean;
@@ -32,9 +33,12 @@ export function DetailDialog({
   toolbar?: ReactNode;
   /** A different view starts at its beginning without discarding the record's state. */
   scrollResetKey?: string;
+  /** A canvas can use the whole viewport while retaining the dialog's focus and close behavior. */
+  size?: "default" | "fullscreen";
   children: ReactNode;
 }) {
   const body = useRef<HTMLDivElement>(null);
+  const fullscreen = size === "fullscreen";
   useEffect(() => {
     body.current?.scrollTo({ top: 0 });
   }, [scrollResetKey]);
@@ -43,8 +47,11 @@ export function DetailDialog({
       {trigger}
       <DialogContent
         className={cn(
-          "flex flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100%-4rem)] sm:max-w-6xl",
-          toolbar === undefined
+          "flex flex-col gap-0 overflow-hidden p-0",
+          fullscreen
+            ? "inset-0 h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0 shadow-none sm:max-w-none"
+            : "sm:w-[calc(100%-4rem)] sm:max-w-6xl",
+          toolbar === undefined || fullscreen
             ? undefined
             : "h-[calc(100dvh-2rem)] sm:h-[min(48rem,calc(100dvh-4rem))]",
         )}
@@ -64,11 +71,16 @@ export function DetailDialog({
           role="region"
           aria-label={`${title} content`}
           tabIndex={0}
-          className="min-h-0 min-w-0 flex-auto overflow-y-auto overscroll-contain"
+          className={cn(
+            "min-h-0 min-w-0 flex-auto",
+            fullscreen ? "flex overflow-hidden" : "overflow-y-auto overscroll-contain",
+          )}
         >
           {/* Padding sits inside the scroller. On the scroller itself, a vertical bar steals
               width and the full-width content overflows sideways by that bar. */}
-          <div className="min-w-0 p-6">{children}</div>
+          <div className={cn("min-w-0 p-6", fullscreen && "flex min-h-0 flex-1 flex-col")}>
+            {children}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

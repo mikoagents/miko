@@ -4,6 +4,7 @@ import type { Locks } from "../../db/runtime/locks/index.js";
 import type {
   CodeRun,
   CodeOperation,
+  CodeOperationSummary,
   CodeState,
   CodeEvent,
   CodeLog,
@@ -128,6 +129,38 @@ class PgCodeTransaction implements TriggerCodeTransaction {
         [this.organizationId, runId],
       )
     ).rows.map((row) => row.document);
+  }
+  async operationSummaries(runIds: readonly string[]) {
+    if (runIds.length === 0) return [];
+    const rows = (
+      await this.client.query<{
+        run_id: string;
+        operation_id: string;
+        kind: string;
+        status: CodeOperationSummary["status"];
+        opened_at: string;
+        completed_at: string | null;
+        wait_group: string | null;
+      }>(
+        `select run_id, operation_id, document->>'kind' as kind, document->>'status' as status,
+          document->>'createdAt' as opened_at, document->>'completedAt' as completed_at,
+          case when document->>'kind' = 'event' then document->'input'->>'group' end as wait_group
+        from trigger_code_operations where organization_id=$1 and run_id = any($2::uuid[])
+        order by created_at, operation_id`,
+        [this.organizationId, [...runIds]],
+      )
+    ).rows;
+    return rows.map((row) =>
+      operationSummary({
+        runId: row.run_id,
+        id: row.operation_id,
+        kind: row.kind,
+        status: row.status,
+        createdAt: row.opened_at,
+        completedAt: row.completed_at,
+        group: row.wait_group,
+      }),
+    );
   }
   async appendEvent(triggerId: string, event: CodeEvent["event"]) {
     const result = await this.client.query(
@@ -271,6 +304,21 @@ export class MemoryTriggerCodeRepository implements TriggerCodeRepository {
         },
         operations: async (runId) =>
           [...data.operations.values()].filter((item) => item.runId === runId),
+        operationSummaries: async (runIds) =>
+          [...data.operations.values()]
+            .filter((item) => runIds.includes(item.runId))
+            .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+            .map((item) =>
+              operationSummary({
+                runId: item.runId,
+                id: item.id,
+                kind: item.kind,
+                status: item.status,
+                createdAt: item.createdAt,
+                completedAt: item.completedAt ?? null,
+                group: item.kind === "event" ? stringField(item.input, "group") : null,
+              }),
+            ),
         appendEvent: async (triggerId, event) => {
           if (
             data.events.some(
@@ -330,4 +378,25 @@ export class MemoryTriggerCodeRepository implements TriggerCodeRepository {
   async organizations() {
     return [...this.documents.keys()];
   }
+}
+
+/** Leaves out what a journal does not hold, so a summary never claims an empty value. */
+function operationSummary(
+  value: Omit<CodeOperationSummary, "completedAt" | "group"> & {
+    completedAt: string | null;
+    group: string | null;
+  },
+): CodeOperationSummary {
+  const { completedAt, group, ...summary } = value;
+  return {
+    ...summary,
+    ...(completedAt === null ? {} : { completedAt }),
+    ...(group === null ? {} : { group }),
+  };
+}
+
+function stringField(value: unknown, key: string): string | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const field: unknown = Reflect.get(value, key);
+  return typeof field === "string" ? field : null;
 }

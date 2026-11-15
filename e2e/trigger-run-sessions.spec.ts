@@ -1,3 +1,4 @@
+import { testPipeline } from "../src/test-utils/pipeline.js";
 import { expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { test } from "./app.js";
@@ -30,19 +31,19 @@ test("shows which agent calls of a Trigger run continued one session", async ({ 
   const history = page.getByRole("table", { name: "Run history" });
   await expect(history.getByRole("row").filter({ hasText: "Succeeded" })).toHaveCount(2);
   await history
-    .getByRole("button", { name: /^Open run from / })
+    .getByRole("link", { name: /^Open run from / })
     .first()
     .click();
-  const dialog = page.getByRole("dialog", { name: "Activity details" });
-  await expect(dialog.getByRole("radio", { name: "Run details", exact: true })).toBeChecked();
-  const facts = dialog.locator('[data-summary="Trigger run"]');
+  await expect(page.getByRole("heading", { name: "Activity details", exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Run details", exact: true })).toBeChecked();
+  const facts = page.locator('[data-summary="Trigger run"]');
   await expect(facts).toContainText("Succeeded");
   await expect(facts).toContainText("in 8m");
   await expect(facts).toContainText("On demand");
   await expect(facts).toContainText("studio");
 
-  const sessions = dialog.getByRole("table", { name: "Agent sessions" });
-  await expect(dialog.getByText("4 agent calls in 3 sessions.", { exact: false })).toBeVisible();
+  const sessions = page.getByRole("table", { name: "Agent sessions" });
+  await expect(page.getByText("4 agent calls in 3 sessions.", { exact: false })).toBeVisible();
   const resumed = sessions.getByRole("row").filter({ hasText: /Session 1 ·/ });
   await expect(resumed).toContainText("Continued from an earlier run");
   await expect(resumed).toContainText("plan → revise");
@@ -55,7 +56,7 @@ test("shows which agent calls of a Trigger run continued one session", async ({ 
   await expect(renewed).toContainText("reply");
   await expect(renewed).toContainText("review");
 
-  const steps = dialog.getByRole("table", { name: "Steps" });
+  const steps = page.getByRole("table", { name: "Steps" });
   await expect(steps.getByRole("row")).toHaveCount(7);
   await expect(steps.getByRole("row").filter({ hasText: "reply" })).toContainText("Session 3");
   await expect(steps.getByRole("row").filter({ hasText: "revise" })).toContainText("Session 1");
@@ -67,16 +68,16 @@ test("shows which agent calls of a Trigger run continued one session", async ({ 
   await page.screenshot({ animations: "disabled", path: `${SCREENSHOTS}/steps-desktop.png` });
 
   await sessions.getByRole("button", { name: "check", exact: true }).click();
-  await expect(dialog.getByRole("radio", { name: "Conversation", exact: true })).toBeChecked();
-  const picker = dialog.getByRole("combobox", { name: "Agent session" });
+  await expect(page.getByRole("radio", { name: "Conversation", exact: true })).toBeChecked();
+  const picker = page.getByRole("combobox", { name: "Agent session" });
   await expect(picker).toContainText("Session 2 · check");
-  const transcript = dialog.getByRole("list", { name: "Session messages" });
+  const transcript = page.getByRole("list", { name: "Session messages" });
   await expect(transcript.getByRole("listitem").first()).toContainText("check");
   await expect(transcript).toContainText("All 42 tests pass.");
 
   await picker.click();
   await page.getByRole("option", { name: /Session 1 · plan → revise/ }).click();
-  await expect(dialog.getByText("Continued from an earlier run", { exact: true })).toBeVisible();
+  await expect(page.getByText("Continued from an earlier run", { exact: true })).toBeVisible();
   const message = (text: string) => transcript.getByRole("listitem").filter({ hasText: text });
   await expect(message("Plan the review of the previous change.")).toContainText("User");
   await expect(message("Plan the review of pull request 12.")).toContainText("plan");
@@ -90,50 +91,37 @@ test("shows which agent calls of a Trigger run continued one session", async ({ 
 
   await picker.click();
   await page.getByRole("option", { name: /Session 3 · reply/ }).click();
-  const startedOver = dialog.getByRole("status").filter({ hasText: "Started over" });
+  const startedOver = page.getByRole("status").filter({ hasText: "Started over" });
   await expect(startedOver).toContainText("Session 1 had this continuation key");
   await expect(message("Reply to the author with the review.")).toContainText("reply");
   await expect(transcript).not.toContainText("Plan the review of pull request 12.");
   await page.screenshot({ animations: "disabled", path: `${SCREENSHOTS}/renewed-desktop.png` });
 
-  await dialog.getByRole("radio", { name: "Run details", exact: true }).click();
+  await page.getByRole("radio", { name: "Run details", exact: true }).click();
   await steps.getByRole("button", { name: "comment", exact: true }).click();
-  await expect(dialog.getByRole("radio", { name: "Diagnostics", exact: true })).toBeChecked();
-  await expect(dialog.getByRole("combobox", { name: "Step" })).toContainText("comment");
-  await expect(dialog.getByRole("textbox", { name: "comment data", exact: true })).toContainText(
+  await expect(page.getByRole("radio", { name: "Diagnostics", exact: true })).toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Step" })).toContainText("comment");
+  await expect(page.getByRole("textbox", { name: "comment data", exact: true })).toContainText(
     "/repos/acme/app/issues/12/comments",
   );
-  await dialog.getByRole("combobox", { name: "Step" }).click();
+  await page.getByRole("combobox", { name: "Step" }).click();
   await page.getByRole("option", { name: /^revise/ }).click();
-  await expect(dialog.getByRole("textbox", { name: "revise data", exact: true })).toContainText(
+  await expect(page.getByRole("textbox", { name: "revise data", exact: true })).toContainText(
     '"key": "review"',
   );
-  await expect(dialog.getByRole("heading", { name: "Session details", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Session details", exact: true })).toBeVisible();
   await page.screenshot({ animations: "disabled", path: `${SCREENSHOTS}/diagnostics-desktop.png` });
 
-  await dialog.getByRole("radio", { name: "Run details", exact: true }).click();
-  const width = 390;
-  await page.setViewportSize({ width, height: 844 });
+  await page.getByRole("radio", { name: "Run details", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(sessions.getByRole("row").filter({ hasText: /Session 1 ·/ })).toBeVisible();
-  const inset = width >= 640 ? 32 : 16;
-  // Visibility arrives before DialogContent's duration-200 width transition finishes.
-  // Sampling clientWidth once, then polling scrollWidth, compares different frames.
   await expect
-    .poll(async () => {
-      const bounds = await dialog.boundingBox();
-      return bounds === null
-        ? Infinity
-        : Math.abs(bounds.width - Math.min(width - inset * 2, 1152));
-    })
-    .toBeLessThan(1);
-  const dialogBody = dialog.locator('[data-slot="detail-dialog-body"]');
-  await expect
-    .poll(() => dialogBody.evaluate((element) => element.scrollWidth - element.clientWidth))
-    .toBe(0);
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
   await page.screenshot({ animations: "disabled", path: `${SCREENSHOTS}/details-mobile.png` });
   await page.emulateMedia({ colorScheme: "dark" });
   await sessions.getByRole("button", { name: "plan → revise", exact: true }).click();
-  await expect(dialog.getByRole("radio", { name: "Conversation", exact: true })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "Conversation", exact: true })).toBeChecked();
   await expect(transcript).toContainText("Revise the review with the test results.");
   await page.screenshot({
     animations: "disabled",
@@ -374,8 +362,15 @@ async function run(context: Context, started: number, finished: number, steps: r
       }),
     ],
   );
-  for (const [index, step] of steps.entries()) {
-    const createdAt = new Date(Date.parse(minutesAgo(started)) + index * 1000).toISOString();
+  // A journal opens each operation where the code reached it and stamps when Hub settled it: an
+  // agent call when its agent finished, anything else a second later.
+  let reached = Date.parse(minutesAgo(started));
+  for (const step of steps) {
+    const settled =
+      step.agent === undefined ? reached + 1000 : Date.parse(minutesAgo(step.agent.finished));
+    const createdAt = new Date(reached).toISOString();
+    const completedAt = new Date(settled).toISOString();
+    reached = settled + 500;
     const childRunId = step.agent === undefined ? null : await child(context, runId, step);
     await context.database.query(
       `insert into trigger_code_operations (organization_id, run_id, operation_id, created_at, document)
@@ -398,6 +393,7 @@ async function run(context: Context, started: number, finished: number, steps: r
           childRunId,
           leaseHash: "",
           createdAt,
+          completedAt,
         }),
       ],
     );
@@ -491,6 +487,7 @@ function reviewRounds() {
   const body = {
     format: "trigger-code-v1" as const,
     manifest: {
+      pipeline: testPipeline("load", "plan", "check", "revise", "reply", "comment"),
       name: "review-rounds",
       runner: "browser",
       description: "Reviews a pull request over several agent rounds",

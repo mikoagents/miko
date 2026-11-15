@@ -130,14 +130,27 @@ export type CodeTriggerDetail = Awaited<ReturnType<TriggerDashboard["codeDetail"
 export type CodeTriggerRun = Awaited<ReturnType<TriggerDashboard["codeRunDetail"]>>;
 
 export const triggerRunHistory = createServerFn({ method: "GET" })
-  .validator(scopeSchema.extend({ triggerId: z.string().uuid() }).strict())
+  .validator(
+    scopeSchema
+      .extend({
+        triggerId: z.string().uuid(),
+        /** How many of the newest runs to draw a pipeline for: the rows the reader can see. */
+        pipelines: z.number().int().min(0).max(100).optional(),
+      })
+      .strict(),
+  )
   .handler(
     async ({ data }): Promise<Result<Awaited<ReturnType<TriggerDashboard["triggerHistory"]>>>> => {
       try {
         const dashboard = (await getApplication()).triggerDashboard;
         if (!dashboard) throw new Error("Trigger dashboard unavailable");
         return respondOk(
-          await dashboard.triggerHistory(getRequest(), data.organizationSlug, data.triggerId),
+          await dashboard.triggerHistory(
+            getRequest(),
+            data.organizationSlug,
+            data.triggerId,
+            data.pipelines,
+          ),
         );
       } catch (error) {
         return respondWithFailure(error, triggerContext("trigger.history", data.organizationSlug), {

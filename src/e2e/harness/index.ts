@@ -1,3 +1,4 @@
+import { testPipeline } from "../../test-utils/pipeline.js";
 import { isolatedProcessEnvironment } from "../../test-utils/isolated-environment.js";
 import { parseCompiledHubConfig } from "../../config/compiler.js";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
@@ -339,7 +340,7 @@ export class HubE2E {
     await writeFile(
       entry,
       `import {defineTrigger} from "@mikoagents/hub/triggers";
-      export default defineTrigger({name:"source-code",runner:"source",on:[{source:"manual",event:"run"}],
+      export default defineTrigger({pipeline:${JSON.stringify(testPipeline("agent:*", "between-agents"))},name:"source-code",runner:"source",on:[{source:"manual",event:"run"}],
         grants:{targets:{local:{daemon:${JSON.stringify(slug)},cwd:${JSON.stringify(this.workspace)},providers:["hub-e2e"]}}},
         limits:{maxRuntime:"2m",maxAgentRuns:2}, async run(ctx){
           const children=[];

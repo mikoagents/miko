@@ -4,7 +4,7 @@ import { DisclosureSkeleton } from "../../components/app/disclosure.js";
 
 export function TriggerSourceSkeleton() {
   return (
-    <Card title="Source code">
+    <Card density="compact">
       <div className="grid min-w-0 gap-4">
         <div className="grid gap-4 md:grid-cols-2">
           <FieldSkeleton label="Code revision" description={false} />

@@ -1,4 +1,6 @@
+import { testPipeline } from "../test-utils/pipeline.js";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { describe, it } from "vitest";
 import type { AuthServer } from "../auth/server.js";
 import { createMemoryDatabase } from "../db/memory.js";
@@ -13,6 +15,7 @@ import { OrganizationTriggerStore } from "./store.js";
 import { compileHubBundle } from "../config/bundle.js";
 import { migrateLegacyProjectTriggers } from "./migration.js";
 import { artifactDigest } from "./code/contract.js";
+import { milestoneDetail, milestoneTone, operationState } from "./code/run-presentation.js";
 import { TriggerCodeService } from "./code/service.js";
 
 describe("trigger dashboard read model", () => {
@@ -38,12 +41,12 @@ describe("trigger dashboard read model", () => {
       const body = {
         format: "trigger-code-v1" as const,
         manifest: {
+          pipeline: testPipeline(),
           name,
           runner: "local",
           on: [{ source: "manual", event: "run" }],
           grants: {},
           limits: { maxRuntime: "10m" },
-          diagram: "flowchart LR\n A[Event] --> B[Result]",
         },
         code: "export default {async run(){ return null }};",
         sources: [{ path: "trigger.ts", content: "export default {async run(){ return null }};" }],
@@ -76,6 +79,41 @@ describe("trigger dashboard read model", () => {
       history.map((run) => run.id),
       [first.run?.id],
     );
+    // Only the runs a list asks to draw read their journals.
+    assert.equal(history[0]?.pipeline, null);
+    const quietRun = first.run;
+    assert.ok(quietRun);
+    const journal = (
+      id: string,
+      kind: string,
+      status: "completed" | "waiting",
+      offset: number,
+    ) => ({
+      runId: quietRun.id,
+      id,
+      kind,
+      input: {},
+      inputHash: "",
+      status,
+      output: null,
+      error: null,
+      wakeAt: null,
+      childRunId: null,
+      leaseHash: "",
+      createdAt: new Date(Date.parse(startedAt) + offset).toISOString(),
+    });
+    await database.triggerCode.transaction("org-1", async (tx) => {
+      await tx.putOperation(journal("load", "state.get", "completed", 0));
+      await tx.putOperation(journal("review", "agent", "waiting", 1000));
+    });
+    const drawn = await dashboard.triggerHistory(request, "acme", quiet.triggerId, 5);
+    const [stage, ...later] = drawn[0]?.pipeline?.stages ?? [];
+    assert.deepEqual(later, []);
+    assert.equal(stage?.steps, 1);
+    assert.deepEqual(
+      stage.milestones.map((milestone) => `${milestone.id} ${milestone.state}`),
+      ["review waiting"],
+    );
     const snapshot = await dashboard.snapshot(request, "acme");
     assert.equal(
       snapshot.triggers.find((trigger) => trigger.id === quiet.triggerId)?.lastTriggered?.status,
@@ -86,10 +124,9 @@ describe("trigger dashboard read model", () => {
       (await dashboard.codeDetail(request, "acme", quiet.triggerId)).artifact?.entrypoint,
       "trigger.ts",
     );
-    assert.match(
-      (await dashboard.codeDetail(request, "acme", quiet.triggerId)).artifact?.manifest.diagram ??
-        "",
-      /A\[Event\]/u,
+    assert.deepEqual(
+      (await dashboard.codeDetail(request, "acme", quiet.triggerId)).artifact?.manifest.pipeline,
+      testPipeline(),
     );
     await assert.rejects(
       dashboard.triggerHistory(request, "acme", "another-trigger"),
@@ -346,6 +383,203 @@ describe("trigger dashboard read model", () => {
       [created.run.id],
     );
     assert.deepEqual(await dashboard.triggerHistory(request, "acme", second.id), []);
+  });
+
+  it("projects ended runs and started agents instead of the raw journal status", async () => {
+    const database = createMemoryDatabase({
+      memberships: [
+        {
+          userId: "user-1",
+          organizationId: "org-1",
+          organizationName: "Acme",
+          organizationSlug: "acme",
+          membershipId: "member-1",
+          role: "owner",
+        },
+      ],
+    });
+    let now = Date.parse("2026-11-15T12:00:00.000Z");
+    const service = new TriggerCodeService(
+      database,
+      { ensure: async () => {}, cancel: async () => {}, github: async () => null },
+      () => new Date(now),
+    );
+    const body = {
+      format: "trigger-code-v1" as const,
+      manifest: {
+        name: "history-lifecycle",
+        runner: "local",
+        on: [{ source: "manual", event: "run" }],
+        grants: {},
+        limits: { maxRuntime: "1h" },
+        pipeline: testPipeline("pause"),
+      },
+      code: "export default {async run(){return null}}",
+      sources: [{ path: "trigger.js", content: "export default {async run(){return null}}" }],
+    };
+    const deployment = await service.deploy("org-1", { ...body, digest: artifactDigest(body) });
+    const dashboard = new TriggerDashboard(database, accountAuth(), acceptingAgentValidator());
+    const request = new Request("https://hub.test/o/acme/triggers");
+    const seen: { parent: string; state: string; label: string; tone: string }[] = [];
+    for (const terminal of ["cancelled", "timed_out", "failed", "skipped"] as const) {
+      const received = await service.receive("org-1", deployment.triggerId, {
+        id: `event-${terminal}`,
+        source: "manual",
+        type: "run",
+        payload: null,
+        receivedAt: new Date(now).toISOString(),
+      });
+      const run = received.run;
+      assert.ok(run);
+      const enrolled = await service.enroll("org-1", "local");
+      const runner = await service.runner(enrolled.token);
+      const job = await service.lease(runner);
+      assert.ok(job);
+      await service.operation("org-1", run.id, job.leaseToken, {
+        id: "pause",
+        kind: "sleep",
+        input: { milliseconds: 7_200_000 },
+      });
+      if (terminal === "failed" || terminal === "skipped") {
+        await service.report("org-1", run.id, job.leaseToken, {
+          status: terminal,
+          error: "stopped with the sleep still open",
+        });
+      } else {
+        await service.report("org-1", run.id, job.leaseToken, {
+          status: "suspended",
+          waitingFor: ["pause"],
+        });
+        if (terminal === "cancelled") await service.cancel("org-1", run.id);
+        else {
+          now += 3_600_001;
+          await service.tickOrganization("org-1");
+        }
+      }
+      const history = (
+        await dashboard.triggerHistory(request, "acme", deployment.triggerId, 5)
+      ).find((item) => item.id === run.id);
+      const milestone = history?.pipeline?.stages[0]?.milestones[0];
+      assert.ok(history && milestone);
+      const detail = await dashboard.codeRunDetail(request, {
+        organizationSlug: "acme",
+        triggerId: deployment.triggerId,
+        runId: run.id,
+      });
+      const operation = detail.operations[0];
+      assert.ok(operation);
+      assert.equal(operation.status, "waiting");
+      assert.equal(
+        milestone.state,
+        operationState(
+          { status: operation.status, kind: operation.kind, executionId: operation.executionId },
+          history.status,
+        ),
+      );
+      seen.push({
+        parent: history.status,
+        state: milestone.state,
+        label: milestoneDetail(milestone, now + 60_000),
+        tone: milestoneTone(milestone),
+      });
+    }
+    assert.deepEqual(seen, [
+      { parent: "cancelled", state: "cancelled", label: "Cancelled", tone: "complete" },
+      { parent: "timed_out", state: "timed_out", label: "Timed out", tone: "failed" },
+      { parent: "failed", state: "failed", label: "Failed", tone: "failed" },
+      { parent: "skipped", state: "skipped", label: "Skipped", tone: "complete" },
+    ]);
+
+    const live = await service.receive("org-1", deployment.triggerId, {
+      id: "event-live-agent",
+      source: "manual",
+      type: "run",
+      payload: null,
+      receivedAt: new Date(now).toISOString(),
+    });
+    const liveRun = live.run;
+    assert.ok(liveRun);
+    const trigger = (await database.listOrganizationTriggers("org-1")).find(
+      (item) => item.id === deployment.triggerId,
+    );
+    assert.ok(trigger);
+    const revision = await database.findActiveProjectConfiguration(trigger.runtimeProjectId);
+    assert.ok(revision);
+    const receipt = await database.persistManualEvent({
+      organizationId: "org-1",
+      projectId: trigger.runtimeProjectId,
+      deliveryId: "history-agent-child",
+      source: "manual.run",
+      payload: {},
+      receivedAt: new Date(now),
+    });
+    assert.equal(receipt.status, "accepted");
+    if (receipt.status !== "accepted") return;
+    const childRunId = randomUUID();
+    await database.createAcceptedTriggerRun({
+      id: childRunId,
+      organizationId: "org-1",
+      projectId: trigger.runtimeProjectId,
+      configurationRevisionId: revision.id,
+      providerEventReceiptId: receipt.event.providerEventReceiptId,
+      configuredTriggerName: "history-agent",
+      prompt: "plan",
+      inputs: {},
+      triggerContext: {},
+      outputContext: {},
+      deadlineAt: new Date(now + 3_600_000),
+      stepIds: ["run"],
+    });
+    await database.triggerCode.transaction("org-1", async (tx) => {
+      await tx.putOperation({
+        runId: liveRun.id,
+        id: "plan",
+        kind: "agent",
+        input: { prompt: "plan the change" },
+        inputHash: "plan",
+        status: "waiting",
+        output: null,
+        error: null,
+        wakeAt: null,
+        childRunId,
+        leaseHash: "lease",
+        createdAt: new Date(now).toISOString(),
+      });
+    });
+    const queued = (await dashboard.triggerHistory(request, "acme", deployment.triggerId, 5)).find(
+      (item) => item.id === liveRun.id,
+    );
+    const queuedMilestone = queued?.pipeline?.stages[0]?.milestones[0];
+    assert.ok(queuedMilestone);
+    assert.equal(queuedMilestone.state, "waiting");
+    assert.equal(milestoneDetail(queuedMilestone, now + 60_000), "Queued 1m");
+    const step = (await database.listWorkflowStepRunsForTriggerRun(childRunId))[0];
+    assert.ok(step);
+    const execution = await database.insertAgentExecution({
+      organizationId: "org-1",
+      projectId: trigger.runtimeProjectId,
+      machineId: null,
+      configurationRevisionId: revision.id,
+      triggerContext: {},
+      outputContext: {},
+      workflowStepRunId: step.id,
+    });
+    await database.linkWorkflowStepRunExecution(step.id, execution.id);
+    const started = (await dashboard.triggerHistory(request, "acme", deployment.triggerId, 5)).find(
+      (item) => item.id === liveRun.id,
+    );
+    const startedMilestone = started?.pipeline?.stages[0]?.milestones[0];
+    assert.ok(startedMilestone);
+    assert.equal(startedMilestone.state, "running");
+    assert.equal(milestoneDetail(startedMilestone, now + 60_000), "Running 1m");
+    assert.equal(milestoneTone(startedMilestone), "running");
+    const detail = await dashboard.codeRunDetail(request, {
+      organizationSlug: "acme",
+      triggerId: deployment.triggerId,
+      runId: liveRun.id,
+    });
+    assert.equal(detail.operations[0]?.status, "waiting");
+    assert.equal(detail.operations[0]?.executionId, execution.id);
   });
 });
 

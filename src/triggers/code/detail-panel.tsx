@@ -3,7 +3,7 @@ import { TriggerDetailSkeleton } from "./detail-loading.js";
 import { useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card } from "../../components/app/card.js";
+import { Pause, Play } from "lucide-react";
 import { FailureAlert, NoticeAlert } from "../../components/app/failure-alert.js";
 import { PageHeader } from "../../components/app/page.js";
 import { Section } from "../../components/app/section.js";
@@ -14,7 +14,7 @@ import { codeTriggerDetail, codeTriggerAction } from "../functions.js";
 import { TriggerRunHistory } from "../activity-panel.js";
 import { TriggerSource } from "./source-view.js";
 import { TriggerSettings } from "./settings-view.js";
-import { TriggerFlow } from "./flow-view.js";
+import { TriggerPipelineView } from "./pipeline-view.js";
 
 type Action = "run" | "enable" | "disable";
 const ACTION_FEEDBACK = {
@@ -71,7 +71,14 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
     mutation.isSuccess && mutation.variables ? ACTION_FEEDBACK[mutation.variables] : null;
   return (
     <>
-      <PageHeader title={data.name} status={data.enabled ? ENABLED_STATUS : DISABLED_STATUS}>
+      <PageHeader
+        title={data.name}
+        description={
+          manifest?.description ??
+          "Matching events start your workflow. Results and logs are saved with each run."
+        }
+        status={data.enabled ? ENABLED_STATUS : DISABLED_STATUS}
+      >
         {data.canManage && manifest ? (
           <TriggerActions
             enabled={data.enabled}
@@ -93,30 +100,22 @@ export function TriggerDetailPanel({ triggerId }: { triggerId: string }) {
           {feedback.message}
         </NoticeAlert>
       ) : null}
-      <Section>
-        {manifest ? (
-          <Card
-            title="How it runs"
-            description={
-              manifest.description ??
-              "Matching events start your workflow. Results and logs are saved with each run."
-            }
-          >
-            <TriggerFlow manifest={manifest} />
-          </Card>
-        ) : (
-          <NoticeAlert standalone tone="neutral" title="Previous configuration">
-            Deploy a code project with the same name to update this Trigger and keep its history.
-          </NoticeAlert>
-        )}
-      </Section>
       {manifest ? (
-        <TriggerSettings manifest={manifest} inspection={data.inspection} version={data.version} />
-      ) : null}
-      <Section title="Run history" description="Open a run to see its result, steps and logs.">
+        <>
+          <Section title="Pipeline">
+            <TriggerPipelineView manifest={manifest} />
+          </Section>
+          <TriggerSettings manifest={manifest} inspection={data.inspection} />
+        </>
+      ) : (
+        <NoticeAlert standalone tone="neutral" title="Previous configuration">
+          Deploy a code project with the same name to update this Trigger and keep its history.
+        </NoticeAlert>
+      )}
+      <Section title="Run history">
         <TriggerRunHistory organizationSlug={organizationSlug} triggerId={triggerId} />
       </Section>
-      <Section>
+      <Section title="Source code">
         <TriggerSource organizationSlug={organizationSlug} current={data} />
       </Section>
     </>
@@ -137,9 +136,11 @@ function TriggerActions({
   return (
     <>
       <Button variant="outline" disabled={busy} onClick={toggle}>
+        {enabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
         {enabled ? "Disable" : "Enable"}
       </Button>
       <Button disabled={!enabled || busy} onClick={run}>
+        <Play aria-hidden="true" />
         Run now
       </Button>
     </>

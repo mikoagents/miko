@@ -18,76 +18,147 @@ import type { CodeField, InspectedAgent, TriggerInspection } from "./inspection-
 import {
   choiceSeparator,
   codeLine,
-  eventRecords,
+  eventAccessRecords,
   fixedValues,
-  githubAccess,
   oneOf,
+  eventScopeGroups,
+  permissionBands,
+  sharedGrantRepositories,
+  type EventAccessRecord,
+  type GithubAccess,
 } from "./presentation.js";
 
 /**
- * What the deployed code declares, read top to bottom as the run does: what starts it, where it
- * runs, which agents it calls, and what it may touch. Every group is open — the configuration is
- * the page's subject, not a detail to dig for — and only prompts, which can run to pages, fold.
+ * Each configuration topic owns a quiet heading above its surface. All settings stay open;
+ * only prompts, which can run to pages, fold.
  */
 export function TriggerSettings({
   manifest,
   inspection,
-  version,
 }: {
   manifest: TriggerManifest;
   inspection: TriggerInspection | null;
-  version: number;
 }) {
   return (
-    <Section>
-      <Card
-        title="Configuration"
-        description={`Defined in code, revision ${version}. Deploy a new revision to change it.`}
-      >
-        <SummaryPanel
-          layout="groups"
-          label="Trigger configuration"
-          rows={[
-            { label: "Events", value: <Events manifest={manifest} /> },
-            { label: "Runs on", value: <RunsOn manifest={manifest} /> },
-            {
-              label: "Agent calls",
-              value: <AgentCalls manifest={manifest} inspection={inspection} />,
-            },
-            { label: "Access", value: <Access manifest={manifest} /> },
-          ]}
-        />
-      </Card>
-    </Section>
+    <>
+      <Section title="Events and access">
+        <Card density="compact">
+          <EventsAndAccess manifest={manifest} />
+        </Card>
+      </Section>
+      <Section title="Runs on">
+        <Card density="compact">
+          <RunsOn manifest={manifest} />
+        </Card>
+      </Section>
+      <Section title="Agent calls">
+        <Card density="compact">
+          <AgentCalls manifest={manifest} inspection={inspection} />
+        </Card>
+      </Section>
+    </>
   );
 }
 
-function Events({ manifest }: { manifest: TriggerManifest }) {
-  const records = eventRecords(manifest.on);
-  if (records.length === 0) return <None>No events start this Trigger.</None>;
+function EventsAndAccess({ manifest }: { manifest: TriggerManifest }) {
+  const records = eventAccessRecords(manifest);
+  const secrets = manifest.grants.secrets ?? [];
+  if (records.length === 0 && secrets.length === 0)
+    return <None>No events or external access are configured.</None>;
   return (
-    <RecordList label="Events">
+    <RecordList label="Events and access">
       {records.map((record) => (
         <RecordRow
           key={record.key}
           media={<SourceGlyph source={record.source} />}
           details={
-            record.scopes === undefined ? undefined : (
-              <SummaryPanel
-                layout="names"
-                label={record.primary + " events"}
-                rows={record.scopes.map((scope) => ({
-                  label: scope.resource,
-                  value: scope.events,
-                }))}
-              />
+            record.scopes === undefined && record.access === null ? undefined : (
+              <ConnectionDetails record={record} />
             )
           }
         >
           <TwoLine wrap primary={record.primary} secondary={record.secondary} />
         </RecordRow>
       ))}
+      {secrets.length > 0 ? (
+        <RecordRow media={<KeyRound aria-hidden="true" />}>
+          <TwoLine mono primary="Runner secrets" secondary={secrets.join(", ")} />
+        </RecordRow>
+      ) : null}
     </RecordList>
+  );
+}
+
+function ConnectionDetails({ record }: { record: EventAccessRecord }) {
+  const rows: SummaryRow[] = [];
+  if (record.scopes !== undefined)
+    rows.push({ label: "Events", value: <EventScopes record={record} /> });
+  if (record.access !== null) {
+    const bands = permissionBands(record.access.permissions);
+    rows.push({
+      label: "Access",
+      value: (
+        <div className="grid min-w-0 gap-3">
+          {bands.length > 0 ? (
+            <SummaryPanel
+              layout="facts"
+              label={record.primary + " permissions"}
+              rows={bands.map((band) => ({
+                label: band.labels.join(", "),
+                value: band.shared ?? <Levels levels={band.levels} />,
+              }))}
+            />
+          ) : null}
+          <GrantRepositories access={record.access} name={record.primary} />
+        </div>
+      ),
+    });
+  } else if (record.source === "github") {
+    rows.push({ label: "Access", value: <None>No GitHub access is granted.</None> });
+  }
+  return (
+    <SummaryPanel layout="columns" label={record.primary + " events and access"} rows={rows} />
+  );
+}
+
+/** Resources that subscribe to the same events share one row. */
+function EventScopes({ record }: { record: EventAccessRecord }) {
+  return (
+    <SummaryPanel
+      layout="names"
+      label={record.primary + " events"}
+      rows={eventScopeGroups(record.scopes ?? []).map((group) => ({
+        label: group.resources,
+        value: group.events,
+      }))}
+    />
+  );
+}
+
+/**
+ * The grant names the code uses, beside the repositories that grant may touch. This is not the
+ * event scope: a repository that starts a run is not one the code may change.
+ */
+function GrantRepositories({ access, name }: { access: GithubAccess; name: string }) {
+  const shared = sharedGrantRepositories(access.grants);
+  return (
+    <SummaryPanel
+      layout="names"
+      label={name + " grants"}
+      rows={
+        shared === null
+          ? access.grants.map((grant) => ({
+              label: grant.alias,
+              value: grant.repositories.join(", ") || "No repositories",
+            }))
+          : [
+              {
+                label: access.grants.map((grant) => grant.alias).join(", "),
+                value: shared || "No repositories",
+              },
+            ]
+      }
+    />
   );
 }
 
@@ -255,60 +326,17 @@ function Prompt({ name, field }: { name: string; field: CodeField }) {
   );
 }
 
-function Access({ manifest }: { manifest: TriggerManifest }) {
-  const connections = githubAccess(manifest.grants.github ?? {});
-  const secrets = manifest.grants.secrets ?? [];
-  if (connections.length === 0 && secrets.length === 0)
-    return <None>None. The workflow can't reach GitHub or runner secrets.</None>;
-  return (
-    <RecordList label="Access">
-      {connections.map((access) => (
-        <RecordRow
-          key={access.connection}
-          media={<ProviderGlyph provider="github" />}
-          details={
-            <div className="grid min-w-0 gap-3">
-              <SummaryPanel
-                layout="names"
-                label={access.connection + " grants"}
-                rows={access.grants.map((grant) => ({
-                  label: grant.alias,
-                  value: grant.repositories.join(", ") || "No repositories",
-                }))}
-              />
-              <SummaryPanel
-                layout="facts"
-                label={access.connection + " permissions"}
-                rows={access.permissions.map((permission) => ({
-                  label: permission.label,
-                  value: permission.shared ?? <Levels levels={permission.levels} />,
-                }))}
-              />
-            </div>
-          }
-        >
-          <TwoLine primary={access.connection} secondary="GitHub connection" />
-        </RecordRow>
-      ))}
-      {secrets.length > 0 ? (
-        <RecordRow media={<KeyRound aria-hidden="true" />}>
-          <TwoLine mono primary="Runner secrets" secondary={secrets.join(", ")} />
-        </RecordRow>
-      ) : null}
-    </RecordList>
-  );
-}
-
-/** A permission whose level differs between grants, as each grant has it. */
+/** A permission whose level differs between grants, read across rather than stacked per grant. */
 function Levels({ levels }: { levels: readonly { alias: string; level: string }[] }) {
   return (
-    <span className="grid">
-      {levels.map((entry) => (
-        <span key={entry.alias}>
+    <>
+      {levels.map((entry, index) => (
+        <Fragment key={entry.alias}>
+          {index > 0 ? " · " : null}
           <Name>{entry.alias}</Name> {entry.level}
-        </span>
+        </Fragment>
       ))}
-    </span>
+    </>
   );
 }
 

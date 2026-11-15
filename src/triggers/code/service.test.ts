@@ -1,3 +1,4 @@
+import { testPipeline } from "../../test-utils/pipeline.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -38,7 +39,7 @@ describe("code-authored Triggers", () => {
       `import { defineTrigger } from "@mikoagents/hub/triggers";
       import { multiply } from "./helper";
       import { z } from "zod";
-      export default defineTrigger({ name: "typed", runner: "local", grants: {}, on: [{source:"manual",event:"run"}], limits: {maxRuntime:"1h"}, async run(ctx) { return multiply(z.number().parse(ctx.event.payload)); } });`,
+      export default defineTrigger({ pipeline: ${JSON.stringify(testPipeline())}, name: "typed", runner: "local", grants: {}, on: [{source:"manual",event:"run"}], limits: {maxRuntime:"1h"}, async run(ctx) { return multiply(z.number().parse(ctx.event.payload)); } });`,
     );
     const built = await buildTrigger(join(root, "workflow.ts"));
     assert.equal(built.entrypoint, "workflow.ts");
@@ -327,6 +328,62 @@ describe("code-authored Triggers", () => {
     );
   });
 
+  it("records when each operation settled and summarizes journals without their data", async () => {
+    const fixture = await setup();
+    await fixture.service.deploy(
+      "org",
+      artifact("export default {run(){return null}}", [
+        { source: "manual", event: "run" },
+        { source: "ci", event: "done" },
+      ]),
+    );
+    const run = await fixture.start("example");
+    const job = await fixture.lease();
+    await fixture.service.operation("org", run.id, job.leaseToken, {
+      id: "write",
+      kind: "step",
+      input: { value: 1 },
+    });
+    assert.equal((await fixture.operation(run.id, "write"))?.completedAt, undefined);
+    fixture.advance(5000);
+    await fixture.service.completeOperation("org", run.id, job.leaseToken, "write", {
+      output: "done",
+    });
+    const write = await fixture.operation(run.id, "write");
+    assert.ok(write?.completedAt !== undefined);
+    assert.equal(Date.parse(write.completedAt) - Date.parse(write.createdAt), 5000);
+    await fixture.service.operation("org", run.id, job.leaseToken, {
+      id: "seen",
+      kind: "state.set",
+      input: { key: "last", value: 1 },
+    });
+    const seen = await fixture.operation(run.id, "seen");
+    assert.equal(seen?.completedAt, seen?.createdAt);
+    fixture.advance(1000);
+    await fixture.service.operation("org", run.id, job.leaseToken, {
+      id: "ci:0",
+      kind: "event",
+      input: { source: "ci", event: "done", timeout: "1s", cursor: 0, group: "ci" },
+    });
+    fixture.advance(1001);
+    await fixture.service.tickOrganization("org");
+    const summaries = await fixture.database.triggerCode.transaction("org", (tx) =>
+      tx.operationSummaries([run.id]),
+    );
+    assert.deepEqual(
+      summaries.map(({ id, kind, status, group }) => ({ id, kind, status, group })),
+      [
+        { id: "write", kind: "step", status: "completed", group: undefined },
+        { id: "seen", kind: "state.set", status: "completed", group: undefined },
+        { id: "ci:0", kind: "event", status: "failed", group: "ci" },
+      ],
+    );
+    const timedOut = summaries.at(-1);
+    assert.ok(timedOut?.completedAt !== undefined);
+    assert.equal(Date.parse(timedOut.completedAt) - Date.parse(timedOut.createdAt), 1001);
+    assert.ok(summaries.every((summary) => !("input" in summary) && !("output" in summary)));
+  });
+
   it("serializes durable locks, scopes claims across runs, and rejects out-of-grant agent execution", async () => {
     const fixture = await setup();
     await fixture.service.deploy("org", artifact("export default {run(){return null}}"));
@@ -450,7 +507,14 @@ function artifact(
 ): TriggerArtifact {
   const body = {
     format: "trigger-code-v1" as const,
-    manifest: { name: "example", runner: "local", on, grants: {}, limits: { maxRuntime: "1h" } },
+    manifest: {
+      pipeline: testPipeline(),
+      name: "example",
+      runner: "local",
+      on,
+      grants: {},
+      limits: { maxRuntime: "1h" },
+    },
     code,
     sources: [{ path: "trigger.js", content: code }],
   };

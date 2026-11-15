@@ -52,7 +52,8 @@ as the link and focus hue.
 | `destructive`             | `#e8837a`             | Destructive button fill and error text.                                                                                                          |
 
 Status tones (`success`, `warning`, `danger`, `neutral`) and their `-surface` pairs are unchanged and
-are only ever read through `StatusPill`.
+are only ever read through `StatusPill`, and through the marks `Pipeline` and `Timeline` draw for the
+same states: a node's dot, a bar's fill. Neither mark ever stands alone; the state is also text.
 
 Light values mirror Linear's light ramp in the same file. Appearance follows the system by default;
 users can choose System, Light, or Dark from the sidebar or a pre-auth screen. The preference is
@@ -102,14 +103,23 @@ background only.
 | Sidebar                 | 240px wide. Item h-8 `text-sm` `rounded-md`. Inactive `muted-foreground`; active `accent` fill and `foreground`. Hover promotes colour, no fill.                                                                                                                             |
 | Site header             | h-12, `border-b`, `background` fill, no blur. A route's own actions sit here from `sm`; a phone fits the sidebar trigger and the trail only, so the route puts the same controls in the page.                                                                                |
 | Table                   | Header row h-9 `text-xs muted-foreground`. Body row h-11 `text-sm`. Rows divided by `border`. Hover fill only on rows that navigate. A column is as wide as its widest value; only `fill` columns, the ones whose values can be cut, share the remaining width and truncate. |
-| Card                    | p-6. `rounded-xl border bg-card`. Title `text-sm` foreground, description `text-sm muted-foreground`, gap-1 between them, gap-4 to the body.                                                                                                                                 |
-| Page column             | Fluid up to `100rem`, inset p-4 on phones and p-8 from `md`. Owned by the shell; screens never pad themselves.                                                                                                                                                               |
+| Card                    | p-6, or p-4 for compact configuration groups. `rounded-xl border bg-card`. Title `text-sm` foreground, description `text-sm muted-foreground`, gap-1 between them, gap-4 to the body.                                                                                        |
+| Page column             | Fluid up to `100rem`, inset p-4 on phones and p-8 from `md`. Owned by the shell and `Page`. Screens never set their own padding.                                                                                                                                             |
 | Section                 | mb-8 between sections, gap-3 inside. Owned by `Section`.                                                                                                                                                                                                                     |
 | Field                   | gap-2 between label, control, and description. Fields in a form: gap-4.                                                                                                                                                                                                      |
 
 Wide pages keep header descriptions at a readable measure. Use `SectionGrid` for related sections:
 it stacks them until the page content is at least `64rem` wide, then gives them equal columns.
 Detail dialogs grow to `72rem`, with a `2rem` viewport inset from `sm` and a `1rem` inset on phones.
+
+Trigger details keep the standard page width, with the workflow diagram first below the page title.
+Configuration topics have their `Section` heading above a compact `Card` (`p-4`); the description
+belongs under the page title. Events and access share one card, with each connection named once.
+Events and access sit in a row once the card is wide enough for them, and stack when it is not.
+Events say which resources can start a run; resources that subscribe to the same events share a row.
+Access is what the code may do there: the permission levels its grants share, then each grant name
+beside the repositories that grant may touch. Those repositories are not a third column, and they
+are not the event scope. Execution resources and Agent calls follow, then run history and source revisions.
 
 ## Emphasis without weight
 
@@ -123,6 +133,39 @@ Detail dialogs grow to `72rem`, with a `2rem` viewport inset from `sm` and a `1r
   show the code that computes it, in `InlineCode`; the fill is what tells it apart from a value.
 - Table headers are `text-xs muted-foreground` in sentence case. They are the quietest text in the
   table.
+
+## Runs drawn over time
+
+- Trigger details and every Activity view start with the same `Pipeline`, a native node-and-edge
+  graph from the Trigger’s required authored definition. Node IDs, labels, descriptions, labelled
+  forks, joins and explicit loop edges come from code. Activity uses its accepted revision and
+  overlays only recorded operation progress; topology and layout never change with run state.
+  All workflows run left to right, regardless of their length. Show core phases and consequential
+  branches; merge redundant event/read/readiness nodes into one admission stage and express
+  continuation on edges when a result node adds no business action. Name nodes with concrete
+  actions and objects, and decisions with their actual condition.
+  Group locks, pagination, label writes and cleanup into their owning phase’s tooltip; do not hide
+  distinct business actions behind generic “Check”, “Execute” or “Finish” labels.
+  Automatic layered layout reserves space for complete branch labels and routes separate
+  orthogonal connections around nodes, with rounded corners and explicit return arrows.
+  No timestamp-derived graph or Mermaid renderer is used.
+  The Pipeline sits in a compact shared `Card`, with the same background and border as other
+  configuration groups. Nodes keep the original `h-11` shape: a state dot, name and recorded status.
+  Descriptions and node kinds belong in tooltips, never in node cards. Keep connectors and the
+  surrounding surface quiet. The standard Card grows to the graph’s full height without an internal
+  vertical scrollbar; only horizontal overflow scrolls. A floating icon button at the Card’s top
+  right opens the Pipeline in a fullscreen dialog, with the canvas filling the available height and
+  zoom and fit controls kept visible. The button overlays the graph without adding a footer row. Connections highlight on hover or keyboard focus. The graph stays readable on phones and
+  expands in a shared dialog. Unrecorded nodes remain neutral; only recorded steps open diagnostics.
+- A run's steps are a `DataTable` with a timeline column: `TimelineAxis` is the column's
+  `headerContent` and every row draws a `TimelineTrack` on the same scale from `src/lib/timeline.ts`.
+  A phone hides the column and draws a compact track under each step instead.
+- One vocabulary for both: solid is work that finished, `danger` is a failure, striped
+  (`timeline-running`) is work still going, dashed is a wait — an event, a timer, a queue, a lock.
+  A hatched band (`timeline-fold`) is a long stretch in which only waits were open, folded to a
+  fixed width and labelled with what it hides, so a CI wait never flattens the seconds around it.
+- Bars and dots are drawings of facts a row already states in text: status in a `StatusPill`, time
+  in a duration column. A step the journal never timed shows no bar and no duration, not a guess.
 
 ## Component roster
 
@@ -163,7 +206,8 @@ missing app component.
 | `Combobox`                                                                             | Pick one of many with search.                                                       |
 | `CopyField`, `CopyButton`, `CopyBlock`, `CodeBlock`, `CodeBlockSkeleton`, `InlineCode` | Show a value to copy, a block of code, or code inside a line.                       |
 | `Disclosure`, `DisclosureSkeleton`                                                     | Open and close a bordered section, or a toggle inside a record.                     |
-| `FlowDiagram`                                                                          | Read a workflow diagram and expand it for inspection.                               |
+| `Pipeline`, `PipelineSkeleton`, `PipelineStrip`                                        | Read authored Trigger and Activity graphs, or execution marks in a table cell.      |
+| `TimelineAxis`, `TimelineTrack`, `TimelineLegend`, `TimelineMark`                      | Draw records on one clock: the axis in a column header, a track in each row.        |
 | `RowActions`                                                                           | Put a record's actions behind one kebab.                                            |
 | `RelativeTime`                                                                         | Show when. There is no absolute-date formatter in screens.                          |
 | `AuthLayout`, `AuthCard`, `AuthCardSkeleton`                                           | Frame a pre-auth screen.                                                            |

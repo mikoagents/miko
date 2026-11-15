@@ -1,10 +1,7 @@
 import { expect } from "@playwright/test";
 import { test } from "./app.js";
 
-test("inspects run details and every log page in a keyboard-accessible dialog", async ({
-  hub,
-  page,
-}) => {
+test("inspects run details and every log page on its own page", async ({ hub, page }) => {
   await hub.signUpAs("owner", {
     name: "Activity Owner",
     email: "activity-owner@example.com",
@@ -82,7 +79,7 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
     .getByRole("table", { name: "Trigger activity" })
     .getByRole("row")
     .filter({ hasText: "logged-run" });
-  const trigger = row.getByRole("button", { name: "logged-run", exact: true });
+  const trigger = row.getByRole("link", { name: "logged-run", exact: true });
   for (const width of [390, 1100, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(row.getByText("history-daemon", { exact: true })).toBeVisible();
@@ -90,139 +87,119 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
   }
   await trigger.focus();
   await trigger.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Activity details" });
-  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activity details", exact: true })).toBeVisible();
   for (const width of [390, 768, 1280, 1920, 2560]) {
     await page.setViewportSize({ width, height: 900 });
-    const inset = width >= 640 ? 32 : 16;
-    // Visibility arrives before the opening animation reaches the dialog's final bounds.
     await expect
-      .poll(async () => {
-        const bounds = await dialog.boundingBox();
-        return bounds === null
-          ? Infinity
-          : Math.abs(bounds.width - Math.min(width - inset * 2, 1152));
-      })
-      .toBeLessThan(1);
-    const bounds = await dialog.boundingBox();
-    if (bounds === null) throw new Error("Expected an open detail dialog");
-    expect(bounds.x).toBeGreaterThanOrEqual(inset);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - inset);
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true);
   }
   await page.setViewportSize({ width: 1280, height: 900 });
-  const dialogHeight = await dialog.evaluate((element) => element.clientHeight);
-  await expect(dialog.getByRole("radio", { name: "Conversation", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("radio").first()).toHaveAccessibleName("Run details");
+  await expect(page.getByRole("radio", { name: "Run details", exact: true })).toHaveAttribute(
     "aria-checked",
     "true",
   );
-  await expect(dialog.getByRole("textbox", { name: "Run prompt" })).toBeHidden();
-  await expect(dialog.locator('[data-summary="Execution target"]')).toContainText("history-daemon");
-  await expect(dialog.getByText("miko agent inspect native-agent", { exact: true })).toBeHidden();
-  await dialog.getByRole("combobox", { name: "Execution step" }).click();
+  await page.getByRole("radio", { name: "Conversation", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Run prompt" })).toBeHidden();
+  await expect(page.locator('[data-summary="Execution target"]')).toContainText("history-daemon");
+  await expect(page.getByText("miko agent inspect native-agent", { exact: true })).toBeHidden();
+  await page.getByRole("combobox", { name: "Execution step" }).click();
   await page.getByRole("option", { name: /2\. skipped/u }).click();
-  await expect(dialog.getByText("No agent session", { exact: true })).toBeVisible();
-  await dialog.getByRole("combobox", { name: "Execution step" }).click();
+  await expect(page.getByText("No agent session", { exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Execution step" }).click();
   await page.getByRole("option", { name: /1\. work/u }).click();
-  await expect(dialog.getByText("Inspect this change", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("I found the permission failure", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Saved session history", { exact: true })).toBeVisible();
+  await expect(page.getByText("Inspect this change", { exact: true })).toBeVisible();
+  await expect(page.getByText("I found the permission failure", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved session history", { exact: true })).toBeVisible();
 
-  await dialog.getByRole("button", { name: "Shell" }).click();
-  await expect(dialog.getByRole("textbox", { name: "Tool input", exact: true })).toHaveText(
+  await page.getByRole("button", { name: "Shell" }).click();
+  await expect(page.getByRole("textbox", { name: "Tool input", exact: true })).toHaveText(
     "cat source.ts",
   );
-  await expect(dialog.getByRole("textbox", { name: "Tool output", exact: true })).toHaveText(
+  await expect(page.getByRole("textbox", { name: "Tool output", exact: true })).toHaveText(
     "Operation not permitted",
   );
-  const expand = dialog.getByRole("button", { name: "Show full message", exact: true });
+  const expand = page.getByRole("button", { name: "Show full message", exact: true });
   await expect(expand).toBeVisible();
-  const message = dialog
+  const message = page
     .getByRole("paragraph")
     .filter({ hasText: "Detailed explanation of the execution." });
   const previewHeight = await message.evaluate((element) => element.clientHeight);
   await expand.click();
-  await expect(dialog.getByRole("button", { name: "Show less", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Show less", exact: true })).toHaveAttribute(
     "aria-expanded",
     "true",
   );
   expect(await message.evaluate((element) => element.clientHeight)).toBeGreaterThan(previewHeight);
-  await dialog.getByRole("button", { name: "Show less", exact: true }).click();
-  await dialog.getByRole("radio", { name: "Run details", exact: true }).click();
-  await expect(dialog.locator('[data-summary="Run overview"]')).toContainText("history-daemon");
-  expect(await dialog.evaluate((element) => element.clientHeight)).toBe(dialogHeight);
-  await expect(dialog.getByRole("textbox", { name: "Run prompt" })).toBeHidden();
-  await dialog.getByRole("button", { name: "Prompt", exact: true }).click();
-  await expect(dialog.getByRole("textbox", { name: "Run prompt" })).toContainText(
+  await page.getByRole("button", { name: "Show less", exact: true }).click();
+  await page.getByRole("radio", { name: "Run details", exact: true }).click();
+  await expect(page.locator('[data-summary="Run overview"]')).toContainText("history-daemon");
+  await expect(page.getByRole("textbox", { name: "Run prompt" })).toBeHidden();
+  await page.getByRole("button", { name: "Prompt", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Run prompt" })).toContainText(
     "Handle the event.",
   );
-  await dialog.getByRole("button", { name: /1\. work/u }).click();
-  await expect(dialog.getByRole("textbox", { name: "work output" })).toContainText(
+  await page.getByRole("button", { name: /1\. work/u }).click();
+  await expect(page.getByRole("textbox", { name: "work output" })).toContainText(
     "All checks passed",
   );
-  await dialog.getByRole("button", { name: "Event and context" }).click();
-  await expect(dialog.getByRole("textbox", { name: "Event payload" })).toBeVisible();
-  await dialog.getByRole("radio", { name: "Diagnostics", exact: true }).click();
-  await expect(dialog.getByText("miko agent inspect native-agent", { exact: true })).toBeVisible();
-  await dialog.getByRole("button", { name: "Raw session data", exact: true }).click();
-  await expect(dialog.getByRole("textbox", { name: "Session message data" })).toContainText(
+  await page.getByRole("button", { name: "Event and context" }).click();
+  await expect(page.getByRole("textbox", { name: "Event payload" })).toBeVisible();
+  await page.getByRole("radio", { name: "Diagnostics", exact: true }).click();
+  await expect(page.getByText("miko agent inspect native-agent", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Raw session data", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Session message data" })).toContainText(
     "cat source.ts",
   );
-  const log = dialog.getByRole("textbox", { name: /^Execution log/u });
+  const log = page.getByRole("textbox", { name: /^Execution log/u });
   await expect(log).toContainText('"Log entry 0"');
   await expect(log).toContainText('"Log entry 99"');
   await expect(log).not.toContainText('"Log entry 100"');
-  await dialog.getByRole("button", { name: "Later entries" }).click();
+  await page.getByRole("button", { name: "Later entries" }).click();
   await expect(log).toContainText('"Log entry 100"');
-  await expect(dialog.getByRole("button", { name: "Later entries" })).toBeDisabled();
-  await dialog.getByRole("button", { name: "Earlier entries" }).click();
+  await expect(page.getByRole("button", { name: "Later entries" })).toBeDisabled();
+  await page.getByRole("button", { name: "Earlier entries" }).click();
   await expect(log).toContainText('"Log entry 0"');
-  const body = dialog.getByRole("region", { name: "Activity details content" });
-  await body.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect(
-    dialog.getByRole("heading", { name: "Activity details", exact: true }),
-  ).toBeInViewport();
-  await expect(dialog.getByRole("radio", { name: "Conversation", exact: true })).toBeInViewport();
-  await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeInViewport();
-  await dialog.getByRole("radio", { name: "Diagnostics", exact: true }).focus();
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.getByRole("radio", { name: "Diagnostics", exact: true }).focus();
   await page.keyboard.press("ArrowLeft");
-  await expect(dialog.getByRole("radio", { name: "Run details", exact: true })).toBeFocused();
-  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(page.getByRole("radio", { name: "Conversation", exact: true })).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await page.keyboard.press("ArrowLeft");
-  await expect(dialog.getByRole("radio", { name: "Conversation", exact: true })).toHaveAttribute(
+  await expect(page.getByRole("radio", { name: "Run details", exact: true })).toHaveAttribute(
     "aria-checked",
     "true",
   );
-  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBe(0);
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  await expect(trigger).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.goBack();
+  await expect(page.getByRole("table", { name: "Trigger activity" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await row.getByRole("cell", { name: "history-daemon", exact: true }).click();
-  await expect(dialog).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activity details", exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Run details", exact: true })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await page.getByRole("radio", { name: "Conversation", exact: true }).click();
   await expect
-    .poll(() =>
-      dialog.evaluate((element) => element.getBoundingClientRect().right <= window.innerWidth),
-    )
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true);
-  await expect(dialog.getByText("Inspect this change", { exact: true })).toBeVisible();
-  await body.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  expect(await body.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeInViewport();
-  await expect(dialog.getByRole("radio", { name: "Diagnostics", exact: true })).toBeInViewport();
+  await expect(page.getByText("Inspect this change", { exact: true })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
   await page.screenshot({ path: "e2e/screenshots/activity/details-mobile.png" });
-  await page.keyboard.press("Escape");
+  await page.goBack();
 
   await application.query("delete from agent_execution_logs");
   await trigger.click();
-  await dialog.getByRole("radio", { name: "Diagnostics", exact: true }).click();
-  await expect(dialog.getByText("No recorded log", { exact: true })).toBeVisible();
+  await page.getByRole("radio", { name: "Diagnostics", exact: true }).click();
+  await expect(page.getByText("No recorded log", { exact: true })).toBeVisible();
 
-  await page.keyboard.press("Escape");
+  await page.goBack();
   const failure = "Review tool access denied; no Review published";
   await application.query(
     "update trigger_runs set status = 'failed', failure_reason = $1 where configured_trigger_name = 'logged-run'",
@@ -235,5 +212,5 @@ test("inspects run details and every log page in a keyboard-accessible dialog", 
   await expect(row.getByText("Failed", { exact: true })).toBeVisible();
   await expect(row.getByText(failure, { exact: true })).toBeVisible();
   await trigger.click();
-  await expect(dialog.getByText(failure, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(failure, { exact: true }).first()).toBeVisible();
 });

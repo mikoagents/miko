@@ -1,3 +1,4 @@
+import { testPipeline } from "../../test-utils/pipeline.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import SwaggerParser from "@apidevtools/swagger-parser";
@@ -61,6 +62,7 @@ function artifact() {
   const body = {
     format: "trigger-code-v1" as const,
     manifest: {
+      pipeline: testPipeline(),
       name: "example",
       on: [{ source: "manual", event: "run" }],
       runner: "local",
