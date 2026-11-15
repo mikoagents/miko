@@ -79,3 +79,55 @@ test("keeps the document through page navigation, organization creation and swit
   await expect(page.getByRole("heading", { name: "Home", exact: true, level: 1 })).toBeVisible();
   expect(await page.evaluate((value) => Reflect.get(window, value), marker)).toBe(true);
 });
+
+for (const action of ["select", "create"] as const) {
+  test(`hides account actions when ${action} cannot refresh the account`, async ({ hub, page }) => {
+    test.setTimeout(120_000);
+    const owner = {
+      name: "Refresh owner",
+      email: `auth-refresh-${action}@example.com`,
+      password: "auth-navigation-password",
+    };
+    await hub.signUpAs("owner", owner);
+    await hub.createOrganization("owner", "Acme");
+    if (action === "select") {
+      await hub.createAnotherOrganization("owner", "Orbit");
+      await hub.chooseOrganization("owner", "Acme");
+    }
+    const application = hub.primaryApplication();
+    // The account read joins invitations. Organization commands and the session do not.
+    await application.query("alter table invitation rename to review_unavailable_invitation");
+    try {
+      if (action === "select") {
+        await page.getByRole("button", { name: "Organization", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Orbit", exact: true }).click();
+      } else {
+        await page.getByRole("button", { name: "Organization", exact: true }).click();
+        await page.getByRole("menuitem", { name: "New organization", exact: true }).click();
+        const form = page.getByRole("form", { name: "Create organization", exact: true });
+        await form.getByLabel("Organization name", { exact: true }).fill("Orbit");
+        await form.getByRole("button", { name: "Create organization", exact: true }).click();
+      }
+      await expect(page).toHaveURL(/\/o\/orbit-[^/]+\/home$/u, { timeout: 30_000 });
+      await expect(
+        page.getByRole("heading", { name: "Sign in to Miko Hub", exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText("People with access to Acme.", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Machine access for Acme.", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Create API key", exact: true })).toHaveCount(
+        0,
+      );
+      const active = await application.query(
+        `select organization.name as name
+         from session
+         join organization on organization.id = session.active_organization_id
+         join "user" on "user".id = session.user_id
+         where "user".email = $1`,
+        [owner.email],
+      );
+      expect(active.map((row) => row["name"])).toEqual(["Orbit"]);
+    } finally {
+      await application.query("alter table review_unavailable_invitation rename to invitation");
+    }
+  });
+}

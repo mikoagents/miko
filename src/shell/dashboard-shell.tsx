@@ -14,9 +14,10 @@ import {
   Zap,
 } from "lucide-react";
 import { Outlet, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { flushSync } from "react-dom";
 import { usePageContext } from "../navigation/index.js";
 import { Page } from "../components/app/page.js";
 import { FailureAlert } from "../components/app/failure-alert.js";
@@ -35,9 +36,9 @@ import {
   SidebarProvider,
   SidebarRail,
 } from "../components/ui/sidebar.js";
-import type { ActiveAccountState } from "../auth/organization-contract.js";
+import type { AccountState, ActiveAccountState } from "../auth/organization-contract.js";
 import { createOrganization, selectOrganization, signOut } from "../auth/functions.js";
-import { ErrorSummary } from "../auth/account-states.js";
+import { ErrorSummary, FailedEntry } from "../auth/account-states.js";
 import { ActiveAccountProvider } from "../auth/active-account.js";
 import type { Result } from "../contract/respond.js";
 import { ACCOUNT_MUTATION_KEY, useAccountMutationError } from "../auth/account-mutation.js";
@@ -75,6 +76,8 @@ type CreateOrganizationCommandResult = Result<{
 
 export function DashboardShell({ account }: { account: ActiveAccount }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [accountUnreadable, setAccountUnreadable] = useState(false);
   const createOrganizationCommand = useAccountCommand(
     useServerFn(createOrganization) as (
       input: Parameters<typeof createOrganization>[0],
@@ -94,12 +97,10 @@ export function DashboardShell({ account }: { account: ActiveAccount }) {
     mutationKey: ACCOUNT_MUTATION_KEY,
     mutationFn: createOrganizationCommand,
     onSuccess: async (result) => {
-      if (result.status === "ok" && result.data.organizationSlug !== undefined) {
-        await navigate({
-          to: "/o/$organizationSlug/home",
-          params: { organizationSlug: result.data.organizationSlug },
-        });
-      }
+      if (result.status !== "ok" || result.data.organizationSlug === undefined) return;
+      await openOrganization(queryClient, navigate, result.data.organizationSlug, () =>
+        setAccountUnreadable(true),
+      );
     },
   });
   const select = useMutation({
@@ -107,12 +108,10 @@ export function DashboardShell({ account }: { account: ActiveAccount }) {
     mutationFn: ({ input }: { input: Parameters<typeof selectOrganization>[0]; slug: string }) =>
       selectOrganizationCommand(input),
     onSuccess: async (result, variables) => {
-      if (result.status === "ok" && result.data.state === "complete") {
-        await navigate({
-          to: "/o/$organizationSlug/home",
-          params: { organizationSlug: variables.slug },
-        });
-      }
+      if (result.status !== "ok" || result.data.state !== "complete") return;
+      await openOrganization(queryClient, navigate, variables.slug, () =>
+        setAccountUnreadable(true),
+      );
     },
   });
   const leave = useMutation({
@@ -129,6 +128,9 @@ export function DashboardShell({ account }: { account: ActiveAccount }) {
     [select],
   );
   const leaveAccount = useCallback(() => leave.mutate({}), [leave]);
+  if (accountUnreadable) {
+    return <FailedEntry message="Hub couldn't load your account. Reload the page." />;
+  }
   return (
     <SidebarProvider>
       <RouteTenantProvider>
@@ -193,6 +195,39 @@ function DashboardContent({
       </SiteHeaderActionsProvider>
     </>
   );
+}
+
+/**
+ * Open the organization the session already selected. Client navigation keeps this document, but
+ * only after the account cache names that same organization. A failed refresh still has the
+ * previous account, and rendering it would label Team and API keys with the old organization while
+ * commands use the new one. Hide those actions, then load the destination document so its account
+ * gate stays closed until the read succeeds.
+ */
+async function openOrganization(
+  queryClient: QueryClient,
+  navigate: ReturnType<typeof useNavigate>,
+  slug: string,
+  markUnreadable: () => void,
+): Promise<void> {
+  if (accountCacheMatches(queryClient, slug)) {
+    await navigate({
+      to: "/o/$organizationSlug/home",
+      params: { organizationSlug: slug },
+    });
+    return;
+  }
+  flushSync(markUnreadable);
+  window.location.assign(`/o/${slug}/home`);
+  return new Promise(() => {
+    // Keep the mutation pending until the document unloads so the stale account is not rendered.
+  });
+}
+
+function accountCacheMatches(queryClient: QueryClient, slug: string): boolean {
+  return queryClient.getQueriesData<AccountState>({ queryKey: ["account"] }).some(([, data]) => {
+    return data !== undefined && data.status === "active" && data.organization.slug === slug;
+  });
 }
 
 function useAccountCommand<TInput, TResult extends Result<unknown>>(
