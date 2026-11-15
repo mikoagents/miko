@@ -1914,6 +1914,40 @@ class MemoryDatabase implements Database {
     return { run, receipt, steps: this.listSteps(run.id) };
   }
 
+  async listTriggerRunDaemons(organizationId: string, runIds: readonly string[]) {
+    const children = await this.triggerCode.transaction(organizationId, async (tx) =>
+      Promise.all(runIds.map((runId) => tx.operations(runId))),
+    );
+    return runIds.flatMap((runId, index) => {
+      const childIds = new Set([
+        runId,
+        ...(children[index] ?? []).flatMap(({ childRunId }) =>
+          childRunId === null ? [] : [childRunId],
+        ),
+      ]);
+      const daemons = new Map<string, DaemonRecord>();
+      for (const step of this.workflowStepRuns.values()) {
+        if (!childIds.has(step.triggerRunId) || step.agentExecutionId === null) continue;
+        const run = this.triggerRuns.get(step.triggerRunId);
+        const execution = this.agentExecutions.get(step.agentExecutionId);
+        const daemon = execution?.daemonId ? this.daemons.get(execution.daemonId) : undefined;
+        if (
+          run?.organizationId === organizationId &&
+          execution?.organizationId === organizationId &&
+          execution.projectId === run.projectId &&
+          daemon !== undefined &&
+          this.machines.get(daemon.machineId)?.orgId === organizationId
+        )
+          daemons.set(daemon.id, daemon);
+      }
+      return [...daemons.values()]
+        .sort(
+          (left, right) => left.slug.localeCompare(right.slug) || left.id.localeCompare(right.id),
+        )
+        .map(({ id, slug }) => ({ runId, daemonId: id, slug }));
+    });
+  }
+
   private listSteps(triggerRunId: string): WorkflowStepRunRecord[] {
     return [...this.workflowStepRuns.values()]
       .filter((step) => step.triggerRunId === triggerRunId)

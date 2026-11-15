@@ -68,7 +68,22 @@ function Events({ manifest }: { manifest: TriggerManifest }) {
   return (
     <RecordList label="Events">
       {records.map((record) => (
-        <RecordRow key={record.key} media={<SourceGlyph source={record.source} />}>
+        <RecordRow
+          key={record.key}
+          media={<SourceGlyph source={record.source} />}
+          details={
+            record.scopes === undefined ? undefined : (
+              <SummaryPanel
+                layout="names"
+                label={record.primary + " events"}
+                rows={record.scopes.map((scope) => ({
+                  label: scope.resource,
+                  value: scope.events,
+                }))}
+              />
+            )
+          }
+        >
           <TwoLine wrap primary={record.primary} secondary={record.secondary} />
         </RecordRow>
       ))}
@@ -180,6 +195,7 @@ function AgentCall({ agent }: { agent: InspectedAgent }) {
       value: <Setting names field={agent.github} fallback="Not set" />,
     });
   for (const [label, field] of [
+    ["Continuation key", agent.continuation],
     ["Time limit", agent.maxRuntime],
     ["Idle timeout", agent.idleTimeout],
     ["Startup timeout", agent.startupTimeout],

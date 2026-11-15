@@ -609,6 +609,7 @@ export function inspectTriggerSources(
         thinking: field(property(agent, "thinkingOptionId")),
         prompt: field(property(options, "prompt")),
         github: field(property(options, "github")),
+        continuation: field(property(property(options, "continuation"), "key")),
         maxRuntime: field(property(options, "maxRuntime")),
         idleTimeout: field(property(options, "idleTimeout")),
         startupTimeout: field(property(options, "startupTimeout")),

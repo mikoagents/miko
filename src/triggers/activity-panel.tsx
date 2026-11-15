@@ -215,6 +215,7 @@ function ActivityRow({
           </DataCell>
           {compact ? null : <DataCell>{triggerSourceLabel(run.provider)}</DataCell>}
           <DataCell>{run.source}</DataCell>
+          <DataCell>{run.daemons.join(" · ") || "—"}</DataCell>
           <DataCell>
             <TwoLine
               primary={<StatusPill tone={tone(run.status)}>{statusLabel(run.status)}</StatusPill>}
@@ -236,6 +237,7 @@ function ActivityRow({
             triggerId={run.triggerId}
             runId={run.id}
             view={view}
+            onViewChange={setView}
           />
         ) : (
           <ActivityDetail

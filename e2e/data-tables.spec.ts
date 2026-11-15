@@ -94,7 +94,7 @@ test("the Trigger list fits readable events and last-run results without horizon
     await expect(table.getByRole("columnheader")).toHaveText([
       "Trigger",
       "Event",
-      "Target",
+      "Daemon",
       "Last triggered",
       "Status",
     ]);
@@ -118,13 +118,14 @@ test("the Trigger list fits readable events and last-run results without horizon
     );
   });
 
-  await test.step("on a phone the name, model and status fit without scrolling", async () => {
+  await test.step("on a phone the daemon stays visible beside the name, model and status", async () => {
     await showAt(page, 390, table);
-    await expect(table.getByRole("columnheader")).toHaveText(["Trigger", "Status"]);
+    await expect(table.getByRole("columnheader")).toHaveText(["Trigger", "Daemon", "Status"]);
     for (const trigger of TRIGGERS) {
       const cells = rowCells(table, trigger.name);
       await expect(cells.nth(0)).toContainText("codex/gpt-6.1-sol");
-      await expect(cells.nth(1)).toHaveText("Enabled");
+      await expect(cells.nth(1)).toContainText(daemon);
+      await expect(cells.nth(2)).toHaveText("Enabled");
     }
   });
 });

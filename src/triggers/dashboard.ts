@@ -1,13 +1,22 @@
 import { validateArtifact, jsonValue } from "./code/contract.js";
 import { inspectTriggerArtifact } from "./code/inspection.js";
-import { agentModelSummary } from "./code/presentation.js";
+import {
+  agentModelSummary,
+  executionTargetSummary,
+  triggerTargetSummary,
+} from "./code/presentation.js";
 import type { TriggerCodeService } from "./code/service.js";
 import type { CodeRun } from "./code/records.js";
 import { randomUUID } from "node:crypto";
 import { SessionTimelines } from "../session-timelines/service.js";
 import type { AuthServer } from "../auth/server.js";
 import { capabilitiesFor } from "../auth/organization-policy.js";
-import type { Database, OrganizationTriggerRecord, ProjectActivityRunRecord } from "../db/types.js";
+import type {
+  AgentExecutionRecord,
+  Database,
+  OrganizationTriggerRecord,
+  ProjectActivityRunRecord,
+} from "../db/types.js";
 import { activityRunView, displayFailureReason } from "../projects/dashboard.js";
 import { resolveRouteTenant } from "../projects/access.js";
 import { ProjectCommandError } from "../projects/command-error.js";
@@ -72,7 +81,7 @@ export class TriggerDashboard {
           return triggerView(store, trigger, latest);
         }),
       ),
-      activity,
+      activity: await this.withActivityDaemons(tenant.organization.id, activity),
       // Only a daemon that can run agents is a target; one enrolled without `hub.execute` would
       // be refused at save, and Home says how to grant it.
       daemons: daemons
@@ -128,10 +137,22 @@ export class TriggerDashboard {
         tx.listRuns(trigger.id, 100),
       ),
     ]);
-    return historical
+    const activity = historical
       .concat(codeRuns.map((run) => codeActivityView(run, trigger.name)))
       .sort((left, right) => right.receivedAt.localeCompare(left.receivedAt))
       .slice(0, 100);
+    return this.withActivityDaemons(tenant.organization.id, activity);
+  }
+
+  private async withActivityDaemons(organizationId: string, activity: TriggerActivityRow[]) {
+    const daemons = await this.database.listTriggerRunDaemons(
+      organizationId,
+      activity.map(({ id }) => id),
+    );
+    return activity.map((run) => ({
+      ...run,
+      daemons: daemons.filter(({ runId }) => runId === run.id).map(({ slug }) => slug),
+    }));
   }
 
   private async activityForTrigger(trigger: OrganizationTriggerRecord) {
@@ -166,6 +187,7 @@ export class TriggerDashboard {
           source: receipt.source,
           repo: receipt.repo,
           status: run.status,
+          daemons: [],
           code: false,
           failureReason:
             run.outcome === "accepted" ? displayFailureReason(run.failureReason) : null,
@@ -227,21 +249,30 @@ export class TriggerDashboard {
     scope: { organizationSlug: string; triggerId: string; runId: string },
   ) {
     const { trigger, activity } = await this.resolveActivity(request, scope);
-    return {
-      triggerName: trigger.name,
-      activity: activityRunView(
-        activity,
-        await Promise.all(
-          activity.steps.map(async (step) =>
-            step.agentExecutionId === null
-              ? undefined
-              : this.database.findAgentExecutionForOrganization(
-                  trigger.organizationId,
-                  step.agentExecutionId,
-                ),
-          ),
+    const [executions, daemons] = await Promise.all([
+      Promise.all(
+        activity.steps.map(async (step) =>
+          step.agentExecutionId === null
+            ? undefined
+            : this.database.findAgentExecutionForOrganization(
+                trigger.organizationId,
+                step.agentExecutionId,
+              ),
         ),
       ),
+      this.database.listDaemonsForOrganization(trigger.organizationId),
+    ]);
+    const view = activityRunView(activity, executions);
+    return {
+      triggerName: trigger.name,
+      activity: {
+        ...view,
+        steps: view.steps.map((step, index) =>
+          Object.assign(step, {
+            daemon: daemons.find(({ id }) => id === executions[index]?.daemonId)?.slug ?? null,
+          }),
+        ),
+      },
     };
   }
 
@@ -384,12 +415,24 @@ export class TriggerDashboard {
         throw new ProjectCommandError("run_unavailable");
       return { run, operations: await tx.operations(run.id), logs: await tx.logs(run.id) };
     });
+    const daemons = await this.database.listTriggerRunDaemons(
+      tenant.organization.id,
+      data.operations.flatMap(({ childRunId }) => (childRunId === null ? [] : [childRunId])),
+    );
     const operations = await Promise.all(
       data.operations.map(async (operation) => {
         const steps =
           operation.childRunId === null
             ? []
             : await this.database.listWorkflowStepRunsForTriggerRun(operation.childRunId);
+        const executionId = steps[0]?.agentExecutionId ?? null;
+        const execution =
+          operation.kind === "agent" && executionId !== null
+            ? await this.database.findAgentExecutionForOrganization(
+                tenant.organization.id,
+                executionId,
+              )
+            : undefined;
         return {
           id: operation.id,
           kind: operation.kind,
@@ -398,11 +441,19 @@ export class TriggerDashboard {
           output: jsonValue(operation.output),
           error: operation.error,
           createdAt: operation.createdAt,
-          executionId: steps[0]?.agentExecutionId ?? null,
+          executionId,
+          daemons: daemons
+            .filter(({ runId }) => runId === operation.childRunId)
+            .map(({ slug }) => slug),
+          agent: operation.kind === "agent" ? agentCall(operation.input, execution) : null,
         };
       }),
     );
     const { run } = data;
+    const revision = await this.database.findOrganizationTriggerRevision(
+      run.triggerId,
+      run.revisionId,
+    );
     return {
       run: {
         id: run.id,
@@ -411,6 +462,7 @@ export class TriggerDashboard {
         error: run.error,
         event: run.event,
         revisionId: run.revisionId,
+        version: revision?.version ?? null,
         createdAt: run.createdAt,
         deadlineAt: run.deadlineAt,
         completedAt: run.completedAt,
@@ -504,6 +556,10 @@ async function triggerView(
           agentSummary: agentModelSummary(inspectTriggerArtifact(artifact)),
         };
   const event = triggerEvent(revision.yaml, lastTriggered?.source);
+  const targetSummary =
+    artifact === null
+      ? executionTargetSummary(configuredDaemonTargets(revision.normalizedConfiguration))
+      : triggerTargetSummary(artifact.manifest);
   const operational =
     lastTriggered === undefined
       ? null
@@ -516,6 +572,7 @@ async function triggerView(
       format: trigger.format,
       yaml: revision.yaml,
       code,
+      targetSummary,
       updatedAt: trigger.updatedAt.toISOString(),
       blockers: stringArray(evidence?.["conversionBlockers"]),
       draft: null,
@@ -532,6 +589,7 @@ async function triggerView(
     format: trigger.format,
     yaml: trigger.format === "code" ? "" : revision.yaml,
     code,
+    targetSummary,
     updatedAt: trigger.updatedAt.toISOString(),
     blockers: [],
     draft: projection.status === "editable" ? projection.value : null,
@@ -542,6 +600,19 @@ async function triggerView(
     ),
     lastTriggered: operational,
   };
+}
+
+function configuredDaemonTargets(configuration: unknown): { daemon: string; cwd: string }[] {
+  const environments = record(configuration)?.["environments"];
+  if (!Array.isArray(environments)) return [];
+  return environments.flatMap((value: unknown) => {
+    const environment = record(value);
+    const daemon = string(environment?.["daemon"]);
+    const cwd = string(environment?.["cwd"]);
+    return environment?.["kind"] === "daemon" && daemon !== undefined && cwd !== undefined
+      ? [{ daemon, cwd }]
+      : [];
+  });
 }
 
 function triggerEvent(yaml: string, fallback: string | undefined): string {
@@ -574,6 +645,35 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+/**
+ * What an agent call asked for, and the session Hub ran it in. Read leniently: a call the service
+ * refused still names the agent and prompt it asked for.
+ */
+function agentCall(input: unknown, execution: AgentExecutionRecord | undefined) {
+  const options = record(input) ?? {};
+  const agent = record(options["agent"]) ?? {};
+  return {
+    provider: string(agent["provider"]) ?? null,
+    model: string(agent["model"]) ?? null,
+    title: string(options["title"]) ?? null,
+    prompt: string(options["prompt"]) ?? "",
+    continuationKey: string(record(options["continuation"])?.["key"]) ?? null,
+    ...agentSession(execution),
+  };
+}
+
+/** The session Hub ran a call in, once a daemon has started it. */
+function agentSession(execution: AgentExecutionRecord | undefined) {
+  if (execution === undefined)
+    return { sessionId: null, sessionAction: null, startedAt: null, completedAt: null };
+  return {
+    sessionId: execution.agentSessionId,
+    sessionAction: execution.agentSessionAction,
+    startedAt: execution.startedAt.toISOString(),
+    completedAt: execution.completedAt?.toISOString() ?? null,
+  };
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
@@ -593,6 +693,7 @@ function codeActivityView(run: CodeRun, triggerName: string): TriggerActivityRow
     source: `${run.event.source}.${run.event.type}`,
     repo: run.event.resource ?? null,
     status: run.status,
+    daemons: [],
     failureReason: run.error,
     receivedAt: run.createdAt,
     code: true,
@@ -607,6 +708,7 @@ export interface TriggerActivityRow {
   source: string;
   repo: string | null;
   status: string;
+  daemons: string[];
   failureReason: string | null;
   receivedAt: string;
   code: boolean;

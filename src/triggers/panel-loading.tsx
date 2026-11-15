@@ -7,12 +7,11 @@ export const COLUMNS = [
   { header: "Trigger", fill: true, skeleton: { secondary: true, icon: true } },
   { header: "Event", fill: true, className: "hidden md:table-cell", skeleton: { secondary: true } },
   {
-    header: "Target",
+    header: "Daemon",
     fill: true,
-    className: "hidden xl:table-cell",
     skeleton: { secondary: true },
   },
-  { header: "Last triggered", className: "hidden sm:table-cell", skeleton: { secondary: true } },
+  { header: "Last triggered", className: "hidden xl:table-cell", skeleton: { secondary: true } },
   { header: "Status", skeleton: { pill: true } },
 ];
 

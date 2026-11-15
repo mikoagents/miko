@@ -786,6 +786,12 @@ export interface ProjectActivityRunListRecord {
   receipt: ProviderEventReceiptSummary;
 }
 
+export interface TriggerRunDaemonRecord {
+  runId: string;
+  daemonId: string;
+  slug: string;
+}
+
 export interface WorkflowStepRunRecord {
   id: string;
   triggerRunId: string;
@@ -1247,6 +1253,10 @@ export interface Database {
     projectId: string,
     limit: number,
   ): Promise<ProjectActivityRunListRecord[]>;
+  listTriggerRunDaemons(
+    organizationId: string,
+    runIds: readonly string[],
+  ): Promise<TriggerRunDaemonRecord[]>;
   findProjectActivityRun(
     projectId: string,
     runId: string,

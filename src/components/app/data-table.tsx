@@ -217,7 +217,7 @@ export function DataCell({ children, muted = false }: { children: ReactNode; mut
         // widest value still sets the column's share of the spare width. Anything that is not a
         // grid item — a flex row, a block — would hold the column open at its full width.
         // `TwoLine` reads the slot: here its secondary line gives way first.
-        <div data-slot="fill-cell" className="grid">
+        <div data-slot="fill-cell" className="grid min-w-0">
           <div className="truncate" title={typeof children === "string" ? children : undefined}>
             {children}
           </div>

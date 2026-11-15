@@ -10,7 +10,7 @@ function Table({ className, "aria-label": label, ...props }: React.ComponentProp
       aria-label={label === undefined ? "Scrollable table" : `${label} table`}
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- horizontal overflow must be keyboard-scrollable
       tabIndex={0}
-      className="relative w-full overflow-x-auto"
+      className="relative w-full min-w-0 overflow-x-auto"
     >
       <table
         data-slot="table"

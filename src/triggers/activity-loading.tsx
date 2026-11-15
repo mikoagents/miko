@@ -5,13 +5,16 @@ import { PageHeader } from "../components/app/page.js";
 
 export const ACTIVITY_COLUMNS = [
   { header: "Trigger", fill: true, skeleton: { secondary: true } },
-  { header: "Provider" },
+  { header: "Provider", className: "hidden md:table-cell" },
   {
     header: "Source",
+    fill: true,
+    className: "hidden md:table-cell",
     skeleton: { secondary: true },
   },
+  { header: "Daemon", fill: true },
   { header: "Status", fill: true, skeleton: { pill: true } },
-  { header: "Received" },
+  { header: "Received", className: "hidden sm:table-cell" },
 ];
 
 export const ACTIVITY_DESCRIPTION = "Workflow runs, results and logs from your triggers.";
@@ -19,6 +22,7 @@ export const ACTIVITY_DESCRIPTION = "Workflow runs, results and logs from your t
 export const HISTORY_COLUMNS = [
   { header: "Started", fill: true },
   { header: "Event", fill: true, className: "hidden sm:table-cell", skeleton: { secondary: true } },
+  { header: "Daemon", fill: true },
   { header: "Status", skeleton: { pill: true } },
 ];
 

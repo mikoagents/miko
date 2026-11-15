@@ -2066,6 +2066,30 @@ class PgDatabase implements Database {
     return row === undefined ? undefined : this.toProjectActivityRun(row);
   }
 
+  async listTriggerRunDaemons(organizationId: string, runIds: readonly string[]) {
+    if (runIds.length === 0) return [];
+    const rows = await query<{ runId: string; daemonId: string; slug: string }>(
+      this.pool,
+      `with requested_runs as (
+         select id as run_id, id as child_run_id from trigger_runs
+         where organization_id = $1 and id = any($2::uuid[])
+         union all
+         select run_id, (document->>'childRunId')::uuid from trigger_code_operations
+         where organization_id = $1 and run_id = any($2::uuid[])
+       )
+       select distinct requested.run_id as "runId", daemons.id as "daemonId", daemons.slug
+       from requested_runs requested
+       join trigger_runs runs on runs.id = requested.child_run_id and runs.organization_id = $1
+       join workflow_step_runs steps on steps.trigger_run_id = runs.id
+       join agent_executions executions on executions.id = steps.agent_execution_id
+         and executions.organization_id = $1 and executions.project_id = runs.project_id
+       join daemons on daemons.id = executions.daemon_id and daemons.organization_id = $1
+       order by daemons.slug, daemons.id`,
+      [organizationId, runIds],
+    );
+    return rows.rows;
+  }
+
   private async toProjectActivityRun(
     row: ProjectActivityRunRow,
   ): Promise<ProjectActivityRunRecord> {

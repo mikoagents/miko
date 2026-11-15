@@ -4,8 +4,11 @@ import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
 import { artifactDigest, type TriggerArtifact } from "./contract.js";
 import { TriggerCodeService } from "./service.js";
 import { OrganizationTriggerStore } from "../store.js";
+import { TriggerDashboard } from "../dashboard.js";
+import type { AuthServer } from "../../auth/server.js";
 import { acceptingAgentValidator } from "../../test-utils/agent-validator.js";
 import { setupCodeStorage } from "./test-fixture.js";
+import { agentSessions } from "./run-presentation.js";
 
 let postgres: StartedPostgreSqlContainer;
 beforeAll(async () => {
@@ -28,8 +31,18 @@ describe.each(["embedded", "postgres"] as const)("programmable Trigger on %s", (
         payload: { ignored: "must not enter the prompt" },
       });
       assert.ok(started.run);
+      assert.deepEqual(
+        await fixture.database().listTriggerRunDaemons("code-org", [started.run.id]),
+        [],
+      );
       await fixture.execute();
       await expect.poll(() => fixture.daemon.prompts.length).toBe(1);
+      const daemon = (await fixture.database().listDaemonsForOrganization("code-org"))[0]!;
+      const expectedDaemon = { runId: started.run.id, daemonId: daemon.id, slug: "devbox" };
+      assert.deepEqual(
+        await fixture.database().listTriggerRunDaemons("code-org", [started.run.id]),
+        [expectedDaemon],
+      );
       assert.equal(fixture.daemon.prompts[0], literalPrompt);
       // An invalid finish does not complete the child or its parent.
       const invalid = await fixture.finish(0, {});
@@ -57,6 +70,31 @@ describe.each(["embedded", "postgres"] as const)("programmable Trigger on %s", (
           "select count(*)::int as count from trigger_code_operations",
         );
       assert.equal(count.rows[0]?.count, 2);
+      // Two operations on one daemon appear once; child workflow runs retain their own attribution.
+      assert.deepEqual(
+        await fixture.database().listTriggerRunDaemons("code-org", [started.run.id]),
+        [expectedDaemon],
+      );
+      const child = await fixture
+        .database()
+        .triggerCode.transaction(
+          "code-org",
+          async (tx) => (await tx.operations(started.run!.id))[0]!.childRunId,
+        );
+      assert.ok(child);
+      assert.deepEqual(await fixture.database().listTriggerRunDaemons("code-org", [child]), [
+        { ...expectedDaemon, runId: child },
+      ]);
+      assert.deepEqual(
+        await fixture.database().listTriggerRunDaemons("other-org", [started.run.id, child]),
+        [],
+      );
+      assert.deepEqual(await fixture.database().listTriggerRunDaemons("code-org", []), []);
+      await fixture.database().revokeDaemon(daemon.id);
+      assert.deepEqual(
+        await fixture.database().listTriggerRunDaemons("code-org", [started.run.id]),
+        [expectedDaemon],
+      );
     } finally {
       await fixture.close();
     }
@@ -272,6 +310,106 @@ describe.each(["embedded", "postgres"] as const)("programmable Trigger on %s", (
     }
   }, 90_000);
 
+  it("shows which agent calls continued one session in the run detail", async () => {
+    const fixture = await setupCodeStorage(kind, postgres.getConnectionUri());
+    try {
+      const sql = fixture.bundle().runtime;
+      await sql.query(`insert into "user" (id, name, email, email_verified)
+        values ('code-user', 'Code user', 'code-user@miko.test', true)`);
+      await sql.query(`insert into member (id, organization_id, user_id, role)
+        values ('code-member', 'code-org', 'code-user', 'owner')`);
+      const deployed = await fixture.service().deploy("code-org", sessionProgram());
+      const started = await fixture.service().receive("code-org", deployed.triggerId, {
+        id: "rounds",
+        source: "manual",
+        type: "run",
+        receivedAt: new Date().toISOString(),
+        payload: null,
+      });
+      assert.ok(started.run);
+      // plan and revise share a continuation key; check, between them, has none.
+      for (const [round, launch] of [0, 1, 0].entries()) {
+        await fixture.execute();
+        await expect.poll(() => fixture.daemon.prompts.length).toBe(round + 1);
+        const receipt = await fixture.finish(launch, { output: { value: String(round) } });
+        assert.equal(receipt.isError, undefined, JSON.stringify(receipt));
+      }
+      await fixture.execute();
+      assert.equal((await fixture.read(started.run.id)).status, "succeeded");
+      assert.equal(fixture.daemon.launches.length, 2);
+
+      const dashboard = new TriggerDashboard(
+        fixture.database(),
+        memberAuth(),
+        acceptingAgentValidator(),
+      );
+      const detail = await dashboard.codeRunDetail(new Request("https://hub.test/o/code-tests"), {
+        organizationSlug: "code-tests",
+        triggerId: deployed.triggerId,
+        runId: started.run.id,
+      });
+      assert.equal(detail.run.version, 1);
+      const [plan, check, revise] = detail.operations.map((operation) => operation.agent);
+      assert.ok(plan?.sessionId && check?.sessionId && revise?.sessionId);
+      assert.equal(revise.sessionId, plan.sessionId);
+      assert.notEqual(check.sessionId, plan.sessionId);
+      assert.deepEqual(
+        [plan, check, revise].map((agent) => ({
+          provider: agent.provider,
+          prompt: agent.prompt,
+          continuationKey: agent.continuationKey,
+          sessionAction: agent.sessionAction,
+          finished: agent.startedAt !== null && agent.completedAt !== null,
+        })),
+        [
+          {
+            provider: "codex",
+            prompt: "Plan the review.",
+            continuationKey: "review",
+            sessionAction: "created",
+            finished: true,
+          },
+          {
+            provider: "codex",
+            prompt: "Check the tests.",
+            continuationKey: null,
+            sessionAction: "created",
+            finished: true,
+          },
+          {
+            provider: "codex",
+            prompt: "Revise the review.",
+            continuationKey: "review",
+            sessionAction: "continued",
+            finished: true,
+          },
+        ],
+      );
+      const { calls, sessions } = agentSessions(detail.operations);
+      assert.deepEqual(
+        calls.map((call) => [call.id, call.session]),
+        [
+          ["plan", 1],
+          ["check", 2],
+          ["revise", 1],
+        ],
+      );
+      assert.deepEqual(
+        sessions.map(({ origin, calls: rounds, executionId }) => ({
+          origin,
+          calls: rounds.length,
+          executionId,
+        })),
+        [
+          { origin: { kind: "new" }, calls: 2, executionId: detail.operations[2]?.executionId },
+          { origin: { kind: "new" }, calls: 1, executionId: detail.operations[1]?.executionId },
+        ],
+      );
+    } finally {
+      await fixture.close();
+    }
+  }, 90_000);
+
   it("cancels a pending child through the existing execution lifecycle and preserves the journal", async () => {
     const fixture = await setupCodeStorage(kind, postgres.getConnectionUri());
     try {
@@ -341,6 +479,59 @@ function program(): TriggerArtifact {
     sources: [{ path: "trigger.js", content: code }],
   };
   return { ...body, digest: artifactDigest(body) };
+}
+
+/** Three rounds over two sessions: the first and last calls share a continuation key. */
+function sessionProgram(): TriggerArtifact {
+  const call = (id: string, prompt: string, key?: string) =>
+    `await ctx.agent.run(${JSON.stringify(id)},${JSON.stringify({
+      target: "repository",
+      agent: { provider: "codex", mode: "full-access" },
+      prompt,
+      maxRuntime: "1m",
+      idleTimeout: "30s",
+      ...(key === undefined ? {} : { continuation: { key } }),
+      output: {
+        schema: {
+          type: "object",
+          properties: { value: { type: "string" } },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      },
+    })});`;
+  const code = `export default {async run(ctx){ ${call("plan", "Plan the review.", "review")} ${call("check", "Check the tests.")} ${call("revise", "Revise the review.", "review")} return null; }};`;
+  const body = {
+    format: "trigger-code-v1" as const,
+    manifest: {
+      name: "review-rounds",
+      runner: "test",
+      on: [{ source: "manual", event: "run" }],
+      grants: {
+        targets: { repository: { daemon: "devbox", cwd: "/workspace/test", providers: ["codex"] } },
+      },
+      limits: { maxRuntime: "1h", maxAgentRuns: 3 },
+    },
+    code,
+    sources: [{ path: "trigger.js", content: code }],
+  };
+  return { ...body, digest: artifactDigest(body) };
+}
+
+function memberAuth(): AuthServer {
+  return {
+    handle: () => Promise.resolve(new Response()),
+    resources: () => Promise.reject(new Error("unused")),
+    resolveOrganizationAccess: () => Promise.reject(new Error("unused")),
+    resolveAccount: () =>
+      Promise.resolve({
+        session: { id: "code-session", activeOrganizationId: "code-org" },
+        account: { id: "code-user", name: "Code user", email: "code-user@miko.test" },
+        isInstanceOperator: false,
+      }),
+    rejectCookieMutation: () => undefined,
+    close: () => Promise.resolve(),
+  };
 }
 
 function interruptScheduledCommit(repository: import("./records.js").TriggerCodeRepository) {

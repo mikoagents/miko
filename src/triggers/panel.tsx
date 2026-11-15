@@ -17,7 +17,7 @@ import { useRouteTenant } from "../projects/context.js";
 import { ProviderGlyph } from "../connections/provider-glyph.js";
 import { triggerSnapshot, type TriggerSnapshot } from "./functions.js";
 import { useTriggerStatusFilter } from "./status-filter.js";
-import { subscriptionListSummary, triggerTargetSummary } from "./code/presentation.js";
+import { subscriptionListSummary } from "./code/presentation.js";
 import { describeTriggerEvent } from "./configuration/editor.js";
 
 type BrowserTrigger = TriggerSnapshot["triggers"][number];
@@ -121,7 +121,7 @@ export function TriggersPanel() {
                 <TriggerEvent trigger={trigger} />
               </DataCell>
               <DataCell>
-                <TriggerTarget trigger={trigger} />
+                <TwoLine {...trigger.targetSummary} />
               </DataCell>
               <DataCell>
                 {trigger.lastTriggered === null ? (
@@ -177,11 +177,4 @@ function TriggerEvent({ trigger }: { trigger: BrowserTrigger }) {
     return <TwoLine {...subscriptionListSummary(trigger.code.manifest.on)} />;
   const { kind, detail } = describeTriggerEvent(trigger.draft, trigger.event);
   return <TwoLine primary={kind} {...(detail === undefined ? {} : { secondary: detail })} />;
-}
-
-function TriggerTarget({ trigger }: { trigger: BrowserTrigger }) {
-  if (trigger.code !== null) return <TwoLine {...triggerTargetSummary(trigger.code.manifest)} />;
-  if (trigger.draft !== null)
-    return <TwoLine path primary={trigger.draft.daemon} secondary={trigger.draft.cwd} />;
-  return <span className="text-muted-foreground">Advanced configuration</span>;
 }
