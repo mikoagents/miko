@@ -4,8 +4,14 @@ Triggers are TypeScript/JavaScript projects deployed as immutable bundles. The e
 **Triggers** page remains their management entry point. Each Trigger opens with its authored Pipeline
 and its recent runs. **Source code** always shows the file list; expand individual files or inspect an earlier revision.
 The build's entry file appears first with an **Entrypoint** label when its path is recorded.
-Configuration groups show **Events and access**, **Runs on**, and **Agent calls**. You can
-enable or disable the Trigger and start it on demand with **Run now**.
+Configuration groups show **Events and access**, **Runs on**, and **Agent calls**. Managers can
+choose **Edit configuration** to change fixed settings, template inputs, native Agent options,
+prompts, and literal event subscriptions. Changes immediately appear in the source preview.
+**Check configuration** compiles and validates without writing; **Save changes** creates an
+immutable revision containing the updated source, executable and manifest. Concurrent edits must
+reload when another deployment has changed the active revision. Running work keeps its accepted
+revision, and saving preserves the Trigger's enabled state. You can enable or disable the Trigger and start it on demand with
+**Run now**.
 **Activity** shows the durable operation journal, results, runner logs, and agent conversations.
 Author code locally or in a Git repository and deploy from the CLI or CI.
 
@@ -15,11 +21,15 @@ execute. Values built from events, functions, mutable objects, or unsupported ex
 marked **Computed at runtime**. Open **Prompt** to inspect a literal prompt or its construction
 expression. **View code** opens the corresponding file and numbered excerpt in the current revision,
 including when you were inspecting an older revision. The configuration cards always describe the
-current deployment; the code and immutable bundle remain authoritative. Edit the project and deploy
-again to change it.
+current deployment; the code and immutable bundle remain authoritative. Forms replace source
+literals, including constants imported from another project file, while preserving workflow logic
+and computed expressions. Projects with executable module-level setup or dependencies missing from
+their stored source bundle are edited and deployed locally. Web edits update Hub's stored source;
+copy the updated files into a local project before deploying that project again.
 
 Inspection reads source without importing or executing it. It is bounded and may report incomplete
-analysis; this does not prevent viewing the source or run history. GitHub permissions and target
+analysis; this does not prevent viewing the source or run history. The web editor also reads and
+compiles source without evaluating authored modules on Hub. GitHub permissions and target
 allowlists come from the validated deployment manifest, independently of the agent call summaries.
 
 ## Create and deploy
