@@ -32,8 +32,8 @@ export function ErrorSummary({ message }: { message: string | undefined }) {
 }
 
 /**
- * Rendered while the account is still unknown — including every server render, which
- * has not yet resolved the session. It must not resolve the question it is waiting on:
+ * Rendered while the account is still unknown. The route normally resolves the session
+ * before rendering. This fallback must not resolve the question it is waiting on:
  * showing a sign-in card here tells a signed-in user they are signed out.
  */
 export function LoadingEntry() {

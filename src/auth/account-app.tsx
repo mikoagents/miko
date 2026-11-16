@@ -11,14 +11,28 @@ import { InstanceSetupEntry } from "./instance-setup-entry.js";
 import { AppSetupEntry } from "../provider-applications/panel.js";
 import { PasswordChangeEntry } from "./password-change.js";
 import { EmailVerificationResult, PasswordResetEntry } from "./account-recovery.js";
+import type { AccountSearch } from "./account-search.js";
+import type { AccountState } from "./organization-contract.js";
 
-export function AccountApp() {
-  const authCallback = readAuthCallback();
+export function AccountApp({
+  initialAccount,
+  search,
+}: {
+  initialAccount: AccountState | undefined;
+  search: AccountSearch;
+}) {
+  const authCallback = readAuthCallback(search);
   if (authCallback !== undefined) return <AuthCallbackEntry callback={authCallback} />;
-  return <AccountApplication />;
+  return <AccountApplication initialAccount={initialAccount} invitation={search.invitation} />;
 }
 
-function AccountApplication() {
+function AccountApplication({
+  initialAccount,
+  invitation,
+}: {
+  initialAccount: AccountState | undefined;
+  invitation: string | undefined;
+}) {
   const loadAccount = useServerFn(accountState);
   /**
    * The first-run phase between finishing app setup and the dashboard. A phase, not a gate: app
@@ -28,12 +42,10 @@ function AccountApplication() {
   const [handoff, setHandoff] = useState(false);
   const enterHandoff = useCallback(() => setHandoff(true), []);
   const leaveHandoff = useCallback(() => setHandoff(false), []);
-  const search =
-    typeof window === "undefined" ? undefined : new URLSearchParams(window.location.search);
-  const invitation = search?.get("invitation") ?? undefined;
   const account = useSnapshotQuery({
     queryKey: ["account", invitation],
     queryFn: () => loadAccount({ data: invitation === undefined ? {} : { invitation } }),
+    initialData: initialAccount,
   });
   const signedOut = account.status === "success" && account.data.status === "signedOut";
   useEffect(() => {
@@ -75,7 +87,7 @@ function AccountApplication() {
     return <InvitationEntry account={state} invitation={state.invitation} />;
   }
   if (state.status === "organizationRequired") return <OrganizationGate account={state} />;
-  return <DashboardShell account={state} />;
+  return <DashboardShell account={state} invitation={invitation} />;
 }
 
 type AuthCallback =
@@ -98,15 +110,12 @@ function AuthCallbackEntry({ callback }: { callback: AuthCallback }) {
   );
 }
 
-function readAuthCallback(): AuthCallback | undefined {
-  if (typeof window === "undefined") return undefined;
-  const search = new URLSearchParams(window.location.search);
-  const error = search.get("error") ?? undefined;
-  if (search.get("auth") === "email-verification") {
+function readAuthCallback(search: AccountSearch): AuthCallback | undefined {
+  const { error, token } = search;
+  if (search.auth === "email-verification") {
     return { kind: "email-verification", ...(error === undefined ? {} : { error }) };
   }
-  if (search.get("auth") === "password-reset") {
-    const token = search.get("token") ?? undefined;
+  if (search.auth === "password-reset") {
     return {
       kind: "password-reset",
       ...(token === undefined ? {} : { token }),
