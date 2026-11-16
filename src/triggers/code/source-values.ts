@@ -2,6 +2,7 @@
 import { posix } from "node:path";
 import ts from "typescript";
 import type { TriggerArtifact } from "./contract.js";
+import { applyWrite, collectWrites, type Write } from "./source-writes.js";
 
 export interface SourceValue {
   node: ts.Expression;
@@ -15,6 +16,9 @@ export class SourceValues {
   readonly checker: ts.TypeChecker;
   private steps = 0;
   private resolving = new Set<ts.Symbol>();
+  private writes: Map<ts.Symbol, Write[]> | undefined;
+  /** A missed write must not leave a const object looking fixed. */
+  private writesUnstable = false;
 
   constructor(sources: TriggerArtifact["sources"]) {
     if (sources.reduce((sum, file) => sum + Buffer.byteLength(file.content), 0) > 2 * 1024 * 1024)
@@ -98,7 +102,7 @@ export class SourceValues {
             if (
               !ts.isIdentifier(declaration.name) ||
               !declaration.initializer ||
-              !this.complete(this.read(declaration.initializer))
+              !this.complete(this.read(declaration.initializer, new Map(), 0, false))
             )
               throw new Error(
                 "Module-level configuration must use fixed const values. Edit this project's dynamic setup locally.",
@@ -106,7 +110,7 @@ export class SourceValues {
           }
         } else if (ts.isExportAssignment(statement)) {
           // Reading the default definition ignores method bodies, including run(ctx).
-          if (!this.object(this.read(statement.expression)))
+          if (!this.object(this.read(statement.expression, new Map(), 0, false)))
             throw new Error("The default Trigger definition cannot be read statically.");
         } else
           throw new Error(
@@ -145,12 +149,17 @@ export class SourceValues {
     return value.value;
   }
 
-  read(input: ts.Expression, locals = new Map<ts.Symbol, SourceValue>(), depth = 0): SourceValue {
+  read(
+    input: ts.Expression,
+    locals = new Map<ts.Symbol, SourceValue>(),
+    depth = 0,
+    tracking = true,
+  ): SourceValue {
     if (++this.steps > 200_000 || depth > 100)
       throw new Error("Configuration parsing exceeded its limit.");
     const node = unwrap(input);
     const unknown = { node, value: undefined };
-    const read = (value: ts.Expression) => this.read(value, locals, depth + 1);
+    const read = (value: ts.Expression) => this.read(value, locals, depth + 1, tracking);
     if (ts.isStringLiteralLike(node)) return { node, value: node.text };
     if (ts.isNumericLiteral(node)) return { node, value: Number(node.text) };
     if (node.kind === ts.SyntaxKind.TrueKeyword) return { node, value: true };
@@ -172,7 +181,10 @@ export class SourceValues {
       if (!(declaration.parent.flags & ts.NodeFlags.Const)) return unknown;
       this.resolving.add(symbol);
       try {
-        return read(declaration.initializer);
+        const value = read(declaration.initializer);
+        // A const binding is not a frozen object. Later writes, including through an alias or
+        // import, replace those members with the value computed at run time.
+        return tracking ? this.applyBindingWrites(symbol, value) : value;
       } finally {
         this.resolving.delete(symbol);
       }
@@ -307,12 +319,25 @@ export class SourceValues {
               if (!symbol || !ts.isIdentifier(parameter.name) || position > 1) return unknown;
               environment.set(symbol, position === 0 ? item : { node, value: index });
             }
-            return this.read(body, environment, depth + 1);
+            return this.read(body, environment, depth + 1, tracking);
           }),
         };
       }
     }
     return unknown;
+  }
+
+  private applyBindingWrites(symbol: ts.Symbol, value: SourceValue) {
+    if (this.writes === undefined) {
+      const collected = collectWrites(this.files, (node) => this.symbol(node));
+      this.writes = collected.writes;
+      this.writesUnstable = collected.unstable;
+    }
+    if (this.writesUnstable) return { node: value.node, value: undefined };
+    return (this.writes.get(symbol) ?? []).reduce(
+      (current, write) => applyWrite(current, write.path, write.replaced),
+      value,
+    );
   }
 
   private isDefineTrigger(node: ts.Identifier) {

@@ -126,4 +126,128 @@ describe("Trigger source configuration", () => {
         configureTriggerArtifact(artifact, [{ id: limit.id, value: "invalid-duration" }]),
       );
     }));
+
+  it("keeps a member mutated through an imported alias out of fixed configuration", async () =>
+    fixture(async (directory) => {
+      await writeFile(
+        join(directory, "policy.ts"),
+        'export const policy = { provider: "codex", model: "initial" };',
+      );
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "mutated",
+          'import { policy } from "./policy.js";\nconst alias = policy;',
+          `alias.model = ctx.event.payload.model;
+    await ctx.agent.run("agent", { target: "workspace", agent: policy, prompt: "stay", maxRuntime: "5m", idleTimeout: "1m" });`,
+        ),
+      );
+      const artifact = await buildTrigger(join(directory, "trigger.ts"));
+      const fields = triggerConfiguration(artifact).fields;
+      assert.equal(triggerConfiguration(artifact).unavailable, null);
+      assert.equal(
+        fields.some((field) => field.value === "initial"),
+        false,
+      );
+      const provider = fields.find((field) => field.value === "codex")!;
+      assert.equal(provider.path, "policy.ts");
+      const updated = await configureTriggerArtifact(artifact, [
+        { id: provider.id, value: "codex" },
+      ]);
+      const built = join(directory, "configured.mjs");
+      await writeFile(built, updated.code);
+      const executable = (await import(pathToFileURL(built).href)) as {
+        default: {
+          run: (ctx: {
+            event: { payload: { model: string } };
+            agent: {
+              run: (
+                id: string,
+                options: { agent: { provider: string; model: string } },
+              ) => Promise<void>;
+            };
+            step: (id: string, input: unknown, fn: (input: unknown) => unknown) => Promise<unknown>;
+            log: (message: string, data: unknown) => Promise<void>;
+          }) => Promise<unknown>;
+        };
+      };
+      let model = "";
+      let seenProvider = "";
+      await executable.default.run({
+        event: { payload: { model: "runtime-model" } },
+        agent: {
+          run: (_id, options) => {
+            model = options.agent.model;
+            seenProvider = options.agent.provider;
+            return Promise.resolve();
+          },
+        },
+        step: (_id, input, fn) => Promise.resolve(fn(input)),
+        log: () => Promise.resolve(),
+      });
+      assert.equal(model, "runtime-model");
+      assert.equal(seenProvider, "codex");
+    }));
+
+  it("rejects fixed agent calls that runtime would reject and keeps unresolved timeouts", async () =>
+    fixture(async (directory) => {
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "checked",
+          "",
+          `await ctx.agent.run("agent", { target: "workspace", agent: { provider: "codex", model: "m" }, prompt: "hi", maxRuntime: "5m", idleTimeout: "1m" });
+    await ctx.agent.run("later", { target: "workspace", agent: { provider: "codex" }, prompt: "later", maxRuntime: ctx.event.payload.timeout, idleTimeout: "1m" });`,
+        ),
+      );
+      const artifact = await buildTrigger(join(directory, "trigger.ts"));
+      const config = triggerConfiguration(artifact);
+      assert.equal(config.unavailable, null);
+      const agent = config.fields.find((field) => field.kind === "agent")!;
+      const runtime = config.fields.find(
+        (field) => field.group.startsWith("Agent · agent") && field.label === "Time limit",
+      )!;
+      const idle = config.fields.find(
+        (field) => field.group.startsWith("Agent · agent") && field.label === "Idle timeout",
+      )!;
+      assert.equal(
+        config.fields.some(
+          (field) => field.group.startsWith("Agent · later") && field.label === "Time limit",
+        ),
+        false,
+      );
+      await assert.rejects(
+        configureTriggerArtifact(artifact, [
+          { id: agent.id, value: { provider: "claude", model: "m" } },
+        ]),
+        /Agent target or provider is not granted/u,
+      );
+      await assert.rejects(
+        configureTriggerArtifact(artifact, [{ id: runtime.id, value: "tomorrow" }]),
+        /positive duration/u,
+      );
+      await assert.rejects(
+        configureTriggerArtifact(artifact, [{ id: idle.id, value: "" }]),
+        /at least 1|Too small|>=1/u,
+      );
+      const prompt = config.fields.find(
+        (field) => field.group.startsWith("Agent · later") && field.label === "Prompt",
+      )!;
+      const updated = await configureTriggerArtifact(artifact, [{ id: prompt.id, value: "kept" }]);
+      assert.match(updated.sources[0]!.content, /maxRuntime: ctx\.event\.payload\.timeout/u);
+      assert.match(updated.sources[0]!.content, /"kept"/u);
+    }));
 });
+
+function withAgentCall(name: string, prelude: string, body: string) {
+  return triggerStarter(name)
+    .replace(
+      'import { defineTrigger } from "@mikoagents/hub/triggers";',
+      `import { defineTrigger } from "@mikoagents/hub/triggers";\n${prelude}`,
+    )
+    .replace(
+      "grants: {}",
+      'grants: { targets: { workspace: { daemon: "worker", cwd: "/workspace", providers: ["codex"] } } }',
+    )
+    .replace("const result = await ctx.step", `${body}\n    const result = await ctx.step`);
+}

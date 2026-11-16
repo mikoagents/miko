@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { parseDurationMs } from "../../config/compiler.js";
 import { TriggerAgentSchema } from "../configuration/schema.js";
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
@@ -7,7 +8,9 @@ import { fileURLToPath } from "node:url";
 import { posix } from "node:path";
 import {
   artifactDigest,
+  CodeAgentOptionsSchema,
   jsonValue,
+  ownGrant,
   stableJson,
   TriggerManifestSchema,
   validateArtifact,
@@ -19,6 +22,7 @@ import type {
   TriggerConfigurationChange,
   TriggerConfigurationField,
 } from "./configuration-types.js";
+import type { TriggerManifest } from "./sdk.js";
 
 /** Forms and source share literal origins, so a setting used in several places is edited once. */
 export function triggerConfiguration(artifact: TriggerArtifact): TriggerConfiguration {
@@ -254,7 +258,7 @@ export async function buildStoredTrigger(
   const reader = new SourceValues(sources);
   reader.assertDeclarative();
   const manifest = manifestValue(reader, reader.definition(entrypoint));
-  validateAgents(reader);
+  validateAgents(reader, manifest);
   const files = new Map(sources.map((file) => [file.path, file.content]));
   if (!entrypoint || !files.has(entrypoint))
     throw new Error("The project entrypoint is missing. Deploy it with the current CLI first.");
@@ -399,7 +403,7 @@ function literalData(node: ts.Expression): boolean {
   );
 }
 
-function validateAgents(reader: SourceValues) {
+function validateAgents(reader: SourceValues, manifest: TriggerManifest) {
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
@@ -408,14 +412,48 @@ function validateAgents(reader: SourceValues) {
       ts.isPropertyAccessExpression(node.expression.expression) &&
       node.expression.expression.name.text === "agent" &&
       node.arguments[1]
-    ) {
-      const options = reader.read(node.arguments[1]);
-      if (reader.object(options)) {
-        const agent = options.value.get("agent");
-        if (agent && reader.complete(agent)) TriggerAgentSchema.parse(reader.json(agent));
-      }
-    }
+    )
+      validateCall(reader, reader.read(node.arguments[1]), manifest);
     ts.forEachChild(node, visit);
   }
   for (const file of reader.files) visit(file);
+}
+
+/** Resolved call fields use the same schema, duration and grant rules as a real agent operation. */
+function validateCall(reader: SourceValues, options: SourceValue, manifest: TriggerManifest) {
+  if (!reader.object(options)) return;
+  const known: Record<string, unknown> = {};
+  for (const [key, item] of options.value)
+    if (reader.complete(item)) known[key] = reader.json(item);
+  const parsed = CodeAgentOptionsSchema.partial().parse(known);
+  for (const field of ["maxRuntime", "idleTimeout", "startupTimeout"] as const) {
+    const value = parsed[field];
+    if (value !== undefined) parseDurationMs(value, `agent.${field}`);
+  }
+  const target =
+    parsed.target === undefined ? undefined : ownGrant(manifest.grants.targets, parsed.target);
+  if (parsed.target !== undefined && target === undefined)
+    throw new Error("Agent target or provider is not granted");
+  const provider = resolvedProvider(reader, options, parsed.agent?.provider);
+  if (target !== undefined && provider !== undefined && !target.providers.includes(provider))
+    throw new Error("Agent target or provider is not granted");
+  if (parsed.github !== undefined && ownGrant(manifest.grants.github, parsed.github) === undefined)
+    throw new Error("GitHub authority is not granted");
+  if (parsed.env !== undefined && target !== undefined)
+    for (const [key, value] of Object.entries(parsed.env))
+      if (!Object.hasOwn(target.env ?? {}, key) || target.env?.[key] !== value)
+        throw new Error("Agent environment must be declared in the target grant");
+}
+
+function resolvedProvider(
+  reader: SourceValues,
+  options: SourceValue,
+  complete: string | undefined,
+) {
+  if (complete !== undefined || !reader.object(options)) return complete;
+  const agent = options.value.get("agent");
+  if (!agent || !reader.object(agent) || reader.complete(agent)) return complete;
+  const known: Record<string, unknown> = {};
+  for (const [key, item] of agent.value) if (reader.complete(item)) known[key] = reader.json(item);
+  return TriggerAgentSchema.partial().parse(known).provider;
 }
