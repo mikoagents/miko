@@ -357,6 +357,72 @@ describe("Trigger source configuration", () => {
       );
     }));
 
+  it("validates known members when a neighboring call value is computed", async () =>
+    fixture(async (directory) => {
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "partial-agent",
+          'const settings = { agentOptions: { provider: "codex" } };',
+          `await ctx.agent.run("agent", { target: "workspace", agent: { ...settings.agentOptions, model: ctx.event.payload.model }, prompt: "hi", maxRuntime: "5m", idleTimeout: "1m" });`,
+        ),
+      );
+      const artifact = await buildTrigger(join(directory, "trigger.ts"));
+      const config = triggerConfiguration(artifact);
+      assert.equal(config.unavailable, null);
+      const provider = config.fields.find((field) => field.label === "Provider options")!;
+      assert.deepEqual(provider.value, { provider: "codex" });
+      await assert.rejects(
+        configureTriggerArtifact(artifact, [{ id: provider.id, value: {} }]),
+        /provider/u,
+      );
+      const prompt = config.fields.find((field) => field.label === "Prompt")!;
+      const kept = await configureTriggerArtifact(artifact, [{ id: prompt.id, value: "kept" }]);
+      assert.match(kept.sources[0]!.content, /model: ctx\.event\.payload\.model/u);
+      assert.match(kept.sources[0]!.content, /"kept"/u);
+
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "partial-worktree",
+          'const settings = { worktree: { mode: "checkout-branch" } };',
+          `await ctx.agent.run("agent", { target: "workspace", agent: { provider: "codex" }, prompt: "hi", maxRuntime: "5m", idleTimeout: "1m", worktree: { ...settings.worktree, branch: ctx.event.payload.branch } });`,
+        ),
+      );
+      const worktreeArtifact = await buildTrigger(join(directory, "trigger.ts"));
+      const worktree = triggerConfiguration(worktreeArtifact).fields.find(
+        (field) => field.label === "Worktree",
+      )!;
+      assert.deepEqual(worktree.value, { mode: "checkout-branch" });
+      await assert.rejects(
+        configureTriggerArtifact(worktreeArtifact, [{ id: worktree.id, value: {} }]),
+        /mode|discriminator/u,
+      );
+
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "partial-env",
+          'const settings = { env: { FIXED: "safe" } };',
+          `await ctx.agent.run("agent", { target: "workspace", agent: { provider: "codex" }, prompt: "hi", maxRuntime: "5m", idleTimeout: "1m", env: { ...settings.env, DYNAMIC: ctx.event.payload.env } });`,
+        ).replace(
+          'providers: ["codex"]',
+          'providers: ["codex"], env: { FIXED: "safe", DYNAMIC: "safe" }',
+        ),
+      );
+      const envArtifact = await buildTrigger(join(directory, "trigger.ts"));
+      const env = triggerConfiguration(envArtifact).fields.find((field) => field.label === "Env")!;
+      assert.deepEqual(env.value, { FIXED: "safe" });
+      await assert.rejects(
+        configureTriggerArtifact(envArtifact, [{ id: env.id, value: { FIXED: "ungranted" } }]),
+        /Agent environment must be declared in the target grant/u,
+      );
+      const saved = await configureTriggerArtifact(envArtifact, [
+        { id: env.id, value: { FIXED: "safe" } },
+      ]);
+      assert.match(saved.sources[0]!.content, /DYNAMIC: ctx\.event\.payload\.env/u);
+    }));
+
   it("keeps fixed manifest values passed to defineTrigger editable", async () =>
     fixture(async (directory) => {
       const subscriptions = triggerStarter("constant-events")

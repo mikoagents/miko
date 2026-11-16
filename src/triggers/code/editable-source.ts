@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { parseDurationMs } from "../../config/compiler.js";
+import { parseDurationMs, WorktreeTargetSchema } from "../../config/compiler.js";
 import { TriggerAgentSchema } from "../configuration/schema.js";
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
@@ -427,9 +427,7 @@ const REQUIRED_CALL_FIELDS = ["target", "agent", "prompt", "maxRuntime", "idleTi
 /** Resolved call fields use the same schema, duration and grant rules as a real agent operation. */
 function validateCall(reader: SourceValues, options: SourceValue, manifest: TriggerManifest) {
   if (!reader.object(options)) return;
-  const known: Record<string, unknown> = {};
-  for (const [key, item] of options.value)
-    if (reader.complete(item)) known[key] = reader.json(item);
+  const known = knownCall(reader, options);
   // A complete object is the call that will run. A present unresolved expression is not a missing key.
   const staticCall = reader.complete(options);
   const parsed = (staticCall ? CodeAgentOptionsSchema : CodeAgentOptionsSchema.partial()).parse(
@@ -454,6 +452,74 @@ function validateCall(reader: SourceValues, options: SourceValue, manifest: Trig
     for (const [key, value] of Object.entries(parsed.env))
       if (!Object.hasOwn(target.env ?? {}, key) || target.env?.[key] !== value)
         throw new Error("Agent environment must be declared in the target grant");
+  validatePartialCallFields(reader, options);
+}
+
+function knownMembers(reader: SourceValues, value: SourceValue) {
+  const known: Record<string, unknown> = {};
+  if (!reader.object(value)) return known;
+  for (const [key, item] of value.value) if (reader.complete(item)) known[key] = reader.json(item);
+  return known;
+}
+
+interface SourceObject {
+  node: ts.Expression;
+  value: Map<string, SourceValue>;
+}
+
+/** Resolved env entries stay visible when a sibling value is computed at run time. */
+function knownCall(reader: SourceValues, options: SourceObject) {
+  const known: Record<string, unknown> = {};
+  for (const [key, item] of options.value) {
+    if (reader.complete(item)) known[key] = reader.json(item);
+    else if (key === "env" && reader.object(item)) known[key] = knownMembers(reader, item);
+  }
+  return known;
+}
+
+function validatePartialCallFields(reader: SourceValues, options: SourceObject) {
+  const agent = options.value.get("agent");
+  if (agent) validatePartialAgent(reader, agent);
+  const worktree = options.value.get("worktree");
+  if (worktree) validatePartialWorktree(reader, worktree);
+}
+
+/** Known agent members keep their schema, and a definitely absent provider is still required. */
+function validatePartialAgent(reader: SourceValues, agent: SourceValue) {
+  if (!reader.object(agent) || reader.complete(agent)) return;
+  const known = knownMembers(reader, agent);
+  TriggerAgentSchema.partial().parse(known);
+  if (!agent.value.has("provider")) TriggerAgentSchema.parse(known);
+}
+
+const WORKTREE_PLACEHOLDERS: Record<string, Record<string, unknown>> = {
+  "branch-off": { newBranch: "runtime" },
+  "checkout-branch": { branch: "runtime" },
+  "checkout-pr": { prNumber: 1 },
+};
+
+/** A computed branch does not excuse a missing mode or another absent required member. */
+function validatePartialWorktree(reader: SourceValues, worktree: SourceValue) {
+  if (!reader.object(worktree) || reader.complete(worktree)) return;
+  const known = knownMembers(reader, worktree);
+  if (!worktree.value.has("mode")) {
+    WorktreeTargetSchema.parse(known);
+    return;
+  }
+  const mode = known["mode"];
+  if (mode === undefined) return;
+  if (typeof mode !== "string") {
+    WorktreeTargetSchema.parse(known);
+    return;
+  }
+  const placeholder = WORKTREE_PLACEHOLDERS[mode];
+  if (placeholder === undefined) {
+    WorktreeTargetSchema.parse(known);
+    return;
+  }
+  const candidate: Record<string, unknown> = { ...placeholder, ...known };
+  for (const key of Object.keys(placeholder)) if (!worktree.value.has(key)) delete candidate[key];
+  WorktreeTargetSchema.parse(candidate);
 }
 
 function resolvedProvider(
