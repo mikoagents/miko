@@ -25,7 +25,7 @@ test("edits deployed source, resources, prompt and revision on a phone", async (
         'export default defineTrigger({name:"configured-digest",runner:settings.runner,',
         `pipeline:${JSON.stringify(testPipeline("agent"))},`,
         'on:[{source:"manual",event:"run"}],grants:{targets:{work:{daemon:settings.daemon,cwd:settings.cwd,providers:[settings.agent.provider]}}},limits:{maxRuntime:"1h"},',
-        'async run(ctx){return ctx.agent.run("agent",{target:"work",agent:settings.agent,prompt:settings.prompt});}});',
+        'async run(ctx){return ctx.agent.run("agent",{target:"work",agent:settings.agent,prompt:settings.prompt,maxRuntime:"5m",idleTimeout:"1m"});}});',
       ].join("\n"),
     );
     await hub.deployCodeTrigger("owner", await buildTrigger(join(directory, "trigger.ts")));

@@ -47,6 +47,7 @@ interface Origin {
 export function collectWrites(
   files: readonly ts.SourceFile[],
   symbolFor: (node: ts.Node) => ts.Symbol | undefined,
+  declaredSymbol: (node: ts.Node) => ts.Symbol | undefined = symbolFor,
 ): { writes: Map<ts.Symbol, Write[]>; unstable: boolean } {
   const writes = new Map<ts.Symbol, Map<string, Write>>();
   let nodes = 0;
@@ -183,7 +184,9 @@ export function collectWrites(
     if (!ts.isOmittedExpression(node)) change(node, [], true);
   };
   const recordCall = (node: ts.CallExpression | ts.NewExpression) => {
-    if (ts.isCallExpression(node) && agentCall(node)) return;
+    // defineTrigger returns its argument and does not write to it. Other calls may.
+    if (ts.isCallExpression(node) && (agentCall(node) || sdkDefineTrigger(node, declaredSymbol)))
+      return;
     for (const argument of node.arguments ?? []) {
       if (ts.isSpreadElement(argument)) change(argument.expression, [EVERY], false);
       else change(argument, [], false);
@@ -259,6 +262,23 @@ export function applyWrite(
   return { node: value.node, value: items };
 }
 
+/** The SDK helper is an identity. A local function with the same name is not. */
+function sdkDefineTrigger(
+  node: ts.CallExpression,
+  declaredSymbol: (node: ts.Node) => ts.Symbol | undefined,
+) {
+  const callee = skip(node.expression);
+  if (!ts.isIdentifier(callee)) return false;
+  const declaration = declaredSymbol(callee)?.declarations?.[0];
+  return (
+    declaration !== undefined &&
+    ts.isImportSpecifier(declaration) &&
+    (declaration.propertyName ?? declaration.name).text === "defineTrigger" &&
+    ts.isImportDeclaration(declaration.parent.parent.parent) &&
+    ts.isStringLiteral(declaration.parent.parent.parent.moduleSpecifier) &&
+    declaration.parent.parent.parent.moduleSpecifier.text === "@mikoagents/hub/triggers"
+  );
+}
 function agentCall(node: ts.CallExpression) {
   const callee = node.expression;
   return (

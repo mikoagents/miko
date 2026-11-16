@@ -112,17 +112,20 @@ function project(artifact: TriggerArtifact) {
       if (!ts.isVariableStatement(statement)) continue;
       for (const declaration of statement.declarationList.declarations) {
         if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
-        if (declaration.name.text === "settings") {
-          const settings = reader.read(declaration.initializer);
-          if (!reader.object(settings)) continue;
-          for (const [key, value] of settings.value) {
-            const group = settingsGroup(key);
-            if (key === "inputs") walk(value, "", group);
-            else add(value, labelFor(key), group, key === "agentOptions" ? "agent" : undefined);
-          }
+        if (declaration.name.text !== "settings" && declaration.name.text !== "originalPrompt")
+          continue;
+        // Read the binding so writes after the initializer, including nested inputs, are excluded.
+        const bound = reader.read(declaration.name);
+        if (declaration.name.text === "originalPrompt") {
+          add(bound, "Prompt", "Agent", "multiline");
+          continue;
         }
-        if (declaration.name.text === "originalPrompt")
-          add(reader.read(declaration.initializer), "Prompt", "Agent", "multiline");
+        if (!reader.object(bound)) continue;
+        for (const [key, value] of bound.value) {
+          const group = settingsGroup(key);
+          if (key === "inputs") walk(value, "", group);
+          else add(value, labelFor(key), group, key === "agentOptions" ? "agent" : undefined);
+        }
       }
     }
   for (const file of reader.files) {
@@ -419,13 +422,21 @@ function validateAgents(reader: SourceValues, manifest: TriggerManifest) {
   for (const file of reader.files) visit(file);
 }
 
+const REQUIRED_CALL_FIELDS = ["target", "agent", "prompt", "maxRuntime", "idleTimeout"] as const;
+
 /** Resolved call fields use the same schema, duration and grant rules as a real agent operation. */
 function validateCall(reader: SourceValues, options: SourceValue, manifest: TriggerManifest) {
   if (!reader.object(options)) return;
   const known: Record<string, unknown> = {};
   for (const [key, item] of options.value)
     if (reader.complete(item)) known[key] = reader.json(item);
-  const parsed = CodeAgentOptionsSchema.partial().parse(known);
+  // A complete object is the call that will run. A present unresolved expression is not a missing key.
+  const staticCall = reader.complete(options);
+  const parsed = (staticCall ? CodeAgentOptionsSchema : CodeAgentOptionsSchema.partial()).parse(
+    known,
+  );
+  if (!staticCall && REQUIRED_CALL_FIELDS.some((key) => !options.value.has(key)))
+    CodeAgentOptionsSchema.parse(known);
   for (const field of ["maxRuntime", "idleTimeout", "startupTimeout"] as const) {
     const value = parsed[field];
     if (value !== undefined) parseDurationMs(value, `agent.${field}`);

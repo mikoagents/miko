@@ -237,6 +237,167 @@ describe("Trigger source configuration", () => {
       assert.match(updated.sources[0]!.content, /maxRuntime: ctx\.event\.payload\.timeout/u);
       assert.match(updated.sources[0]!.content, /"kept"/u);
     }));
+
+  it("excludes settings members written after the initializer, including nested inputs", async () =>
+    fixture(async (directory) => {
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "settings-mutation",
+          'const settings = { agentOptions: { provider: "codex", model: "initial" }, inputs: { channel: "general", topic: "fixed" } };',
+          `settings.agentOptions.model = ctx.event.payload.model;
+    settings.inputs.topic = ctx.event.payload.topic;
+    await ctx.agent.run("agent", { target: "workspace", agent: settings.agentOptions, prompt: "hi", maxRuntime: "5m", idleTimeout: "1m" });`,
+        ),
+      );
+      const artifact = await buildTrigger(join(directory, "trigger.ts"));
+      const config = triggerConfiguration(artifact);
+      assert.equal(config.unavailable, null);
+      assert.equal(
+        config.fields.some((field) => field.value === "initial" || field.value === "fixed"),
+        false,
+      );
+      const channel = config.fields.find((field) => field.label === "Channel")!;
+      assert.equal(channel.value, "general");
+      const updated = await configureTriggerArtifact(artifact, [
+        { id: channel.id, value: "release" },
+      ]);
+      assert.match(updated.sources[0]!.content, /model: "initial"/u);
+      assert.match(
+        updated.sources[0]!.content,
+        /settings\.agentOptions\.model = ctx\.event\.payload\.model/u,
+      );
+      const built = join(directory, "configured.mjs");
+      await writeFile(built, updated.code);
+      const executable = (await import(pathToFileURL(built).href)) as {
+        default: {
+          run: (ctx: {
+            event: { payload: { model: string; topic: string } };
+            agent: { run: (id: string, options: { agent: { model: string } }) => Promise<void> };
+            step: (id: string, input: unknown, fn: (input: unknown) => unknown) => Promise<unknown>;
+            log: (message: string, data: unknown) => Promise<void>;
+          }) => Promise<unknown>;
+        };
+      };
+      let model = "";
+      await executable.default.run({
+        event: { payload: { model: "event-choice", topic: "event-topic" } },
+        agent: {
+          run: (_id, options) => {
+            model = options.agent.model;
+            return Promise.resolve();
+          },
+        },
+        step: (_id, input, fn) => Promise.resolve(fn(input)),
+        log: () => Promise.resolve(),
+      });
+      assert.equal(model, "event-choice");
+    }));
+
+  it("rejects required keys missing from a static call and keeps a present unresolved timeout", async () =>
+    fixture(async (directory) => {
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "missing-call-fields",
+          'const settings = { call: { target: "workspace", agent: { provider: "codex" }, prompt: "hi", maxRuntime: "5m", idleTimeout: "1m" } };',
+          `await ctx.agent.run("agent", settings.call);
+    await ctx.agent.run("later", { target: "workspace", agent: { provider: "codex" }, prompt: "later", maxRuntime: ctx.event.payload.timeout, idleTimeout: "1m" });`,
+        ),
+      );
+      const artifact = await buildTrigger(join(directory, "trigger.ts"));
+      const config = triggerConfiguration(artifact);
+      assert.equal(config.unavailable, null);
+      const call = config.fields.find((field) => field.label === "Call")!;
+      assert.equal(call.kind, "json");
+      await assert.rejects(
+        configureTriggerArtifact(artifact, [
+          {
+            id: call.id,
+            value: { agent: { provider: "codex" }, maxRuntime: "5m", idleTimeout: "1m" },
+          },
+        ]),
+        /target|prompt|Required/u,
+      );
+      const kept = await configureTriggerArtifact(artifact, [
+        {
+          id: call.id,
+          value: {
+            target: "workspace",
+            agent: { provider: "codex" },
+            prompt: "kept",
+            maxRuntime: "5m",
+            idleTimeout: "1m",
+          },
+        },
+      ]);
+      assert.match(kept.sources[0]!.content, /"prompt": "kept"/u);
+      const later = config.fields.find(
+        (field) => field.group.startsWith("Agent · later") && field.label === "Prompt",
+      )!;
+      const unresolved = await configureTriggerArtifact(artifact, [
+        { id: later.id, value: "still" },
+      ]);
+      assert.match(unresolved.sources[0]!.content, /maxRuntime: ctx\.event\.payload\.timeout/u);
+      await writeFile(
+        join(directory, "trigger.ts"),
+        withAgentCall(
+          "absent-target",
+          "",
+          'await ctx.agent.run("agent", { agent: { provider: "codex" }, prompt: "hi", maxRuntime: ctx.event.payload.timeout, idleTimeout: "1m" });',
+        ),
+      );
+      const partial = await buildTrigger(join(directory, "trigger.ts"));
+      const prompt = triggerConfiguration(partial).fields.find(
+        (field) => field.label === "Prompt",
+      )!;
+      await assert.rejects(
+        configureTriggerArtifact(partial, [{ id: prompt.id, value: "no-target" }]),
+        /target/u,
+      );
+    }));
+
+  it("keeps fixed manifest values passed to defineTrigger editable", async () =>
+    fixture(async (directory) => {
+      const subscriptions = triggerStarter("constant-events")
+        .replace(
+          "export default",
+          'const subscriptions = [{ source: "manual", event: "run" }];\nexport default',
+        )
+        .replace('on: [{ source: "manual", event: "run" }]', "on: subscriptions");
+      await writeFile(join(directory, "trigger.ts"), subscriptions);
+      const events = triggerConfiguration(await buildTrigger(join(directory, "trigger.ts")));
+      assert.equal(events.unavailable, null);
+      assert.ok(events.fields.some((field) => field.label === "Events"));
+
+      const renamed = subscriptions
+        .replace("import { defineTrigger }", "import { defineTrigger as createTrigger }")
+        .replace("defineTrigger(", "createTrigger(");
+      await writeFile(join(directory, "trigger.ts"), renamed);
+      const alias = triggerConfiguration(await buildTrigger(join(directory, "trigger.ts")));
+      assert.equal(alias.unavailable, null);
+      assert.ok(alias.fields.some((field) => field.label === "Events"));
+
+      const definition = triggerStarter("constant-definition")
+        .replace("export default defineTrigger({", "const definition = {")
+        .replace(/\}\);\n$/u, "};\nexport default defineTrigger(definition);\n");
+      await writeFile(join(directory, "trigger.ts"), definition);
+      const defined = triggerConfiguration(await buildTrigger(join(directory, "trigger.ts")));
+      assert.equal(defined.unavailable, null);
+      assert.ok(defined.fields.some((field) => field.label === "Runner"));
+
+      const touched = subscriptions
+        .replace(
+          'import { defineTrigger } from "@mikoagents/hub/triggers";',
+          'import { defineTrigger } from "@mikoagents/hub/triggers";\nfunction consume(items) { return items; }',
+        )
+        .replace("async run(ctx) {", "async run(ctx) {\n    consume(subscriptions);");
+      await writeFile(join(directory, "trigger.ts"), touched);
+      assert.match(
+        triggerConfiguration(await buildTrigger(join(directory, "trigger.ts"))).unavailable ?? "",
+        /computed by code/u,
+      );
+    }));
 });
 
 function withAgentCall(name: string, prelude: string, body: string) {

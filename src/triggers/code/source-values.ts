@@ -329,7 +329,11 @@ export class SourceValues {
 
   private applyBindingWrites(symbol: ts.Symbol, value: SourceValue) {
     if (this.writes === undefined) {
-      const collected = collectWrites(this.files, (node) => this.symbol(node));
+      const collected = collectWrites(
+        this.files,
+        (node) => this.symbol(node),
+        (node) => this.checker.getSymbolAtLocation(node),
+      );
       this.writes = collected.writes;
       this.writesUnstable = collected.unstable;
     }
